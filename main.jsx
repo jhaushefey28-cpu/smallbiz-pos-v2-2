@@ -47,10 +47,50 @@ VITE_SUPABASE_PUBLISHABLE_KEY</pre><p>Open Vercel → Settings → Environment V
  {scan&&<div className="scanner"><div id="reader"></div><small>Allow camera access and point at a barcode.</small></div>}
  <input className="search" placeholder="Search product or barcode..." value={search} onChange={e=>setSearch(e.target.value)}/>
  {status&&<div className="status">{status}</div>}
- <div>{filtered.map(p=><button className="row" key={p.id} onClick={()=>add(p)}><span><b>{p.name}</b><small>{p.barcode||"No barcode"} · Stock {p.stock}</small></span><b>{money(p.price)}</b></button>)}</div>
- </section>
- <section className="card"><div className="head"><h2>Cart</h2><span>{cart.reduce((n,i)=>n+i.qty,0)} item(s)</span></div>
- {cart.length?<>{cart.map(i=><div className="cart" key={i.id}><span><b>{i.name}</b><small>{money(i.price)} each</small></span><span><button onClick={()=>qty(i.id,-1)}>−</button> {i.qty} <button onClick={()=>qty(i.id,1)}>+</button></span><b>{money(i.price*i.qty)}</b></div>)}</>:<div className="empty">Cart is empty.</div>}
- <div className="total"><span>Total</span><b>{money(total)}</b></div><button className="primary" disabled={!cart.length} onClick={()=>{setCash("");setPaymentOpen(true)}}>Payment</button>
-}
+ <section className="card">
+  <div className="head">
+    <h2>Cart</h2>
+    <span>{cart.reduce((n, i) => n + i.qty, 0)} item(s)</span>
+  </div>
+
+  {cart.length ? (
+    <>
+      {cart.map(i => (
+        <div className="cart" key={i.id}>
+          <span>
+            <b>{i.name}</b>
+            <small>{money(i.price)} each</small>
+          </span>
+
+          <span>
+            <button onClick={() => qty(i.id, -1)}>−</button>
+            {i.qty}
+            <button onClick={() => qty(i.id, 1)}>+</button>
+          </span>
+
+          <b>{money(i.price * i.qty)}</b>
+        </div>
+      ))}
+    </>
+  ) : (
+    <div className="empty">Cart is empty.</div>
+  )}
+
+  <div className="total">
+    <span>Total</span>
+    <b>{money(total)}</b>
+  </div>
+
+  <button
+    className="primary"
+    disabled={!cart.length}
+    onClick={() => {
+      setCash("");
+      setPaymentOpen(true);
+    }}
+  >
+    Payment
+  </button>
+</section>
+
 createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
