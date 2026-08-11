@@ -27,10 +27,6 @@ class ErrorBoundary extends React.Component {
                 this.state.error
               )}
             </pre>
-            <p>
-              Send this message to ChatGPT so we can fix
-              the exact problem.
-            </p>
           </div>
         </div>
       );
@@ -64,28 +60,24 @@ const money = (v) =>
 
 const norm = (p) => ({
   ...p,
-
   name:
     p.name ??
     p.product_name ??
     p.productName ??
     p.title ??
     "Unnamed Product",
-
   barcode:
     p.barcode ??
     p.bar_code ??
     p.barcode_number ??
     p.sku ??
     "",
-
   price: Number(
     p.price ??
     p.selling_price ??
     p.sale_price ??
     0
   ),
-
   stock: Number(
     p.stock ??
     p.quantity ??
@@ -95,29 +87,6 @@ const norm = (p) => ({
 });
 
 function App() {
-  if (configError) {
-    return (
-      <div className="auth">
-        <div className="card">
-          <h1>SmallBiz POS V2.2</h1>
-
-          <h2>Configuration missing</h2>
-
-          <p>
-            Vercel is not receiving the Supabase
-            environment variables.
-          </p>
-
-          <pre>
-            VITE_SUPABASE_URL
-            {"\n"}
-            VITE_SUPABASE_PUBLISHABLE_KEY
-          </pre>
-        </div>
-      </div>
-    );
-  }
-
   const [session, setSession] =
     useState(null);
 
@@ -160,6 +129,33 @@ function App() {
   const [savingPayment, setSavingPayment] =
     useState(false);
 
+  const [profile, setProfile] =
+    useState(null);
+
+  // =========================
+  // CONFIGURATION
+  // =========================
+
+  if (configError) {
+    return (
+      <div className="auth">
+        <div className="card">
+          <h1>SmallBiz POS V2.2</h1>
+          <h2>Configuration missing</h2>
+          <p>
+            Vercel is not receiving the
+            Supabase environment variables.
+          </p>
+          <pre>
+            VITE_SUPABASE_URL
+            {"\n"}
+            VITE_SUPABASE_PUBLISHABLE_KEY
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
   // =========================
   // AUTH
   // =========================
@@ -191,7 +187,7 @@ function App() {
   }, []);
 
   // =========================
-  // LOAD PRODUCTS
+  // LOAD PROFILE + PRODUCTS
   // =========================
 
   useEffect(() => {
@@ -204,27 +200,34 @@ function App() {
     setErr("");
 
     const {
-      data: profile,
+      data: profileData,
       error: profileError,
     } = await supabase
       .from("profiles")
-      .select("business_id,active,role")
+      .select(
+        "id,business_id,fullname,role,active,created_at"
+      )
       .eq("id", uid)
       .single();
 
     if (profileError) {
-      setErr(profileError.message);
+      setErr(
+        "Profile error: " +
+        profileError.message
+      );
       return;
     }
+
+    setProfile(profileData);
 
     let query = supabase
       .from("products")
       .select("*");
 
-    if (profile?.business_id) {
+    if (profileData?.business_id) {
       query = query.eq(
         "business_id",
-        profile.business_id
+        profileData.business_id
       );
     }
 
@@ -239,7 +242,10 @@ function App() {
     );
 
     if (error) {
-      setErr(error.message);
+      setErr(
+        "Products error: " +
+        error.message
+      );
       return;
     }
 
@@ -281,7 +287,9 @@ function App() {
     setPaymentDone(false);
     setCash("");
     setReceiptNo("");
-    setSavingPayment(false);
+    setProfile(null);
+    setStatus("");
+    setErr("");
   }
 
   // =========================
@@ -330,7 +338,10 @@ function App() {
         );
 
       if (existing) {
-        if (existing.qty >= product.stock) {
+        if (
+          existing.qty >=
+          product.stock
+        ) {
           setStatus(
             "Maximum available stock reached: " +
             product.name
@@ -397,16 +408,21 @@ function App() {
   }
 
   // =========================
-  // TOTAL
+  // TOTALS
   // =========================
 
-  const total = cart.reduce(
+  const subtotal = cart.reduce(
     (sum, item) =>
       sum +
       Number(item.price) *
         Number(item.qty),
     0
   );
+
+  const discount = 0;
+
+  const total =
+    subtotal - discount;
 
   const change =
     Number(cash || 0) - total;
@@ -501,18 +517,34 @@ function App() {
       return;
     }
 
+    if (!profile?.id) {
+      setErr(
+        "Cashier profile not found."
+      );
+      return;
+    }
+
+    if (!profile?.business_id) {
+      setErr(
+        "Business ID not found in profile."
+      );
+      return;
+    }
+
     setSavingPayment(true);
     setErr("");
-    setStatus("Saving payment...");
+    setStatus(
+      "Saving payment..."
+    );
 
-    const invoiceNo =
+    const invoiceNumber =
       "INV-" +
       Date.now();
 
     try {
-      // -------------------------
-      // 1. Create sale
-      // -------------------------
+      // =========================
+      // 1. SAVE SALE
+      // =========================
 
       const {
         data: sale,
@@ -520,17 +552,42 @@ function App() {
       } = await supabase
         .from("sales")
         .insert({
-          invoice_no: invoiceNo,
+          business_id:
+            profile.business_id,
+
+          invoice_number:
+            invoiceNumber,
+
+          cashier_id:
+            profile.id,
+
+          subtotal: Number(
+            subtotal.toFixed(2)
+          ),
+
+          discount: Number(
+            discount.toFixed(2)
+          ),
+
           total: Number(
             total.toFixed(2)
           ),
-          payment_method: "cash",
-          cash_received: Number(
-            Number(cash).toFixed(2)
-          ),
-          change_amount: Number(
-            change.toFixed(2)
-          ),
+
+          payment_method:
+            "cash",
+
+          amount_tendered:
+            Number(
+              Number(cash).toFixed(2)
+            ),
+
+          change_amount:
+            Number(
+              change.toFixed(2)
+            ),
+
+          status:
+            "completed",
         })
         .select()
         .single();
@@ -542,29 +599,37 @@ function App() {
         );
       }
 
-      // -------------------------
-      // 2. Create sale items
-      // -------------------------
+      // =========================
+      // 2. SAVE SALE ITEMS
+      // =========================
 
       const saleItems =
         cart.map((item) => ({
-          sale_id: sale.id,
-          product_id: item.id,
-          product_name: item.name,
+          sale_id:
+            sale.id,
+
+          product_id:
+            item.id,
+
+          product_name:
+            item.name,
+
           barcode:
             item.barcode || "",
-          quantity: Number(
-            item.qty
-          ),
-          unit_price: Number(
-            item.price
-          ),
-          line_total: Number(
-            (
-              Number(item.price) *
-              Number(item.qty)
-            ).toFixed(2)
-          ),
+
+          quantity:
+            Number(item.qty),
+
+          unit_price:
+            Number(item.price),
+
+          line_total:
+            Number(
+              (
+                Number(item.price) *
+                Number(item.qty)
+              ).toFixed(2)
+            ),
         }));
 
       const {
@@ -574,22 +639,15 @@ function App() {
         .insert(saleItems);
 
       if (itemsError) {
-        // Try to remove the sale if
-        // sale_items failed.
-        await supabase
-          .from("sales")
-          .delete()
-          .eq("id", sale.id);
-
         throw new Error(
           "Unable to save sale items: " +
           itemsError.message
         );
       }
 
-      // -------------------------
-      // 3. Reduce stock
-      // -------------------------
+      // =========================
+      // 3. UPDATE STOCK
+      // =========================
 
       for (const item of cart) {
         const currentStock =
@@ -621,7 +679,10 @@ function App() {
             updated_at:
               new Date().toISOString(),
           })
-          .eq("id", item.id);
+          .eq(
+            "id",
+            item.id
+          );
 
         if (stockError) {
           throw new Error(
@@ -633,19 +694,21 @@ function App() {
         }
       }
 
-      // -------------------------
-      // 4. Reload products
-      // -------------------------
+      // =========================
+      // 4. REFRESH PRODUCTS
+      // =========================
 
       await load(
         session.user.id
       );
 
-      // -------------------------
-      // 5. Payment successful
-      // -------------------------
+      // =========================
+      // 5. SUCCESS
+      // =========================
 
-      setReceiptNo(invoiceNo);
+      setReceiptNo(
+        invoiceNumber
+      );
 
       setPaymentOpen(false);
 
@@ -679,17 +742,11 @@ function App() {
 
   function newSale() {
     setCart([]);
-
     setCash("");
-
     setReceiptNo("");
-
     setPaymentDone(false);
-
     setPaymentOpen(false);
-
     setErr("");
-
     setStatus(
       "Ready for new sale."
     );
