@@ -205,7 +205,7 @@ function App() {
     } = await supabase
       .from("profiles")
       .select(
-        "id,business_id,fullname,role,active,created_at"
+        "id,business_id,full_name,role,active,created_at"
       )
       .eq("id", uid)
       .single();
