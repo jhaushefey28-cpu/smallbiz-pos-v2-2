@@ -1,4 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
 import { createClient } from "@supabase/supabase-js";
 import { Html5Qrcode } from "html5-qrcode";
@@ -20,9 +24,18 @@ class ErrorBoundary extends React.Component {
         <div className="auth">
           <div className="card">
             <h1>SmallBiz POS V2.2</h1>
+
             <h2>App error</h2>
-            <pre style={{ whiteSpace: "pre-wrap" }}>
-              {String(this.state.error?.stack || this.state.error)}
+
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {String(
+                this.state.error?.stack ||
+                  this.state.error
+              )}
             </pre>
           </div>
         </div>
@@ -33,14 +46,22 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL;
 
-const configError = !SUPABASE_URL || !SUPABASE_KEY;
+const SUPABASE_KEY =
+  import.meta.env
+    .VITE_SUPABASE_PUBLISHABLE_KEY;
+
+const configError =
+  !SUPABASE_URL || !SUPABASE_KEY;
 
 const supabase = configError
   ? null
-  : createClient(SUPABASE_URL, SUPABASE_KEY);
+  : createClient(
+      SUPABASE_URL,
+      SUPABASE_KEY
+    );
 
 const money = (v) =>
   new Intl.NumberFormat("en-PH", {
@@ -50,24 +71,28 @@ const money = (v) =>
 
 const norm = (p) => ({
   ...p,
+
   name:
     p.name ??
     p.product_name ??
     p.productName ??
     p.title ??
     "Unnamed Product",
+
   barcode:
     p.barcode ??
     p.bar_code ??
     p.barcode_number ??
     p.sku ??
     "",
+
   price: Number(
     p.price ??
       p.selling_price ??
       p.sale_price ??
       0
   ),
+
   stock: Number(
     p.stock ??
       p.quantity ??
@@ -77,37 +102,71 @@ const norm = (p) => ({
 });
 
 function App() {
-  const [session, setSession] = useState(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [err, setErr] = useState("");
+  const [session, setSession] =
+    useState(null);
 
-  const [products, setProducts] = useState([]);
-  const [search, setSearch] = useState("");
-  const [cart, setCart] = useState([]);
+  const [email, setEmail] =
+    useState("");
 
-  const [scan, setScan] = useState(false);
-  const [status, setStatus] = useState("");
+  const [password, setPassword] =
+    useState("");
 
-  const [paymentOpen, setPaymentOpen] = useState(false);
-  const [paymentDone, setPaymentDone] = useState(false);
+  const [err, setErr] =
+    useState("");
 
-  const [cash, setCash] = useState("");
-  const [receiptNo, setReceiptNo] = useState("");
+  const [products, setProducts] =
+    useState([]);
 
-  const [savingPayment, setSavingPayment] = useState(false);
-  const [profile, setProfile] = useState(null);
+  const [search, setSearch] =
+    useState("");
+
+  const [cart, setCart] =
+    useState([]);
+
+  const [scan, setScan] =
+    useState(false);
+
+  const [status, setStatus] =
+    useState("");
+
+  const [paymentOpen, setPaymentOpen] =
+    useState(false);
+
+  const [paymentDone, setPaymentDone] =
+    useState(false);
+
+  const [cash, setCash] =
+    useState("");
+
+  const [receiptNo, setReceiptNo] =
+    useState("");
+
+  const [savingPayment, setSavingPayment] =
+    useState(false);
+
+  const [profile, setProfile] =
+    useState(null);
+
+  // NEW:
+  // cash / gcash / card
+  const [paymentMethod, setPaymentMethod] =
+    useState("cash");
 
   if (configError) {
     return (
       <div className="auth">
         <div className="card">
           <h1>SmallBiz POS V2.2</h1>
-          <h2>Configuration missing</h2>
+
+          <h2>
+            Configuration missing
+          </h2>
+
           <p>
-            Vercel is not receiving the Supabase
-            environment variables.
+            Vercel is not receiving the
+            Supabase environment variables.
           </p>
+
           <pre>
             VITE_SUPABASE_URL
             {"\n"}
@@ -125,19 +184,22 @@ function App() {
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) {
-        setSession(data.session);
-      }
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (mounted) {
+          setSession(data.session);
+        }
+      });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_, newSession) => {
-        setSession(newSession);
-      }
-    );
+    } =
+      supabase.auth.onAuthStateChange(
+        (_, newSession) => {
+          setSession(newSession);
+        }
+      );
 
     return () => {
       mounted = false;
@@ -195,7 +257,9 @@ function App() {
       error,
     } = await query.order(
       "created_at",
-      { ascending: false }
+      {
+        ascending: false,
+      }
     );
 
     if (error) {
@@ -217,13 +281,15 @@ function App() {
 
   async function login(e) {
     e.preventDefault();
+
     setErr("");
 
     const { error } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      await supabase.auth
+        .signInWithPassword({
+          email,
+          password,
+        });
 
     if (error) {
       setErr(error.message);
@@ -245,6 +311,7 @@ function App() {
     setProfile(null);
     setStatus("");
     setErr("");
+    setPaymentMethod("cash");
   }
 
   // =========================
@@ -252,7 +319,8 @@ function App() {
   // =========================
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q =
+      search.toLowerCase().trim();
 
     if (!q) {
       return products;
@@ -390,7 +458,9 @@ function App() {
     }
 
     const scanner =
-      new Html5Qrcode("reader");
+      new Html5Qrcode(
+        "reader"
+      );
 
     scanner
       .start(
@@ -417,6 +487,7 @@ function App() {
 
           if (product) {
             add(product);
+
             setStatus(
               "Added: " +
                 product.name
@@ -426,6 +497,7 @@ function App() {
               "Barcode not found: " +
                 code
             );
+
             setSearch(code);
           }
         },
@@ -464,12 +536,15 @@ function App() {
           (item) => `
             <tr>
               <td>${item.name}</td>
+
               <td style="text-align:center">
                 ${item.qty}
               </td>
+
               <td style="text-align:right">
                 ${money(item.price)}
               </td>
+
               <td style="text-align:right">
                 ${money(
                   item.price *
@@ -480,6 +555,13 @@ function App() {
           `
         )
         .join("");
+
+    const receiptPaymentMethod =
+      paymentMethod === "gcash"
+        ? "GCash"
+        : paymentMethod === "card"
+        ? "Card"
+        : "Cash";
 
     const receiptWindow =
       window.open(
@@ -498,6 +580,7 @@ function App() {
     receiptWindow.document.write(`
       <!DOCTYPE html>
       <html>
+
       <head>
         <title>${receiptNo}</title>
 
@@ -568,78 +651,129 @@ function App() {
       </head>
 
       <body>
+
         <h1>SmallBiz POS</h1>
 
         <div class="center">
+
           <div>Sales Receipt</div>
-          <div>${receiptNo}</div>
+
+          <div>
+            ${receiptNo}
+          </div>
+
           <div>
             ${new Date().toLocaleString(
               "en-PH"
             )}
           </div>
+
           <div>
-            Cashier: ${cashierName}
+            Cashier:
+            ${cashierName}
           </div>
+
         </div>
 
         <div class="line"></div>
 
         <table>
+
           <thead>
             <tr>
+
               <th style="text-align:left">
                 Item
               </th>
+
               <th>
                 Qty
               </th>
+
               <th style="text-align:right">
                 Price
               </th>
+
               <th style="text-align:right">
                 Total
               </th>
+
             </tr>
           </thead>
 
           <tbody>
             ${receiptItems}
           </tbody>
+
         </table>
 
         <div class="line"></div>
 
         <div class="row">
           <span>Subtotal</span>
-          <span>${money(subtotal)}</span>
+          <span>
+            ${money(subtotal)}
+          </span>
         </div>
 
         <div class="row">
           <span>Discount</span>
-          <span>${money(discount)}</span>
+          <span>
+            ${money(discount)}
+          </span>
         </div>
 
         <div class="row total">
           <span>TOTAL</span>
-          <span>${money(total)}</span>
+          <span>
+            ${money(total)}
+          </span>
         </div>
 
         <div class="line"></div>
 
         <div class="row">
-          <span>Cash</span>
-          <span>${money(cash)}</span>
+          <span>Payment Method</span>
+          <span>
+            ${receiptPaymentMethod}
+          </span>
         </div>
 
-        <div class="row">
-          <span>Change</span>
-          <span>${money(change)}</span>
-        </div>
+        ${
+          paymentMethod === "cash"
+            ? `
+              <div class="row">
+                <span>Cash Received</span>
+                <span>
+                  ${money(cash)}
+                </span>
+              </div>
+
+              <div class="row">
+                <span>Change</span>
+                <span>
+                  ${money(change)}
+                </span>
+              </div>
+            `
+            : `
+              <div class="row">
+                <span>Amount Paid</span>
+                <span>
+                  ${money(total)}
+                </span>
+              </div>
+            `
+        }
 
         <div class="footer">
-          <div>Thank you for your purchase!</div>
-          <div>SmallBiz POS V2.2</div>
+          <div>
+            Thank you for your purchase!
+          </div>
+
+          <div>
+            SmallBiz POS V2.2
+          </div>
         </div>
 
         <script>
@@ -647,6 +781,7 @@ function App() {
             window.print();
           };
         </script>
+
       </body>
       </html>
     `);
@@ -663,9 +798,13 @@ function App() {
       return;
     }
 
+    // CASH ONLY VALIDATION
     if (
-      !cash ||
-      Number(cash) < total
+      paymentMethod === "cash" &&
+      (
+        !cash ||
+        Number(cash) < total
+      )
     ) {
       return;
     }
@@ -690,6 +829,7 @@ function App() {
 
     setSavingPayment(true);
     setErr("");
+
     setStatus(
       "Saving payment..."
     );
@@ -697,6 +837,24 @@ function App() {
     const invoiceNumber =
       "INV-" +
       Date.now();
+
+    // AMOUNT TO SAVE
+    const amountTendered =
+      paymentMethod === "cash"
+        ? Number(
+            Number(cash).toFixed(2)
+          )
+        : Number(
+            total.toFixed(2)
+          );
+
+    // CHANGE TO SAVE
+    const changeAmount =
+      paymentMethod === "cash"
+        ? Number(
+            change.toFixed(2)
+          )
+        : 0;
 
     try {
       // =========================
@@ -734,20 +892,15 @@ function App() {
                 total.toFixed(2)
               ),
 
+            // CASH / GCASH / CARD
             payment_method:
-              "cash",
+              paymentMethod,
 
             amount_tendered:
-              Number(
-                Number(
-                  cash
-                ).toFixed(2)
-              ),
+              amountTendered,
 
             change_amount:
-              Number(
-                change.toFixed(2)
-              ),
+              changeAmount,
 
             status:
               "completed",
@@ -919,11 +1072,21 @@ function App() {
 
   function newSale() {
     setCart([]);
+
     setCash("");
+
+    setPaymentMethod(
+      "cash"
+    );
+
     setReceiptNo("");
+
     setPaymentDone(false);
+
     setPaymentOpen(false);
+
     setErr("");
+
     setStatus(
       "Ready for new sale."
     );
@@ -936,10 +1099,12 @@ function App() {
   if (!session) {
     return (
       <div className="auth">
+
         <form
           className="card"
           onSubmit={login}
         >
+
           <h1>
             SmallBiz POS V2.2
           </h1>
@@ -977,7 +1142,9 @@ function App() {
               {err}
             </p>
           )}
+
         </form>
+
       </div>
     );
   }
@@ -988,7 +1155,9 @@ function App() {
 
   return (
     <div>
+
       <header>
+
         <b>
           SmallBiz POS{" "}
           <small>
@@ -1001,13 +1170,19 @@ function App() {
         >
           Logout
         </button>
+
       </header>
 
       <main>
-        {/* PRODUCTS */}
+
+        {/* =========================
+            PRODUCTS
+        ========================= */}
 
         <section className="card">
+
           <div className="head">
+
             <h2>
               Products
             </h2>
@@ -1022,10 +1197,12 @@ function App() {
                 ? "Close Scanner"
                 : "Scan Barcode"}
             </button>
+
           </div>
 
           {scan && (
             <div className="scanner">
+
               <div id="reader"></div>
 
               <small>
@@ -1033,6 +1210,7 @@ function App() {
                 access and point
                 at a barcode.
               </small>
+
             </div>
           )}
 
@@ -1060,17 +1238,21 @@ function App() {
           )}
 
           <div className="products-grid">
-            {filtered.length >
-            0 ? (
+
+            {filtered.length > 0 ? (
+
               filtered.map(
                 (product) => (
+
                   <div
                     className="product-card"
                     key={
                       product.id
                     }
                   >
+
                     <div>
+
                       <b>
                         {
                           product.name
@@ -1089,6 +1271,7 @@ function App() {
                           product.stock
                         }
                       </small>
+
                     </div>
 
                     <strong>
@@ -1114,50 +1297,71 @@ function App() {
                         ? "Add to Cart"
                         : "Out of Stock"}
                     </button>
+
                   </div>
+
                 )
               )
+
             ) : (
+
               <div className="empty">
+
                 {search
                   ? "No product found."
                   : "No products available."}
+
               </div>
+
             )}
+
           </div>
+
         </section>
 
-        {/* CART */}
+        {/* =========================
+            CART
+        ========================= */}
 
         <section className="card">
+
           <div className="head">
+
             <h2>
               Cart
             </h2>
 
             <span>
+
               {cart.reduce(
                 (n, item) =>
                   n +
                   item.qty,
                 0
               )}{" "}
+
               item(s)
+
             </span>
+
           </div>
 
-          {cart.length >
-          0 ? (
+          {cart.length > 0 ? (
+
             <>
+
               {cart.map(
                 (item) => (
+
                   <div
                     className="cart"
                     key={
                       item.id
                     }
                   >
+
                     <span>
+
                       <b>
                         {
                           item.name
@@ -1170,9 +1374,11 @@ function App() {
                         )}{" "}
                         each
                       </small>
+
                     </span>
 
                     <span>
+
                       <button
                         onClick={() =>
                           qty(
@@ -1198,6 +1404,7 @@ function App() {
                       >
                         +
                       </button>
+
                     </span>
 
                     <b>
@@ -1206,17 +1413,24 @@ function App() {
                           item.qty
                       )}
                     </b>
+
                   </div>
+
                 )
               )}
+
             </>
+
           ) : (
+
             <div className="empty">
               Cart is empty.
             </div>
+
           )}
 
           <div className="total">
+
             <span>
               Total
             </span>
@@ -1224,6 +1438,7 @@ function App() {
             <b>
               {money(total)}
             </b>
+
           </div>
 
           <button
@@ -1233,24 +1448,40 @@ function App() {
               savingPayment
             }
             onClick={() => {
+
               setCash("");
+
+              setPaymentMethod(
+                "cash"
+              );
+
               setErr("");
+
               setPaymentOpen(
                 true
               );
+
             }}
           >
             Payment
           </button>
+
         </section>
+
       </main>
 
-      {/* PAYMENT MODAL */}
+      {/* =========================
+          PAYMENT MODAL
+      ========================= */}
 
       {paymentOpen && (
+
         <div className="modal-backdrop">
+
           <div className="modal card">
+
             <div className="head">
+
               <h2>
                 Payment
               </h2>
@@ -1267,9 +1498,11 @@ function App() {
               >
                 ✕
               </button>
+
             </div>
 
             <div className="payment-total">
+
               <span>
                 Total
               </span>
@@ -1277,53 +1510,204 @@ function App() {
               <b>
                 {money(total)}
               </b>
+
             </div>
 
+            {/* PAYMENT METHOD */}
+
             <label>
-              Cash Received
+              Payment Method
             </label>
 
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Enter cash amount"
-              value={cash}
-              onChange={(e) =>
-                setCash(
-                  e.target.value
-                )
-              }
-              disabled={
-                savingPayment
-              }
-              autoFocus
-            />
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                marginBottom: "15px",
+                flexWrap: "wrap",
+              }}
+            >
 
-            {cash &&
-              Number(cash) <
-                total && (
-                <p className="error">
-                  Insufficient
-                  cash.
-                </p>
-              )}
+              {/* CASH */}
 
-            {cash &&
-              Number(cash) >=
-                total && (
-                <div className="change">
-                  <span>
-                    Change
-                  </span>
+              <button
+                type="button"
+                className={
+                  paymentMethod ===
+                  "cash"
+                    ? "primary"
+                    : ""
+                }
+                onClick={() => {
+                  setPaymentMethod(
+                    "cash"
+                  );
+                  setCash("");
+                  setErr("");
+                }}
+                disabled={
+                  savingPayment
+                }
+              >
+                💵 Cash
+              </button>
 
-                  <b>
-                    {money(
-                      change
-                    )}
-                  </b>
-                </div>
-              )}
+              {/* GCASH */}
+
+              <button
+                type="button"
+                className={
+                  paymentMethod ===
+                  "gcash"
+                    ? "primary"
+                    : ""
+                }
+                onClick={() => {
+                  setPaymentMethod(
+                    "gcash"
+                  );
+                  setCash("");
+                  setErr("");
+                }}
+                disabled={
+                  savingPayment
+                }
+              >
+                📱 GCash
+              </button>
+
+              {/* CARD */}
+
+              <button
+                type="button"
+                className={
+                  paymentMethod ===
+                  "card"
+                    ? "primary"
+                    : ""
+                }
+                onClick={() => {
+                  setPaymentMethod(
+                    "card"
+                  );
+                  setCash("");
+                  setErr("");
+                }}
+                disabled={
+                  savingPayment
+                }
+              >
+                💳 Card
+              </button>
+
+            </div>
+
+            {/* CASH INPUT */}
+
+            {paymentMethod ===
+              "cash" && (
+              <>
+
+                <label>
+                  Cash Received
+                </label>
+
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Enter cash amount"
+                  value={cash}
+                  onChange={(e) =>
+                    setCash(
+                      e.target.value
+                    )
+                  }
+                  disabled={
+                    savingPayment
+                  }
+                  autoFocus
+                />
+
+                {cash &&
+                  Number(cash) <
+                    total && (
+                    <p className="error">
+                      Insufficient
+                      cash.
+                    </p>
+                  )}
+
+                {cash &&
+                  Number(cash) >=
+                    total && (
+                    <div className="change">
+
+                      <span>
+                        Change
+                      </span>
+
+                      <b>
+                        {money(
+                          change
+                        )}
+                      </b>
+
+                    </div>
+                  )}
+
+              </>
+            )}
+
+            {/* GCASH */}
+
+            {paymentMethod ===
+              "gcash" && (
+
+              <div
+                className="change"
+                style={{
+                  marginTop:
+                    "10px",
+                }}
+              >
+
+                <span>
+                  Payment
+                </span>
+
+                <b>
+                  GCash
+                </b>
+
+              </div>
+
+            )}
+
+            {/* CARD */}
+
+            {paymentMethod ===
+              "card" && (
+
+              <div
+                className="change"
+                style={{
+                  marginTop:
+                    "10px",
+                }}
+              >
+
+                <span>
+                  Payment
+                </span>
+
+                <b>
+                  Card
+                </b>
+
+              </div>
+
+            )}
 
             {err && (
               <p className="error">
@@ -1338,6 +1722,7 @@ function App() {
             )}
 
             <div className="modal-buttons">
+
               <button
                 disabled={
                   savingPayment
@@ -1354,10 +1739,16 @@ function App() {
               <button
                 className="primary"
                 disabled={
-                  !cash ||
-                  Number(cash) <
-                    total ||
-                  savingPayment
+                  savingPayment ||
+                  (
+                    paymentMethod ===
+                      "cash" &&
+                    (
+                      !cash ||
+                      Number(cash) <
+                        total
+                    )
+                  )
                 }
                 onClick={
                   completePayment
@@ -1367,16 +1758,25 @@ function App() {
                   ? "Saving..."
                   : "Complete Payment"}
               </button>
+
             </div>
+
           </div>
+
         </div>
+
       )}
 
-      {/* PAYMENT COMPLETE / RECEIPT */}
+      {/* =========================
+          PAYMENT COMPLETE
+      ========================= */}
 
       {paymentDone && (
+
         <div className="modal-backdrop">
+
           <div className="modal card">
+
             <h2>
               ✓ Payment Complete
             </h2>
@@ -1393,6 +1793,7 @@ function App() {
                   "12px 0",
               }}
             >
+
               <p>
                 Invoice:{" "}
                 <b>
@@ -1409,25 +1810,55 @@ function App() {
               </p>
 
               <p>
+                Payment Method:{" "}
+                <b>
+                  {paymentMethod ===
+                  "gcash"
+                    ? "GCash"
+                    : paymentMethod ===
+                      "card"
+                    ? "Card"
+                    : "Cash"}
+                </b>
+              </p>
+
+              <p>
                 Total:{" "}
                 <b>
                   {money(total)}
                 </b>
               </p>
 
-              <p>
-                Cash Received:{" "}
-                <b>
-                  {money(cash)}
-                </b>
-              </p>
+              {paymentMethod ===
+                "cash" ? (
 
-              <p>
-                Change:{" "}
-                <b>
-                  {money(change)}
-                </b>
-              </p>
+                <>
+                  <p>
+                    Cash Received:{" "}
+                    <b>
+                      {money(cash)}
+                    </b>
+                  </p>
+
+                  <p>
+                    Change:{" "}
+                    <b>
+                      {money(change)}
+                    </b>
+                  </p>
+                </>
+
+              ) : (
+
+                <p>
+                  Amount Paid:{" "}
+                  <b>
+                    {money(total)}
+                  </b>
+                </p>
+
+              )}
+
             </div>
 
             <div
@@ -1436,10 +1867,14 @@ function App() {
                   "12px",
               }}
             >
-              <b>Items</b>
+
+              <b>
+                Items
+              </b>
 
               {cart.map(
                 (item) => (
+
                   <div
                     key={
                       item.id
@@ -1454,6 +1889,7 @@ function App() {
                         "6px 0",
                     }}
                   >
+
                     <span>
                       {item.name} ×{" "}
                       {item.qty}
@@ -1465,12 +1901,16 @@ function App() {
                           item.qty
                       )}
                     </b>
+
                   </div>
+
                 )
               )}
+
             </div>
 
             <div className="modal-buttons">
+
               <button
                 onClick={
                   printReceipt
@@ -1487,10 +1927,15 @@ function App() {
               >
                 New Sale
               </button>
+
             </div>
+
           </div>
+
         </div>
+
       )}
+
     </div>
   );
 }
