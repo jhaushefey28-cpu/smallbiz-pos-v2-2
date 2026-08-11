@@ -27,6 +27,10 @@ class ErrorBoundary extends React.Component {
                 this.state.error
               )}
             </pre>
+            <p>
+              Send this message to ChatGPT so we can fix
+              the exact problem.
+            </p>
           </div>
         </div>
       );
@@ -97,13 +101,11 @@ function App() {
         <div className="card">
           <h1>SmallBiz POS V2.2</h1>
 
-          <h2>
-            Configuration missing
-          </h2>
+          <h2>Configuration missing</h2>
 
           <p>
-            Vercel is not receiving the
-            Supabase environment variables.
+            Vercel is not receiving the Supabase
+            environment variables.
           </p>
 
           <pre>
@@ -155,6 +157,9 @@ function App() {
   const [receiptNo, setReceiptNo] =
     useState("");
 
+  const [savingPayment, setSavingPayment] =
+    useState(false);
+
   // =========================
   // AUTH
   // =========================
@@ -203,9 +208,7 @@ function App() {
       error: profileError,
     } = await supabase
       .from("profiles")
-      .select(
-        "business_id,active,role"
-      )
+      .select("business_id,active,role")
       .eq("id", uid)
       .single();
 
@@ -274,12 +277,11 @@ function App() {
     await supabase.auth.signOut();
 
     setCart([]);
-
     setPaymentOpen(false);
-
     setPaymentDone(false);
-
     setCash("");
+    setReceiptNo("");
+    setSavingPayment(false);
   }
 
   // =========================
@@ -328,15 +330,22 @@ function App() {
         );
 
       if (existing) {
+        if (existing.qty >= product.stock) {
+          setStatus(
+            "Maximum available stock reached: " +
+            product.name
+          );
+
+          return current;
+        }
+
         return current.map(
           (item) =>
             item.id === product.id
               ? {
                   ...item,
-                  qty: Math.min(
+                  qty:
                     item.qty + 1,
-                    product.stock
-                  ),
                 }
               : item
         );
@@ -394,8 +403,8 @@ function App() {
   const total = cart.reduce(
     (sum, item) =>
       sum +
-      item.price *
-        item.qty,
+      Number(item.price) *
+        Number(item.qty),
     0
   );
 
@@ -412,9 +421,7 @@ function App() {
     }
 
     const scanner =
-      new Html5Qrcode(
-        "reader"
-      );
+      new Html5Qrcode("reader");
 
     scanner
       .start(
@@ -478,7 +485,11 @@ function App() {
   // COMPLETE PAYMENT
   // =========================
 
-  function completePayment() {
+  async function completePayment() {
+    if (savingPayment) {
+      return;
+    }
+
     if (
       !cash ||
       Number(cash) < total
@@ -486,15 +497,180 @@ function App() {
       return;
     }
 
-    const number =
+    if (!cart.length) {
+      return;
+    }
+
+    setSavingPayment(true);
+    setErr("");
+    setStatus("Saving payment...");
+
+    const invoiceNo =
       "INV-" +
       Date.now();
 
-    setReceiptNo(number);
+    try {
+      // -------------------------
+      // 1. Create sale
+      // -------------------------
 
-    setPaymentOpen(false);
+      const {
+        data: sale,
+        error: saleError,
+      } = await supabase
+        .from("sales")
+        .insert({
+          invoice_no: invoiceNo,
+          total: Number(
+            total.toFixed(2)
+          ),
+          payment_method: "cash",
+          cash_received: Number(
+            Number(cash).toFixed(2)
+          ),
+          change_amount: Number(
+            change.toFixed(2)
+          ),
+        })
+        .select()
+        .single();
 
-    setPaymentDone(true);
+      if (saleError) {
+        throw new Error(
+          "Unable to save sale: " +
+          saleError.message
+        );
+      }
+
+      // -------------------------
+      // 2. Create sale items
+      // -------------------------
+
+      const saleItems =
+        cart.map((item) => ({
+          sale_id: sale.id,
+          product_id: item.id,
+          product_name: item.name,
+          barcode:
+            item.barcode || "",
+          quantity: Number(
+            item.qty
+          ),
+          unit_price: Number(
+            item.price
+          ),
+          line_total: Number(
+            (
+              Number(item.price) *
+              Number(item.qty)
+            ).toFixed(2)
+          ),
+        }));
+
+      const {
+        error: itemsError,
+      } = await supabase
+        .from("sale_items")
+        .insert(saleItems);
+
+      if (itemsError) {
+        // Try to remove the sale if
+        // sale_items failed.
+        await supabase
+          .from("sales")
+          .delete()
+          .eq("id", sale.id);
+
+        throw new Error(
+          "Unable to save sale items: " +
+          itemsError.message
+        );
+      }
+
+      // -------------------------
+      // 3. Reduce stock
+      // -------------------------
+
+      for (const item of cart) {
+        const currentStock =
+          Number(item.stock || 0);
+
+        const quantitySold =
+          Number(item.qty || 0);
+
+        if (
+          quantitySold >
+          currentStock
+        ) {
+          throw new Error(
+            "Not enough stock for " +
+            item.name
+          );
+        }
+
+        const newStock =
+          currentStock -
+          quantitySold;
+
+        const {
+          error: stockError,
+        } = await supabase
+          .from("products")
+          .update({
+            stock: newStock,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", item.id);
+
+        if (stockError) {
+          throw new Error(
+            "Unable to update stock for " +
+            item.name +
+            ": " +
+            stockError.message
+          );
+        }
+      }
+
+      // -------------------------
+      // 4. Reload products
+      // -------------------------
+
+      await load(
+        session.user.id
+      );
+
+      // -------------------------
+      // 5. Payment successful
+      // -------------------------
+
+      setReceiptNo(invoiceNo);
+
+      setPaymentOpen(false);
+
+      setPaymentDone(true);
+
+      setStatus(
+        "Payment saved successfully."
+      );
+
+    } catch (error) {
+      console.error(
+        "Payment error:",
+        error
+      );
+
+      setErr(
+        error?.message ||
+        "Payment failed."
+      );
+
+      setStatus("");
+
+    } finally {
+      setSavingPayment(false);
+    }
   }
 
   // =========================
@@ -509,6 +685,10 @@ function App() {
     setReceiptNo("");
 
     setPaymentDone(false);
+
+    setPaymentOpen(false);
+
+    setErr("");
 
     setStatus(
       "Ready for new sale."
@@ -636,6 +816,12 @@ function App() {
           {status && (
             <div className="status">
               {status}
+            </div>
+          )}
+
+          {err && (
+            <div className="error">
+              {err}
             </div>
           )}
 
@@ -809,10 +995,12 @@ function App() {
           <button
             className="primary"
             disabled={
-              !cart.length
+              !cart.length ||
+              savingPayment
             }
             onClick={() => {
               setCash("");
+              setErr("");
               setPaymentOpen(
                 true
               );
@@ -834,6 +1022,9 @@ function App() {
               </h2>
 
               <button
+                disabled={
+                  savingPayment
+                }
                 onClick={() =>
                   setPaymentOpen(
                     false
@@ -869,6 +1060,9 @@ function App() {
                   e.target.value
                 )
               }
+              disabled={
+                savingPayment
+              }
               autoFocus
             />
 
@@ -897,8 +1091,24 @@ function App() {
                 </div>
               )}
 
+            {err && (
+              <p className="error">
+                {err}
+              </p>
+            )}
+
+            {savingPayment && (
+              <p>
+                Saving payment...
+                Please wait.
+              </p>
+            )}
+
             <div className="modal-buttons">
               <button
+                disabled={
+                  savingPayment
+                }
                 onClick={() =>
                   setPaymentOpen(
                     false
@@ -913,13 +1123,16 @@ function App() {
                 disabled={
                   !cash ||
                   Number(cash) <
-                    total
+                    total ||
+                  savingPayment
                 }
                 onClick={
                   completePayment
                 }
               >
-                Complete Payment
+                {savingPayment
+                  ? "Saving..."
+                  : "Complete Payment"}
               </button>
             </div>
           </div>
@@ -952,18 +1165,14 @@ function App() {
             <p>
               Cash Received:{" "}
               <b>
-                {money(
-                  cash
-                )}
+                {money(cash)}
               </b>
             </p>
 
             <p>
               Change:{" "}
               <b>
-                {money(
-                  change
-                )}
+                {money(change)}
               </b>
             </p>
 
