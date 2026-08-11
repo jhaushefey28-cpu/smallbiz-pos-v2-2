@@ -24,14 +24,9 @@ class ErrorBoundary extends React.Component {
         <div className="auth">
           <div className="card">
             <h1>SmallBiz POS V2.2</h1>
-
             <h2>App error</h2>
 
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-              }}
-            >
+            <pre style={{ whiteSpace: "pre-wrap" }}>
               {String(
                 this.state.error?.stack ||
                   this.state.error
@@ -147,10 +142,40 @@ function App() {
   const [profile, setProfile] =
     useState(null);
 
-  // NEW:
-  // cash / gcash / card
   const [paymentMethod, setPaymentMethod] =
     useState("cash");
+
+  // =========================
+  // SALES HISTORY
+  // =========================
+
+  const [salesHistory, setSalesHistory] =
+    useState([]);
+
+  const [historyLoading, setHistoryLoading] =
+    useState(false);
+
+  const [historySearch, setHistorySearch] =
+    useState("");
+
+  const [historyOpen, setHistoryOpen] =
+    useState(false);
+
+  const [selectedSale, setSelectedSale] =
+    useState(null);
+
+  const [selectedSaleItems, setSelectedSaleItems] =
+    useState([]);
+
+  const [saleDetailsOpen, setSaleDetailsOpen] =
+    useState(false);
+
+  const [saleDetailsLoading, setSaleDetailsLoading] =
+    useState(false);
+
+  // =========================
+  // CONFIG
+  // =========================
 
   if (configError) {
     return (
@@ -273,6 +298,57 @@ function App() {
     setProducts(
       (data || []).map(norm)
     );
+
+    // Load sales history
+    await loadSalesHistory(
+      profileData.business_id
+    );
+  }
+
+  // =========================
+  // LOAD SALES HISTORY
+  // =========================
+
+  async function loadSalesHistory(
+    businessId
+  ) {
+    if (!businessId) {
+      return;
+    }
+
+    setHistoryLoading(true);
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("sales")
+      .select(
+        "id,business_id,invoice_no,cashier_id,subtotal,discount,total,payment_method,amount_tendered,change_amount,status,created_at"
+      )
+      .eq(
+        "business_id",
+        businessId
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      )
+      .limit(100);
+
+    if (error) {
+      setErr(
+        "Sales History error: " +
+          error.message
+      );
+      setHistoryLoading(false);
+      return;
+    }
+
+    setSalesHistory(data || []);
+    setHistoryLoading(false);
   }
 
   // =========================
@@ -312,10 +388,16 @@ function App() {
     setStatus("");
     setErr("");
     setPaymentMethod("cash");
+
+    setSalesHistory([]);
+    setHistoryOpen(false);
+    setSelectedSale(null);
+    setSelectedSaleItems([]);
+    setSaleDetailsOpen(false);
   }
 
   // =========================
-  // SEARCH
+  // SEARCH PRODUCTS
   // =========================
 
   const filtered = useMemo(() => {
@@ -521,7 +603,23 @@ function App() {
   }, [scan, products]);
 
   // =========================
-  // PRINT RECEIPT
+  // PAYMENT LABEL
+  // =========================
+
+  function paymentLabel(method) {
+    if (method === "gcash") {
+      return "GCash";
+    }
+
+    if (method === "card") {
+      return "Card";
+    }
+
+    return "Cash";
+  }
+
+  // =========================
+  // PRINT CURRENT RECEIPT
   // =========================
 
   function printReceipt() {
@@ -556,13 +654,6 @@ function App() {
         )
         .join("");
 
-    const receiptPaymentMethod =
-      paymentMethod === "gcash"
-        ? "GCash"
-        : paymentMethod === "card"
-        ? "Card"
-        : "Cash";
-
     const receiptWindow =
       window.open(
         "",
@@ -580,7 +671,6 @@ function App() {
     receiptWindow.document.write(`
       <!DOCTYPE html>
       <html>
-
       <head>
         <title>${receiptNo}</title>
 
@@ -655,12 +745,8 @@ function App() {
         <h1>SmallBiz POS</h1>
 
         <div class="center">
-
           <div>Sales Receipt</div>
-
-          <div>
-            ${receiptNo}
-          </div>
+          <div>${receiptNo}</div>
 
           <div>
             ${new Date().toLocaleString(
@@ -672,16 +758,13 @@ function App() {
             Cashier:
             ${cashierName}
           </div>
-
         </div>
 
         <div class="line"></div>
 
         <table>
-
           <thead>
             <tr>
-
               <th style="text-align:left">
                 Item
               </th>
@@ -697,14 +780,12 @@ function App() {
               <th style="text-align:right">
                 Total
               </th>
-
             </tr>
           </thead>
 
           <tbody>
             ${receiptItems}
           </tbody>
-
         </table>
 
         <div class="line"></div>
@@ -735,7 +816,9 @@ function App() {
         <div class="row">
           <span>Payment Method</span>
           <span>
-            ${receiptPaymentMethod}
+            ${paymentLabel(
+              paymentMethod
+            )}
           </span>
         </div>
 
@@ -798,7 +881,6 @@ function App() {
       return;
     }
 
-    // CASH ONLY VALIDATION
     if (
       paymentMethod === "cash" &&
       (
@@ -838,7 +920,6 @@ function App() {
       "INV-" +
       Date.now();
 
-    // AMOUNT TO SAVE
     const amountTendered =
       paymentMethod === "cash"
         ? Number(
@@ -848,7 +929,6 @@ function App() {
             total.toFixed(2)
           );
 
-    // CHANGE TO SAVE
     const changeAmount =
       paymentMethod === "cash"
         ? Number(
@@ -857,10 +937,7 @@ function App() {
         : 0;
 
     try {
-      // =========================
       // SAVE SALE
-      // =========================
-
       const {
         data: sale,
         error: saleError,
@@ -892,7 +969,6 @@ function App() {
                 total.toFixed(2)
               ),
 
-            // CASH / GCASH / CARD
             payment_method:
               paymentMethod,
 
@@ -915,10 +991,7 @@ function App() {
         );
       }
 
-      // =========================
       // SAVE SALE ITEMS
-      // =========================
-
       const saleItems =
         cart.map((item) => ({
           sale_id:
@@ -942,12 +1015,8 @@ function App() {
           line_total:
             Number(
               (
-                Number(
-                  item.price
-                ) *
-                Number(
-                  item.qty
-                )
+                Number(item.price) *
+                Number(item.qty)
               ).toFixed(2)
             ),
         }));
@@ -968,10 +1037,7 @@ function App() {
         );
       }
 
-      // =========================
       // UPDATE STOCK
-      // =========================
-
       for (const item of cart) {
         const currentStock =
           Number(
@@ -1024,17 +1090,10 @@ function App() {
         }
       }
 
-      // =========================
-      // REFRESH PRODUCTS
-      // =========================
-
+      // REFRESH PRODUCTS + HISTORY
       await load(
         session.user.id
       );
-
-      // =========================
-      // SUCCESS
-      // =========================
 
       setReceiptNo(
         invoiceNumber
@@ -1093,7 +1152,388 @@ function App() {
   }
 
   // =========================
-  // LOGIN
+  // SALES HISTORY SEARCH
+  // =========================
+
+  const filteredSales =
+    useMemo(() => {
+      const q =
+        historySearch
+          .toLowerCase()
+          .trim();
+
+      if (!q) {
+        return salesHistory;
+      }
+
+      return salesHistory.filter(
+        (sale) =>
+          String(
+            sale.invoice_no || ""
+          )
+            .toLowerCase()
+            .includes(q) ||
+          String(
+            sale.payment_method || ""
+          )
+            .toLowerCase()
+            .includes(q) ||
+          String(
+            sale.status || ""
+          )
+            .toLowerCase()
+            .includes(q)
+      );
+    }, [
+      salesHistory,
+      historySearch,
+    ]);
+
+  // =========================
+  // OPEN SALE DETAILS
+  // =========================
+
+  async function openSaleDetails(
+    sale
+  ) {
+    setSelectedSale(sale);
+    setSelectedSaleItems([]);
+    setSaleDetailsOpen(true);
+    setSaleDetailsLoading(true);
+    setErr("");
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("sale_items")
+      .select(
+        "id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total"
+      )
+      .eq(
+        "sale_id",
+        sale.id
+      )
+      .order("id", {
+        ascending: true,
+      });
+
+    if (error) {
+      setErr(
+        "Unable to load sale items: " +
+          error.message
+      );
+      setSaleDetailsLoading(false);
+      return;
+    }
+
+    setSelectedSaleItems(
+      data || []
+    );
+
+    setSaleDetailsLoading(false);
+  }
+
+  // =========================
+  // PRINT OLD SALE
+  // =========================
+
+  function printOldSale() {
+    if (!selectedSale) {
+      return;
+    }
+
+    const cashierName =
+      profile?.full_name ||
+      profile?.role ||
+      "Cashier";
+
+    const itemsHtml =
+      selectedSaleItems
+        .map(
+          (item) => `
+            <tr>
+              <td>
+                ${item.product_name}
+              </td>
+
+              <td style="text-align:center">
+                ${item.quantity}
+              </td>
+
+              <td style="text-align:right">
+                ${money(
+                  item.unit_price
+                )}
+              </td>
+
+              <td style="text-align:right">
+                ${money(
+                  item.line_total
+                )}
+              </td>
+            </tr>
+          `
+        )
+        .join("");
+
+    const win =
+      window.open(
+        "",
+        "_blank",
+        "width=420,height=700"
+      );
+
+    if (!win) {
+      setErr(
+        "Please allow pop-ups to print the receipt."
+      );
+      return;
+    }
+
+    const saleDate =
+      selectedSale.created_at
+        ? new Date(
+            selectedSale.created_at
+          ).toLocaleString(
+            "en-PH"
+          )
+        : "";
+
+    const method =
+      paymentLabel(
+        selectedSale.payment_method
+      );
+
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+
+      <head>
+
+        <title>
+          ${selectedSale.invoice_no}
+        </title>
+
+        <style>
+
+          body {
+            font-family: Arial, sans-serif;
+            width: 360px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #111;
+          }
+
+          h1 {
+            text-align: center;
+            font-size: 22px;
+            margin-bottom: 4px;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .line {
+            border-top: 1px dashed #000;
+            margin: 12px 0;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+          }
+
+          th {
+            border-bottom: 1px solid #000;
+            padding-bottom: 6px;
+          }
+
+          td {
+            padding: 5px 0;
+            vertical-align: top;
+          }
+
+          .row {
+            display: flex;
+            justify-content: space-between;
+            margin: 7px 0;
+          }
+
+          .total {
+            font-size: 18px;
+            font-weight: bold;
+          }
+
+          .footer {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 12px;
+          }
+
+          @media print {
+            body {
+              width: auto;
+              margin: 0;
+            }
+          }
+
+        </style>
+
+      </head>
+
+      <body>
+
+        <h1>SmallBiz POS</h1>
+
+        <div class="center">
+
+          <div>Sales Receipt</div>
+
+          <div>
+            ${selectedSale.invoice_no}
+          </div>
+
+          <div>
+            ${saleDate}
+          </div>
+
+          <div>
+            Cashier:
+            ${cashierName}
+          </div>
+
+        </div>
+
+        <div class="line"></div>
+
+        <table>
+
+          <thead>
+
+            <tr>
+
+              <th style="text-align:left">
+                Item
+              </th>
+
+              <th>
+                Qty
+              </th>
+
+              <th style="text-align:right">
+                Price
+              </th>
+
+              <th style="text-align:right">
+                Total
+              </th>
+
+            </tr>
+
+          </thead>
+
+          <tbody>
+
+            ${itemsHtml}
+
+          </tbody>
+
+        </table>
+
+        <div class="line"></div>
+
+        <div class="row">
+          <span>Subtotal</span>
+          <span>
+            ${money(
+              selectedSale.subtotal
+            )}
+          </span>
+        </div>
+
+        <div class="row">
+          <span>Discount</span>
+          <span>
+            ${money(
+              selectedSale.discount
+            )}
+          </span>
+        </div>
+
+        <div class="row total">
+          <span>TOTAL</span>
+          <span>
+            ${money(
+              selectedSale.total
+            )}
+          </span>
+        </div>
+
+        <div class="line"></div>
+
+        <div class="row">
+          <span>Payment Method</span>
+          <span>
+            ${method}
+          </span>
+        </div>
+
+        <div class="row">
+          <span>Amount Paid</span>
+          <span>
+            ${money(
+              selectedSale.amount_tendered
+            )}
+          </span>
+        </div>
+
+        ${
+          selectedSale.payment_method ===
+          "cash"
+            ? `
+              <div class="row">
+                <span>Change</span>
+                <span>
+                  ${money(
+                    selectedSale.change_amount
+                  )}
+                </span>
+              </div>
+            `
+            : ""
+        }
+
+        <div class="footer">
+
+          <div>
+            Thank you for your purchase!
+          </div>
+
+          <div>
+            SmallBiz POS V2.2
+          </div>
+
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+          };
+        </script>
+
+      </body>
+
+      </html>
+    `);
+
+    win.document.close();
+  }
+
+  // =========================
+  // LOGIN PAGE
   // =========================
 
   if (!session) {
@@ -1165,15 +1605,307 @@ function App() {
           </small>
         </b>
 
-        <button
-          onClick={logout}
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            alignItems: "center",
+          }}
         >
-          Logout
-        </button>
+
+          <button
+            onClick={() => {
+              setHistoryOpen(
+                !historyOpen
+              );
+
+              if (!historyOpen) {
+                loadSalesHistory(
+                  profile?.business_id
+                );
+              }
+            }}
+          >
+            📋 Sales History
+          </button>
+
+          <button
+            onClick={logout}
+          >
+            Logout
+          </button>
+
+        </div>
 
       </header>
 
       <main>
+
+        {/* =========================
+            SALES HISTORY
+        ========================= */}
+
+        {historyOpen && (
+
+          <section className="card">
+
+            <div className="head">
+
+              <h2>
+                📋 Sales History
+              </h2>
+
+              <button
+                onClick={() =>
+                  loadSalesHistory(
+                    profile?.business_id
+                  )
+                }
+                disabled={
+                  historyLoading
+                }
+              >
+                {historyLoading
+                  ? "Loading..."
+                  : "Refresh"}
+              </button>
+
+            </div>
+
+            <input
+              className="search"
+              placeholder="Search invoice number..."
+              value={historySearch}
+              onChange={(e) =>
+                setHistorySearch(
+                  e.target.value
+                )
+              }
+            />
+
+            {historyLoading ? (
+
+              <div className="empty">
+                Loading sales...
+              </div>
+
+            ) : filteredSales.length >
+              0 ? (
+
+              <div
+                style={{
+                  overflowX:
+                    "auto",
+                }}
+              >
+
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse:
+                      "collapse",
+                    marginTop:
+                      "15px",
+                  }}
+                >
+
+                  <thead>
+
+                    <tr>
+
+                      <th
+                        style={{
+                          textAlign:
+                            "left",
+                          padding:
+                            "10px",
+                          borderBottom:
+                            "1px solid #ddd",
+                        }}
+                      >
+                        Invoice
+                      </th>
+
+                      <th
+                        style={{
+                          textAlign:
+                            "left",
+                          padding:
+                            "10px",
+                          borderBottom:
+                            "1px solid #ddd",
+                        }}
+                      >
+                        Date
+                      </th>
+
+                      <th
+                        style={{
+                          textAlign:
+                            "left",
+                          padding:
+                            "10px",
+                          borderBottom:
+                            "1px solid #ddd",
+                        }}
+                      >
+                        Payment
+                      </th>
+
+                      <th
+                        style={{
+                          textAlign:
+                            "right",
+                          padding:
+                            "10px",
+                          borderBottom:
+                            "1px solid #ddd",
+                        }}
+                      >
+                        Total
+                      </th>
+
+                      <th
+                        style={{
+                          textAlign:
+                            "center",
+                          padding:
+                            "10px",
+                          borderBottom:
+                            "1px solid #ddd",
+                        }}
+                      >
+                        Action
+                      </th>
+
+                    </tr>
+
+                  </thead>
+
+                  <tbody>
+
+                    {filteredSales.map(
+                      (sale) => (
+
+                        <tr
+                          key={
+                            sale.id
+                          }
+                        >
+
+                          <td
+                            style={{
+                              padding:
+                                "10px",
+                              borderBottom:
+                                "1px solid #eee",
+                            }}
+                          >
+                            <b>
+                              {
+                                sale.invoice_no
+                              }
+                            </b>
+                          </td>
+
+                          <td
+                            style={{
+                              padding:
+                                "10px",
+                              borderBottom:
+                                "1px solid #eee",
+                              whiteSpace:
+                                "nowrap",
+                            }}
+                          >
+                            {sale.created_at
+                              ? new Date(
+                                  sale.created_at
+                                ).toLocaleString(
+                                  "en-PH"
+                                )
+                              : "-"}
+                          </td>
+
+                          <td
+                            style={{
+                              padding:
+                                "10px",
+                              borderBottom:
+                                "1px solid #eee",
+                            }}
+                          >
+                            {paymentLabel(
+                              sale.payment_method
+                            )}
+                          </td>
+
+                          <td
+                            style={{
+                              padding:
+                                "10px",
+                              borderBottom:
+                                "1px solid #eee",
+                              textAlign:
+                                "right",
+                              whiteSpace:
+                                "nowrap",
+                            }}
+                          >
+                            <b>
+                              {money(
+                                sale.total
+                              )}
+                            </b>
+                          </td>
+
+                          <td
+                            style={{
+                              padding:
+                                "10px",
+                              borderBottom:
+                                "1px solid #eee",
+                              textAlign:
+                                "center",
+                            }}
+                          >
+                            <button
+                              onClick={() =>
+                                openSaleDetails(
+                                  sale
+                                )
+                              }
+                            >
+                              View
+                            </button>
+                          </td>
+
+                        </tr>
+
+                      )
+                    )}
+
+                  </tbody>
+
+                </table>
+
+              </div>
+
+            ) : (
+
+              <div className="empty">
+
+                {historySearch
+                  ? "No matching sales found."
+                  : "No sales recorded yet."}
+
+              </div>
+
+            )}
+
+          </section>
+
+        )}
 
         {/* =========================
             PRODUCTS
@@ -1513,8 +2245,6 @@ function App() {
 
             </div>
 
-            {/* PAYMENT METHOD */}
-
             <label>
               Payment Method
             </label>
@@ -1523,12 +2253,12 @@ function App() {
               style={{
                 display: "flex",
                 gap: "10px",
-                marginBottom: "15px",
-                flexWrap: "wrap",
+                marginBottom:
+                  "15px",
+                flexWrap:
+                  "wrap",
               }}
             >
-
-              {/* CASH */}
 
               <button
                 type="button"
@@ -1552,8 +2282,6 @@ function App() {
                 💵 Cash
               </button>
 
-              {/* GCASH */}
-
               <button
                 type="button"
                 className={
@@ -1575,8 +2303,6 @@ function App() {
               >
                 📱 GCash
               </button>
-
-              {/* CARD */}
 
               <button
                 type="button"
@@ -1601,8 +2327,6 @@ function App() {
               </button>
 
             </div>
-
-            {/* CASH INPUT */}
 
             {paymentMethod ===
               "cash" && (
@@ -1659,8 +2383,6 @@ function App() {
               </>
             )}
 
-            {/* GCASH */}
-
             {paymentMethod ===
               "gcash" && (
 
@@ -1683,8 +2405,6 @@ function App() {
               </div>
 
             )}
-
-            {/* CARD */}
 
             {paymentMethod ===
               "card" && (
@@ -1812,13 +2532,9 @@ function App() {
               <p>
                 Payment Method:{" "}
                 <b>
-                  {paymentMethod ===
-                  "gcash"
-                    ? "GCash"
-                    : paymentMethod ===
-                      "card"
-                    ? "Card"
-                    : "Cash"}
+                  {paymentLabel(
+                    paymentMethod
+                  )}
                 </b>
               </p>
 
@@ -1929,6 +2645,415 @@ function App() {
               </button>
 
             </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {/* =========================
+          SALE DETAILS MODAL
+      ========================= */}
+
+      {saleDetailsOpen &&
+        selectedSale && (
+
+        <div className="modal-backdrop">
+
+          <div
+            className="modal card"
+            style={{
+              maxWidth:
+                "700px",
+              width:
+                "95%",
+            }}
+          >
+
+            <div className="head">
+
+              <h2>
+                🧾 Sale Details
+              </h2>
+
+              <button
+                onClick={() =>
+                  setSaleDetailsOpen(
+                    false
+                  )
+                }
+              >
+                ✕
+              </button>
+
+            </div>
+
+            {saleDetailsLoading ? (
+
+              <div className="empty">
+                Loading sale details...
+              </div>
+
+            ) : (
+
+              <>
+
+                <div
+                  style={{
+                    borderTop:
+                      "1px solid #ddd",
+                    borderBottom:
+                      "1px solid #ddd",
+                    padding:
+                      "12px 0",
+                    margin:
+                      "12px 0",
+                  }}
+                >
+
+                  <p>
+                    <b>
+                      Invoice:
+                    </b>{" "}
+                    {
+                      selectedSale.invoice_no
+                    }
+                  </p>
+
+                  <p>
+                    <b>
+                      Date:
+                    </b>{" "}
+                    {selectedSale.created_at
+                      ? new Date(
+                          selectedSale.created_at
+                        ).toLocaleString(
+                          "en-PH"
+                        )
+                      : "-"}
+                  </p>
+
+                  <p>
+                    <b>
+                      Cashier:
+                    </b>{" "}
+                    {profile?.full_name ||
+                      profile?.role ||
+                      "Cashier"}
+                  </p>
+
+                  <p>
+                    <b>
+                      Payment:
+                    </b>{" "}
+                    {paymentLabel(
+                      selectedSale.payment_method
+                    )}
+                  </p>
+
+                  <p>
+                    <b>
+                      Status:
+                    </b>{" "}
+                    {
+                      selectedSale.status
+                    }
+                  </p>
+
+                </div>
+
+                <h3>
+                  Items
+                </h3>
+
+                {selectedSaleItems.length >
+                0 ? (
+
+                  <div
+                    style={{
+                      overflowX:
+                        "auto",
+                    }}
+                  >
+
+                    <table
+                      style={{
+                        width:
+                          "100%",
+                        borderCollapse:
+                          "collapse",
+                      }}
+                    >
+
+                      <thead>
+
+                        <tr>
+
+                          <th
+                            style={{
+                              textAlign:
+                                "left",
+                              padding:
+                                "8px",
+                              borderBottom:
+                                "1px solid #ddd",
+                            }}
+                          >
+                            Product
+                          </th>
+
+                          <th
+                            style={{
+                              textAlign:
+                                "center",
+                              padding:
+                                "8px",
+                              borderBottom:
+                                "1px solid #ddd",
+                            }}
+                          >
+                            Qty
+                          </th>
+
+                          <th
+                            style={{
+                              textAlign:
+                                "right",
+                              padding:
+                                "8px",
+                              borderBottom:
+                                "1px solid #ddd",
+                            }}
+                          >
+                            Price
+                          </th>
+
+                          <th
+                            style={{
+                              textAlign:
+                                "right",
+                              padding:
+                                "8px",
+                              borderBottom:
+                                "1px solid #ddd",
+                            }}
+                          >
+                            Total
+                          </th>
+
+                        </tr>
+
+                      </thead>
+
+                      <tbody>
+
+                        {selectedSaleItems.map(
+                          (item) => (
+
+                            <tr
+                              key={
+                                item.id
+                              }
+                            >
+
+                              <td
+                                style={{
+                                  padding:
+                                    "8px",
+                                  borderBottom:
+                                    "1px solid #eee",
+                                }}
+                              >
+                                {
+                                  item.product_name
+                                }
+                              </td>
+
+                              <td
+                                style={{
+                                  padding:
+                                    "8px",
+                                  textAlign:
+                                    "center",
+                                  borderBottom:
+                                    "1px solid #eee",
+                                }}
+                              >
+                                {
+                                  item.quantity
+                                }
+                              </td>
+
+                              <td
+                                style={{
+                                  padding:
+                                    "8px",
+                                  textAlign:
+                                    "right",
+                                  borderBottom:
+                                    "1px solid #eee",
+                                }}
+                              >
+                                {money(
+                                  item.unit_price
+                                )}
+                              </td>
+
+                              <td
+                                style={{
+                                  padding:
+                                    "8px",
+                                  textAlign:
+                                    "right",
+                                  borderBottom:
+                                    "1px solid #eee",
+                                }}
+                              >
+                                {money(
+                                  item.line_total
+                                )}
+                              </td>
+
+                            </tr>
+
+                          )
+                        )}
+
+                      </tbody>
+
+                    </table>
+
+                  </div>
+
+                ) : (
+
+                  <div className="empty">
+                    No items found.
+                  </div>
+
+                )}
+
+                <div
+                  style={{
+                    marginTop:
+                      "15px",
+                    borderTop:
+                      "1px solid #ddd",
+                    paddingTop:
+                      "12px",
+                  }}
+                >
+
+                  <div className="total">
+
+                    <span>
+                      Subtotal
+                    </span>
+
+                    <b>
+                      {money(
+                        selectedSale.subtotal
+                      )}
+                    </b>
+
+                  </div>
+
+                  <div className="total">
+
+                    <span>
+                      Discount
+                    </span>
+
+                    <b>
+                      {money(
+                        selectedSale.discount
+                      )}
+                    </b>
+
+                  </div>
+
+                  <div className="total">
+
+                    <span>
+                      TOTAL
+                    </span>
+
+                    <b>
+                      {money(
+                        selectedSale.total
+                      )}
+                    </b>
+
+                  </div>
+
+                  <div className="total">
+
+                    <span>
+                      Amount Paid
+                    </span>
+
+                    <b>
+                      {money(
+                        selectedSale.amount_tendered
+                      )}
+                    </b>
+
+                  </div>
+
+                  {selectedSale.payment_method ===
+                    "cash" && (
+
+                    <div className="total">
+
+                      <span>
+                        Change
+                      </span>
+
+                      <b>
+                        {money(
+                          selectedSale.change_amount
+                        )}
+                      </b>
+
+                    </div>
+
+                  )}
+
+                </div>
+
+                <div
+                  className="modal-buttons"
+                  style={{
+                    marginTop:
+                      "15px",
+                  }}
+                >
+
+                  <button
+                    onClick={
+                      printOldSale
+                    }
+                  >
+                    🖨️ Reprint Receipt
+                  </button>
+
+                  <button
+                    className="primary"
+                    onClick={() =>
+                      setSaleDetailsOpen(
+                        false
+                      )
+                    }
+                  >
+                    Close
+                  </button>
+
+                </div>
+
+              </>
+
+            )}
 
           </div>
 
