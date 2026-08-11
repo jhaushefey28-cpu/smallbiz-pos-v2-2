@@ -24,8 +24,8 @@ function App(){
  if(configError)return <div className="auth"><div className="card"><h1>SmallBiz POS V2.2</h1><h2>Configuration missing</h2><p>Vercel is not receiving the Supabase environment variables.</p><pre>VITE_SUPABASE_URL
 VITE_SUPABASE_PUBLISHABLE_KEY</pre><p>Open Vercel → Settings → Environment Variables, save both variables for Production, then redeploy.</p></div></div>;
  const[session,setSession]=useState(null),[email,setEmail]=useState(""),[password,setPassword]=useState(""),[err,setErr]=useState("");
- const[products,setProducts]=useState([]),[search,setSearch]=useState(""),[cart,setCart]=useState([]),[scan,setScan]=useState(false),[status,setStatus]=useState("");
- useEffect(()=>{supabase.auth.getSession().then(({data})=>setSession(data.session));const x=supabase.auth.onAuthStateChange((_,s)=>setSession(s));return()=>x.data.subscription.unsubscribe()},[]);
+ const[products,setProducts]=useState([]),[search,setSearch]=useState(""),[cart,setCart]=useState([]),[scan,setScan]=useState(false),[status,setStatus]=useState(""),[cash,setCash]=useState(""),[paymentOpen,setPaymentOpen]=useState(false),[paymentDone,setPaymentDone]=useState(false);
+ useEffect(()=>{supabase.auth.getSession().then(({data})=>setSession(data.session));const x=supabase.auth.onAuthStateChange((_,s)=>setSession(s));return()=>x.data.subcription.unsubscribe()},[]);
  useEffect(()=>{if(session?.user)load(session.user.id)},[session]);
  async function load(uid){
    const {data:pr,error:pe}=await supabase.from("profiles").select("business_id,active,role").eq("id",uid).single();
@@ -51,7 +51,6 @@ VITE_SUPABASE_PUBLISHABLE_KEY</pre><p>Open Vercel → Settings → Environment V
  </section>
  <section className="card"><div className="head"><h2>Cart</h2><span>{cart.reduce((n,i)=>n+i.qty,0)} item(s)</span></div>
  {cart.length?<>{cart.map(i=><div className="cart" key={i.id}><span><b>{i.name}</b><small>{money(i.price)} each</small></span><span><button onClick={()=>qty(i.id,-1)}>−</button> {i.qty} <button onClick={()=>qty(i.id,1)}>+</button></span><b>{money(i.price*i.qty)}</b></div>)}</>:<div className="empty">Cart is empty.</div>}
- <div className="total"><span>Total</span><b>{money(total)}</b></div><button className="primary" disabled={!cart.length}>Payment — next phase</button>
- </section></main></div>
+ <div className="total"><span>Total</span><b>{money(total)}</b></div><button className="primary" disabled={!cart.length} onClick={()=>{setCash("");setPaymentOpen(true)}}>Payment</button>
 }
 createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
