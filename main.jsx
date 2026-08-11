@@ -555,7 +555,7 @@ function App() {
           business_id:
             profile.business_id,
 
-          invoice_number:
+          invoice_no:
             invoiceNumber,
 
           cashier_id:
