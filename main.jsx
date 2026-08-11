@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient } from "@supabase/supabase-js";
 import { Html5Qrcode } from "html5-qrcode";
+import * as XLSX from "xlsx";
 import "./styles.css";
 
 class ErrorBoundary extends React.Component {
@@ -78,19 +79,6 @@ function norm(product) {
         0
     ),
 
-    /*
-      Supports different possible image column names.
-
-      Preferred:
-      image_url
-
-      Also supports:
-      image
-      imageUrl
-      product_image
-      product_image_url
-      photo_url
-    */
     imageUrl:
       product.image_url ??
       product.imageUrl ??
@@ -130,10 +118,6 @@ function App() {
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
 
-  // =========================
-  // SALES HISTORY
-  // =========================
-
   const [salesHistory, setSalesHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -152,14 +136,10 @@ function App() {
   const [saleDetailsLoading, setSaleDetailsLoading] =
     useState(false);
 
-  // =========================
-  // RECENT SCANNED
-  // =========================
-
   const [recentScanned, setRecentScanned] = useState([]);
 
   // =========================
-  // LOGIN
+  // LOGIN SESSION
   // =========================
 
   useEffect(() => {
@@ -374,7 +354,7 @@ function App() {
   }, [products, search]);
 
   // =========================
-  // ADD TO CART
+  // ADD PRODUCT TO CART
   // =========================
 
   function add(product) {
@@ -489,7 +469,7 @@ function App() {
   }
 
   // =========================
-  // TOTAL
+  // TOTALS
   // =========================
 
   const subtotal = cart.reduce(
@@ -982,6 +962,256 @@ function App() {
       );
 
   // =========================
+  // EXCEL EXPORT
+  // =========================
+
+  function downloadExcel(
+    data,
+    fileName,
+    sheetName = "Sheet1"
+  ) {
+    if (!data || data.length === 0) {
+      setStatus(
+        "No data available to download."
+      );
+      return;
+    }
+
+    const worksheet =
+      XLSX.utils.json_to_sheet(data);
+
+    const workbook =
+      XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      sheetName
+    );
+
+    XLSX.writeFile(
+      workbook,
+      `${fileName}.xlsx`
+    );
+
+    setStatus(
+      `Downloaded: ${fileName}.xlsx`
+    );
+  }
+
+  function downloadTransactionsExcel() {
+    const data =
+      filteredSales.map(
+        (sale) => ({
+          Invoice:
+            sale.invoice_no || "",
+
+          Date: sale.created_at
+            ? new Date(
+                sale.created_at
+              ).toLocaleString(
+                "en-PH"
+              )
+            : "",
+
+          Payment:
+            paymentLabel(
+              sale.payment_method
+            ),
+
+          Subtotal:
+            Number(
+              sale.subtotal || 0
+            ),
+
+          Discount:
+            Number(
+              sale.discount || 0
+            ),
+
+          Total:
+            Number(
+              sale.total || 0
+            ),
+
+          AmountTendered:
+            Number(
+              sale.amount_tendered ||
+                0
+            ),
+
+          Change:
+            Number(
+              sale.change_amount ||
+                0
+            ),
+
+          Status:
+            sale.status || "",
+        })
+      );
+
+    downloadExcel(
+      data,
+      `SmallBiz_POS_Transactions_${new Date()
+        .toISOString()
+        .slice(0, 10)}`,
+      "Transactions"
+    );
+  }
+
+  async function downloadSalesItemsExcel() {
+    if (
+      !supabase ||
+      !profile?.business_id
+    ) {
+      return;
+    }
+
+    setStatus(
+      "Preparing Sales Items Excel..."
+    );
+
+    const saleIds =
+      salesHistory.map(
+        (sale) => sale.id
+      );
+
+    if (!saleIds.length) {
+      setStatus(
+        "No sales available."
+      );
+      return;
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("sale_items")
+      .select(
+        "id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total"
+      )
+      .in(
+        "sale_id",
+        saleIds
+      )
+      .order("id", {
+        ascending: true,
+      });
+
+    if (error) {
+      setErr(
+        "Unable to export sale items: " +
+          error.message
+      );
+      return;
+    }
+
+    const saleMap = {};
+
+    salesHistory.forEach(
+      (sale) => {
+        saleMap[sale.id] = sale;
+      }
+    );
+
+    const exportData =
+      (data || []).map(
+        (item) => {
+          const sale =
+            saleMap[item.sale_id];
+
+          return {
+            Invoice:
+              sale?.invoice_no ||
+              "",
+
+            Date:
+              sale?.created_at
+                ? new Date(
+                    sale.created_at
+                  ).toLocaleString(
+                    "en-PH"
+                  )
+                : "",
+
+            Payment:
+              paymentLabel(
+                sale?.payment_method
+              ),
+
+            Product:
+              item.product_name ||
+              "",
+
+            Barcode:
+              item.barcode || "",
+
+            Quantity:
+              Number(
+                item.quantity || 0
+              ),
+
+            UnitPrice:
+              Number(
+                item.unit_price ||
+                  0
+              ),
+
+            LineTotal:
+              Number(
+                item.line_total ||
+                  0
+              ),
+          };
+        }
+      );
+
+    downloadExcel(
+      exportData,
+      `SmallBiz_POS_Sales_Items_${new Date()
+        .toISOString()
+        .slice(0, 10)}`,
+      "Sales Items"
+    );
+  }
+
+  function downloadProductsExcel() {
+    const data =
+      products.map(
+        (product) => ({
+          Product:
+            product.name || "",
+
+          Barcode:
+            product.barcode || "",
+
+          Price:
+            Number(
+              product.price || 0
+            ),
+
+          Stock:
+            Number(
+              product.stock || 0
+            ),
+
+          Image:
+            product.imageUrl || "",
+        })
+      );
+
+    downloadExcel(
+      data,
+      `SmallBiz_POS_Inventory_${new Date()
+        .toISOString()
+        .slice(0, 10)}`,
+      "Inventory"
+    );
+  }
+
+  // =========================
   // SALE DETAILS
   // =========================
 
@@ -1357,9 +1587,7 @@ function App() {
   return (
     <div className="app-shell">
 
-      {/* =========================
-          SIDEBAR
-      ========================= */}
+      {/* SIDEBAR */}
 
       <aside className="sidebar">
 
@@ -1490,14 +1718,12 @@ function App() {
 
       </aside>
 
-      {/* =========================
-          CONTENT
-      ========================= */}
+      {/* MAIN AREA */}
 
       <div className="main-area">
 
         {/* =========================
-            POS PAGE
+            POS
         ========================= */}
 
         {activePage === "pos" && (
@@ -1533,9 +1759,7 @@ function App() {
 
             <div className="pos-layout">
 
-              {/* =========================
-                  CENTER PRODUCTS
-              ========================= */}
+              {/* PRODUCTS */}
 
               <section className="products-panel">
 
@@ -1728,9 +1952,7 @@ function App() {
 
               </section>
 
-              {/* =========================
-                  RIGHT SIDE
-              ========================= */}
+              {/* RIGHT SIDE */}
 
               <aside className="right-panel">
 
@@ -2041,7 +2263,7 @@ function App() {
         )}
 
         {/* =========================
-            TRANSACTIONS PAGE
+            TRANSACTIONS
         ========================= */}
 
         {activePage ===
@@ -2057,21 +2279,37 @@ function App() {
                 </h2>
 
                 <p>
-                  Sales History /
-                  Transactions
+                  Sales History / Transactions
                 </p>
               </div>
 
-              <button
-                className="refresh-btn"
-                onClick={() =>
-                  loadSalesHistory(
-                    profile?.business_id
-                  )
-                }
-              >
-                🔄 Refresh
-              </button>
+              <div style={{
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap"
+              }}>
+
+                <button
+                  className="refresh-btn"
+                  onClick={() =>
+                    loadSalesHistory(
+                      profile?.business_id
+                    )
+                  }
+                >
+                  🔄 Refresh
+                </button>
+
+                <button
+                  className="excel-btn"
+                  onClick={
+                    downloadTransactionsExcel
+                  }
+                >
+                  📊 Excel
+                </button>
+
+              </div>
 
             </div>
 
@@ -2342,7 +2580,7 @@ function App() {
         )}
 
         {/* =========================
-            REPORTS PAGE
+            REPORTS
         ========================= */}
 
         {activePage ===
@@ -2358,10 +2596,20 @@ function App() {
                 </h2>
 
                 <p>
-                  Sales and business
-                  performance summary.
+                  Sales and business performance summary.
                 </p>
               </div>
+
+              <button
+                className="refresh-btn"
+                onClick={() =>
+                  loadSalesHistory(
+                    profile?.business_id
+                  )
+                }
+              >
+                🔄 Refresh
+              </button>
 
             </div>
 
@@ -2457,27 +2705,121 @@ function App() {
                 </strong>
               </div>
 
+              <div className="report-card">
+                <small>
+                  Card Sales
+                </small>
+
+                <strong>
+                  {money(
+                    salesHistory
+                      .filter(
+                        (sale) =>
+                          sale.payment_method ===
+                          "card"
+                      )
+                      .reduce(
+                        (
+                          sum,
+                          sale
+                        ) =>
+                          sum +
+                          Number(
+                            sale.total ||
+                              0
+                          ),
+                        0
+                      )
+                  )}
+                </strong>
+              </div>
+
+            </div>
+
+            <div className="report-download-panel">
+
+              <div>
+                <h3>
+                  📥 Download Reports
+                </h3>
+
+                <p>
+                  Export your POS data to Excel.
+                </p>
+              </div>
+
+              <div className="download-buttons">
+
+                <button
+                  className="excel-btn"
+                  onClick={
+                    downloadTransactionsExcel
+                  }
+                >
+                  📊 Transactions Excel
+                </button>
+
+                <button
+                  className="excel-btn"
+                  onClick={
+                    downloadSalesItemsExcel
+                  }
+                >
+                  🧾 Sales Items Excel
+                </button>
+
+                <button
+                  className="excel-btn"
+                  onClick={
+                    downloadProductsExcel
+                  }
+                >
+                  📦 Inventory Excel
+                </button>
+
+              </div>
+
             </div>
 
             <div className="info-box">
+
               <h3>
                 📈 Sales Report
               </h3>
 
               <p>
-                Your detailed daily
-                and monthly reporting
-                section can be expanded
-                here without changing
-                the POS layout.
+                Your current sales history contains{" "}
+                <b>
+                  {salesHistory.length}
+                </b>{" "}
+                transaction(s).
               </p>
+
+              <p>
+                Total recorded sales:
+                {" "}
+                <b>
+                  {money(
+                    salesHistory.reduce(
+                      (sum, sale) =>
+                        sum +
+                        Number(
+                          sale.total ||
+                            0
+                        ),
+                      0
+                    )
+                  )}
+                </b>
+              </p>
+
             </div>
 
           </section>
         )}
 
         {/* =========================
-            PRODUCTS PAGE
+            PRODUCTS
         ========================= */}
 
         {activePage ===
@@ -2493,21 +2835,37 @@ function App() {
                 </h2>
 
                 <p>
-                  Product master file
-                  and inventory.
+                  Product master file and inventory.
                 </p>
               </div>
 
-              <button
-                className="primary"
-                onClick={() =>
-                  setStatus(
-                    "Product management form can be connected here."
-                  )
-                }
-              >
-                + Add Product
-              </button>
+              <div style={{
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap"
+              }}>
+
+                <button
+                  className="excel-btn"
+                  onClick={
+                    downloadProductsExcel
+                  }
+                >
+                  📥 Excel
+                </button>
+
+                <button
+                  className="primary"
+                  onClick={() =>
+                    setStatus(
+                      "Product management form can be connected here."
+                    )
+                  }
+                >
+                  + Add Product
+                </button>
+
+              </div>
 
             </div>
 
@@ -3048,6 +3406,7 @@ function App() {
                   </div>
 
                   <div className="grand-total">
+
                     <span>
                       TOTAL
                     </span>
@@ -3057,6 +3416,7 @@ function App() {
                         selectedSale.total
                       )}
                     </b>
+
                   </div>
 
                 </div>
