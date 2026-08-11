@@ -47,11 +47,13 @@ VITE_SUPABASE_PUBLISHABLE_KEY</pre><p>Open Vercel → Settings → Environment V
  {scan&&<div className="scanner"><div id="reader"></div><small>Allow camera access and point at a barcode.</small></div>}
  <input className="search" placeholder="Search product or barcode..." value={search} onChange={e=>setSearch(e.target.value)}/>
  {status&&<div className="status">{status}</div>}
- <section className="card">
+</section>
+<section className="card">
   <div className="head">
     <h2>Cart</h2>
     <span>{cart.reduce((n, i) => n + i.qty, 0)} item(s)</span>
   </div>
+
 
   {cart.length ? (
     <>
