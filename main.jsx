@@ -1,8 +1,4 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient } from "@supabase/supabase-js";
 import { Html5Qrcode } from "html5-qrcode";
@@ -25,12 +21,8 @@ class ErrorBoundary extends React.Component {
           <div className="card">
             <h1>SmallBiz POS V2.2</h1>
             <h2>App error</h2>
-
             <pre style={{ whiteSpace: "pre-wrap" }}>
-              {String(
-                this.state.error?.stack ||
-                  this.state.error
-              )}
+              {String(this.state.error?.stack || this.state.error)}
             </pre>
           </div>
         </div>
@@ -41,22 +33,15 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL;
-
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY =
-  import.meta.env
-    .VITE_SUPABASE_PUBLISHABLE_KEY;
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-const configError =
-  !SUPABASE_URL || !SUPABASE_KEY;
+const configError = !SUPABASE_URL || !SUPABASE_KEY;
 
 const supabase = configError
   ? null
-  : createClient(
-      SUPABASE_URL,
-      SUPABASE_KEY
-    );
+  : createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const money = (v) =>
   new Intl.NumberFormat("en-PH", {
@@ -97,79 +82,48 @@ const norm = (p) => ({
 });
 
 function App() {
-  const [session, setSession] =
-    useState(null);
+  const [session, setSession] = useState(null);
 
-  const [email, setEmail] =
-    useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState("");
 
-  const [password, setPassword] =
-    useState("");
+  const [products, setProducts] = useState([]);
+  const [search, setSearch] = useState("");
+  const [cart, setCart] = useState([]);
 
-  const [err, setErr] =
-    useState("");
+  const [scan, setScan] = useState(false);
+  const [status, setStatus] = useState("");
 
-  const [products, setProducts] =
-    useState([]);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentDone, setPaymentDone] = useState(false);
 
-  const [search, setSearch] =
-    useState("");
+  const [cash, setCash] = useState("");
+  const [receiptNo, setReceiptNo] = useState("");
+  const [savingPayment, setSavingPayment] = useState(false);
 
-  const [cart, setCart] =
-    useState([]);
-
-  const [scan, setScan] =
-    useState(false);
-
-  const [status, setStatus] =
-    useState("");
-
-  const [paymentOpen, setPaymentOpen] =
-    useState(false);
-
-  const [paymentDone, setPaymentDone] =
-    useState(false);
-
-  const [cash, setCash] =
-    useState("");
-
-  const [receiptNo, setReceiptNo] =
-    useState("");
-
-  const [savingPayment, setSavingPayment] =
-    useState(false);
-
-  const [profile, setProfile] =
-    useState(null);
-
-  const [paymentMethod, setPaymentMethod] =
-    useState("cash");
+  const [profile, setProfile] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
 
   // =========================
-  // SALES HISTORY
+  // SALES HISTORY / TRANSACTIONS
   // =========================
 
-  const [salesHistory, setSalesHistory] =
-    useState([]);
+  const [salesHistory, setSalesHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
-  const [historyLoading, setHistoryLoading] =
-    useState(false);
-
-  const [historySearch, setHistorySearch] =
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyPaymentFilter, setHistoryPaymentFilter] =
+    useState("all");
+  const [historyDateFilter, setHistoryDateFilter] =
     useState("");
+  const [historyStatusFilter, setHistoryStatusFilter] =
+    useState("all");
 
-  const [historyOpen, setHistoryOpen] =
-    useState(false);
-
-  const [selectedSale, setSelectedSale] =
-    useState(null);
-
-  const [selectedSaleItems, setSelectedSaleItems] =
-    useState([]);
-
-  const [saleDetailsOpen, setSaleDetailsOpen] =
-    useState(false);
-
+  const [selectedSale, setSelectedSale] = useState(null);
+  const [selectedSaleItems, setSelectedSaleItems] = useState([]);
+  const [saleDetailsOpen, setSaleDetailsOpen] = useState(false);
   const [saleDetailsLoading, setSaleDetailsLoading] =
     useState(false);
 
@@ -183,13 +137,11 @@ function App() {
         <div className="card">
           <h1>SmallBiz POS V2.2</h1>
 
-          <h2>
-            Configuration missing
-          </h2>
+          <h2>Configuration missing</h2>
 
           <p>
-            Vercel is not receiving the
-            Supabase environment variables.
+            Vercel is not receiving the Supabase
+            environment variables.
           </p>
 
           <pre>
@@ -209,22 +161,19 @@ function App() {
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (mounted) {
-          setSession(data.session);
-        }
-      });
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) {
+        setSession(data.session);
+      }
+    });
 
     const {
       data: { subscription },
-    } =
-      supabase.auth.onAuthStateChange(
-        (_, newSession) => {
-          setSession(newSession);
-        }
-      );
+    } = supabase.auth.onAuthStateChange(
+      (_, newSession) => {
+        setSession(newSession);
+      }
+    );
 
     return () => {
       mounted = false;
@@ -280,12 +229,9 @@ function App() {
     const {
       data,
       error,
-    } = await query.order(
-      "created_at",
-      {
-        ascending: false,
-      }
-    );
+    } = await query.order("created_at", {
+      ascending: false,
+    });
 
     if (error) {
       setErr(
@@ -295,11 +241,8 @@ function App() {
       return;
     }
 
-    setProducts(
-      (data || []).map(norm)
-    );
+    setProducts((data || []).map(norm));
 
-    // Load sales history
     await loadSalesHistory(
       profileData.business_id
     );
@@ -309,9 +252,7 @@ function App() {
   // LOAD SALES HISTORY
   // =========================
 
-  async function loadSalesHistory(
-    businessId
-  ) {
+  async function loadSalesHistory(businessId) {
     if (!businessId) {
       return;
     }
@@ -326,17 +267,11 @@ function App() {
       .select(
         "id,business_id,invoice_no,cashier_id,subtotal,discount,total,payment_method,amount_tendered,change_amount,status,created_at"
       )
-      .eq(
-        "business_id",
-        businessId
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      )
-      .limit(100);
+      .eq("business_id", businessId)
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(500);
 
     if (error) {
       setErr(
@@ -357,15 +292,13 @@ function App() {
 
   async function login(e) {
     e.preventDefault();
-
     setErr("");
 
     const { error } =
-      await supabase.auth
-        .signInWithPassword({
-          email,
-          password,
-        });
+      await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
     if (error) {
       setErr(error.message);
@@ -391,6 +324,12 @@ function App() {
 
     setSalesHistory([]);
     setHistoryOpen(false);
+
+    setHistorySearch("");
+    setHistoryPaymentFilter("all");
+    setHistoryDateFilter("");
+    setHistoryStatusFilter("all");
+
     setSelectedSale(null);
     setSelectedSaleItems([]);
     setSaleDetailsOpen(false);
@@ -401,8 +340,7 @@ function App() {
   // =========================
 
   const filtered = useMemo(() => {
-    const q =
-      search.toLowerCase().trim();
+    const q = search.toLowerCase().trim();
 
     if (!q) {
       return products;
@@ -433,17 +371,12 @@ function App() {
     }
 
     setCart((current) => {
-      const existing =
-        current.find(
-          (item) =>
-            item.id === product.id
-        );
+      const existing = current.find(
+        (item) => item.id === product.id
+      );
 
       if (existing) {
-        if (
-          existing.qty >=
-          product.stock
-        ) {
+        if (existing.qty >= product.stock) {
           setStatus(
             "Maximum available stock reached: " +
               product.name
@@ -452,15 +385,13 @@ function App() {
           return current;
         }
 
-        return current.map(
-          (item) =>
-            item.id === product.id
-              ? {
-                  ...item,
-                  qty:
-                    item.qty + 1,
-                }
-              : item
+        return current.map((item) =>
+          item.id === product.id
+            ? {
+                ...item,
+                qty: item.qty + 1,
+              }
+            : item
         );
       }
 
@@ -522,9 +453,7 @@ function App() {
   );
 
   const discount = 0;
-
-  const total =
-    subtotal - discount;
+  const total = subtotal - discount;
 
   const change =
     Number(cash || 0) -
@@ -540,15 +469,12 @@ function App() {
     }
 
     const scanner =
-      new Html5Qrcode(
-        "reader"
-      );
+      new Html5Qrcode("reader");
 
     scanner
       .start(
         {
-          facingMode:
-            "environment",
+          facingMode: "environment",
         },
         {
           fps: 10,
@@ -561,9 +487,7 @@ function App() {
           const product =
             products.find(
               (p) =>
-                String(
-                  p.barcode
-                ) ===
+                String(p.barcode) ===
                 String(code)
             );
 
@@ -595,9 +519,7 @@ function App() {
     return () => {
       scanner
         .stop()
-        .then(() =>
-          scanner.clear()
-        )
+        .then(() => scanner.clear())
         .catch(() => {});
     };
   }, [scan, products]);
@@ -628,38 +550,26 @@ function App() {
       profile?.role ||
       "Cashier";
 
-    const receiptItems =
-      cart
-        .map(
-          (item) => `
-            <tr>
-              <td>${item.name}</td>
+    const receiptItems = cart
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.name}</td>
+            <td style="text-align:center">${item.qty}</td>
+            <td style="text-align:right">${money(item.price)}</td>
+            <td style="text-align:right">${money(
+              item.price * item.qty
+            )}</td>
+          </tr>
+        `
+      )
+      .join("");
 
-              <td style="text-align:center">
-                ${item.qty}
-              </td>
-
-              <td style="text-align:right">
-                ${money(item.price)}
-              </td>
-
-              <td style="text-align:right">
-                ${money(
-                  item.price *
-                    item.qty
-                )}
-              </td>
-            </tr>
-          `
-        )
-        .join("");
-
-    const receiptWindow =
-      window.open(
-        "",
-        "_blank",
-        "width=420,height=700"
-      );
+    const receiptWindow = window.open(
+      "",
+      "_blank",
+      "width=420,height=700"
+    );
 
     if (!receiptWindow) {
       setErr(
@@ -749,14 +659,11 @@ function App() {
           <div>${receiptNo}</div>
 
           <div>
-            ${new Date().toLocaleString(
-              "en-PH"
-            )}
+            ${new Date().toLocaleString("en-PH")}
           </div>
 
           <div>
-            Cashier:
-            ${cashierName}
+            Cashier: ${cashierName}
           </div>
         </div>
 
@@ -765,21 +672,10 @@ function App() {
         <table>
           <thead>
             <tr>
-              <th style="text-align:left">
-                Item
-              </th>
-
-              <th>
-                Qty
-              </th>
-
-              <th style="text-align:right">
-                Price
-              </th>
-
-              <th style="text-align:right">
-                Total
-              </th>
+              <th style="text-align:left">Item</th>
+              <th>Qty</th>
+              <th style="text-align:right">Price</th>
+              <th style="text-align:right">Total</th>
             </tr>
           </thead>
 
@@ -792,34 +688,24 @@ function App() {
 
         <div class="row">
           <span>Subtotal</span>
-          <span>
-            ${money(subtotal)}
-          </span>
+          <span>${money(subtotal)}</span>
         </div>
 
         <div class="row">
           <span>Discount</span>
-          <span>
-            ${money(discount)}
-          </span>
+          <span>${money(discount)}</span>
         </div>
 
         <div class="row total">
           <span>TOTAL</span>
-          <span>
-            ${money(total)}
-          </span>
+          <span>${money(total)}</span>
         </div>
 
         <div class="line"></div>
 
         <div class="row">
           <span>Payment Method</span>
-          <span>
-            ${paymentLabel(
-              paymentMethod
-            )}
-          </span>
+          <span>${paymentLabel(paymentMethod)}</span>
         </div>
 
         ${
@@ -827,36 +713,25 @@ function App() {
             ? `
               <div class="row">
                 <span>Cash Received</span>
-                <span>
-                  ${money(cash)}
-                </span>
+                <span>${money(cash)}</span>
               </div>
 
               <div class="row">
                 <span>Change</span>
-                <span>
-                  ${money(change)}
-                </span>
+                <span>${money(change)}</span>
               </div>
             `
             : `
               <div class="row">
                 <span>Amount Paid</span>
-                <span>
-                  ${money(total)}
-                </span>
+                <span>${money(total)}</span>
               </div>
             `
         }
 
         <div class="footer">
-          <div>
-            Thank you for your purchase!
-          </div>
-
-          <div>
-            SmallBiz POS V2.2
-          </div>
+          <div>Thank you for your purchase!</div>
+          <div>SmallBiz POS V2.2</div>
         </div>
 
         <script>
@@ -883,10 +758,7 @@ function App() {
 
     if (
       paymentMethod === "cash" &&
-      (
-        !cash ||
-        Number(cash) < total
-      )
+      (!cash || Number(cash) < total)
     ) {
       return;
     }
@@ -911,10 +783,7 @@ function App() {
 
     setSavingPayment(true);
     setErr("");
-
-    setStatus(
-      "Saving payment..."
-    );
+    setStatus("Saving payment...");
 
     const invoiceNumber =
       "INV-" +
@@ -937,52 +806,50 @@ function App() {
         : 0;
 
     try {
-      // SAVE SALE
       const {
         data: sale,
         error: saleError,
-      } =
-        await supabase
-          .from("sales")
-          .insert({
-            business_id:
-              profile.business_id,
+      } = await supabase
+        .from("sales")
+        .insert({
+          business_id:
+            profile.business_id,
 
-            invoice_no:
-              invoiceNumber,
+          invoice_no:
+            invoiceNumber,
 
-            cashier_id:
-              profile.id,
+          cashier_id:
+            profile.id,
 
-            subtotal:
-              Number(
-                subtotal.toFixed(2)
-              ),
+          subtotal:
+            Number(
+              subtotal.toFixed(2)
+            ),
 
-            discount:
-              Number(
-                discount.toFixed(2)
-              ),
+          discount:
+            Number(
+              discount.toFixed(2)
+            ),
 
-            total:
-              Number(
-                total.toFixed(2)
-              ),
+          total:
+            Number(
+              total.toFixed(2)
+            ),
 
-            payment_method:
-              paymentMethod,
+          payment_method:
+            paymentMethod,
 
-            amount_tendered:
-              amountTendered,
+          amount_tendered:
+            amountTendered,
 
-            change_amount:
-              changeAmount,
+          change_amount:
+            changeAmount,
 
-            status:
-              "completed",
-          })
-          .select()
-          .single();
+          status:
+            "completed",
+        })
+        .select()
+        .single();
 
       if (saleError) {
         throw new Error(
@@ -991,14 +858,11 @@ function App() {
         );
       }
 
-      // SAVE SALE ITEMS
-      const saleItems =
-        cart.map((item) => ({
-          sale_id:
-            sale.id,
+      const saleItems = cart.map(
+        (item) => ({
+          sale_id: sale.id,
 
-          product_id:
-            item.id,
+          product_id: item.id,
 
           product_name:
             item.name,
@@ -1019,16 +883,14 @@ function App() {
                 Number(item.qty)
               ).toFixed(2)
             ),
-        }));
+        })
+      );
 
       const {
         error: itemsError,
-      } =
-        await supabase
-          .from("sale_items")
-          .insert(
-            saleItems
-          );
+      } = await supabase
+        .from("sale_items")
+        .insert(saleItems);
 
       if (itemsError) {
         throw new Error(
@@ -1037,17 +899,12 @@ function App() {
         );
       }
 
-      // UPDATE STOCK
       for (const item of cart) {
         const currentStock =
-          Number(
-            item.stock || 0
-          );
+          Number(item.stock || 0);
 
         const quantitySold =
-          Number(
-            item.qty || 0
-          );
+          Number(item.qty || 0);
 
         if (
           quantitySold >
@@ -1065,20 +922,14 @@ function App() {
 
         const {
           error: stockError,
-        } =
-          await supabase
-            .from("products")
-            .update({
-              stock:
-                newStock,
-
-              updated_at:
-                new Date().toISOString(),
-            })
-            .eq(
-              "id",
-              item.id
-            );
+        } = await supabase
+          .from("products")
+          .update({
+            stock: newStock,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", item.id);
 
         if (stockError) {
           throw new Error(
@@ -1090,23 +941,15 @@ function App() {
         }
       }
 
-      // REFRESH PRODUCTS + HISTORY
-      await load(
-        session.user.id
-      );
+      await load(session.user.id);
 
-      setReceiptNo(
-        invoiceNumber
-      );
-
+      setReceiptNo(invoiceNumber);
       setPaymentOpen(false);
-
       setPaymentDone(true);
 
       setStatus(
         "Payment saved successfully."
       );
-
     } catch (error) {
       console.error(
         "Payment error:",
@@ -1119,7 +962,6 @@ function App() {
       );
 
       setStatus("");
-
     } finally {
       setSavingPayment(false);
     }
@@ -1131,71 +973,165 @@ function App() {
 
   function newSale() {
     setCart([]);
-
     setCash("");
-
-    setPaymentMethod(
-      "cash"
-    );
-
+    setPaymentMethod("cash");
     setReceiptNo("");
-
     setPaymentDone(false);
-
     setPaymentOpen(false);
-
     setErr("");
-
     setStatus(
       "Ready for new sale."
     );
   }
 
   // =========================
-  // SALES HISTORY SEARCH
+  // FILTER SALES
   // =========================
 
-  const filteredSales =
-    useMemo(() => {
-      const q =
-        historySearch
-          .toLowerCase()
-          .trim();
+  const filteredSales = useMemo(() => {
+    const q =
+      historySearch
+        .toLowerCase()
+        .trim();
 
-      if (!q) {
-        return salesHistory;
-      }
-
-      return salesHistory.filter(
-        (sale) =>
+    return salesHistory.filter(
+      (sale) => {
+        const invoice =
           String(
             sale.invoice_no || ""
-          )
-            .toLowerCase()
-            .includes(q) ||
+          ).toLowerCase();
+
+        const payment =
           String(
             sale.payment_method || ""
-          )
-            .toLowerCase()
-            .includes(q) ||
+          ).toLowerCase();
+
+        const status =
           String(
             sale.status || ""
-          )
-            .toLowerCase()
-            .includes(q)
+          ).toLowerCase();
+
+        const saleDate =
+          sale.created_at
+            ? new Date(
+                sale.created_at
+              )
+                .toLocaleDateString(
+                  "en-CA",
+                  {
+                    timeZone:
+                      "Asia/Manila",
+                  }
+                )
+            : "";
+
+        const matchesSearch =
+          !q ||
+          invoice.includes(q);
+
+        const matchesPayment =
+          historyPaymentFilter ===
+            "all" ||
+          payment ===
+            historyPaymentFilter;
+
+        const matchesDate =
+          !historyDateFilter ||
+          saleDate ===
+            historyDateFilter;
+
+        const matchesStatus =
+          historyStatusFilter ===
+            "all" ||
+          status ===
+            historyStatusFilter;
+
+        return (
+          matchesSearch &&
+          matchesPayment &&
+          matchesDate &&
+          matchesStatus
+        );
+      }
+    );
+  }, [
+    salesHistory,
+    historySearch,
+    historyPaymentFilter,
+    historyDateFilter,
+    historyStatusFilter,
+  ]);
+
+  // =========================
+  // TRANSACTION SUMMARY
+  // =========================
+
+  const transactionCount =
+    filteredSales.length;
+
+  const transactionTotal =
+    filteredSales.reduce(
+      (sum, sale) =>
+        sum +
+        Number(
+          sale.total || 0
+        ),
+      0
+    );
+
+  const cashTotal =
+    filteredSales
+      .filter(
+        (sale) =>
+          sale.payment_method ===
+          "cash"
+      )
+      .reduce(
+        (sum, sale) =>
+          sum +
+          Number(
+            sale.total || 0
+          ),
+        0
       );
-    }, [
-      salesHistory,
-      historySearch,
-    ]);
+
+  const gcashTotal =
+    filteredSales
+      .filter(
+        (sale) =>
+          sale.payment_method ===
+          "gcash"
+      )
+      .reduce(
+        (sum, sale) =>
+          sum +
+          Number(
+            sale.total || 0
+          ),
+        0
+      );
+
+  const cardTotal =
+    filteredSales
+      .filter(
+        (sale) =>
+          sale.payment_method ===
+          "card"
+      )
+      .reduce(
+        (sum, sale) =>
+          sum +
+          Number(
+            sale.total || 0
+          ),
+        0
+      );
 
   // =========================
   // OPEN SALE DETAILS
   // =========================
 
-  async function openSaleDetails(
-    sale
-  ) {
+  async function openSaleDetails(sale) {
     setSelectedSale(sale);
     setSelectedSaleItems([]);
     setSaleDetailsOpen(true);
@@ -1210,10 +1146,7 @@ function App() {
       .select(
         "id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total"
       )
-      .eq(
-        "sale_id",
-        sale.id
-      )
+      .eq("sale_id", sale.id)
       .order("id", {
         ascending: true,
       });
@@ -1223,14 +1156,12 @@ function App() {
         "Unable to load sale items: " +
           error.message
       );
+
       setSaleDetailsLoading(false);
       return;
     }
 
-    setSelectedSaleItems(
-      data || []
-    );
-
+    setSelectedSaleItems(data || []);
     setSaleDetailsLoading(false);
   }
 
@@ -1253,36 +1184,29 @@ function App() {
         .map(
           (item) => `
             <tr>
-              <td>
-                ${item.product_name}
-              </td>
+              <td>${item.product_name}</td>
 
               <td style="text-align:center">
                 ${item.quantity}
               </td>
 
               <td style="text-align:right">
-                ${money(
-                  item.unit_price
-                )}
+                ${money(item.unit_price)}
               </td>
 
               <td style="text-align:right">
-                ${money(
-                  item.line_total
-                )}
+                ${money(item.line_total)}
               </td>
             </tr>
           `
         )
         .join("");
 
-    const win =
-      window.open(
-        "",
-        "_blank",
-        "width=420,height=700"
-      );
+    const win = window.open(
+      "",
+      "_blank",
+      "width=420,height=700"
+    );
 
     if (!win) {
       setErr(
@@ -1436,9 +1360,7 @@ function App() {
           </thead>
 
           <tbody>
-
             ${itemsHtml}
-
           </tbody>
 
         </table>
@@ -1629,9 +1551,7 @@ function App() {
             📋 Sales History
           </button>
 
-          <button
-            onClick={logout}
-          >
+          <button onClick={logout}>
             Logout
           </button>
 
@@ -1642,7 +1562,7 @@ function App() {
       <main>
 
         {/* =========================
-            SALES HISTORY
+            SALES HISTORY / TRANSACTIONS
         ========================= */}
 
         {historyOpen && (
@@ -1651,42 +1571,345 @@ function App() {
 
             <div className="head">
 
-              <h2>
-                📋 Sales History
-              </h2>
+              <div>
 
-              <button
-                onClick={() =>
-                  loadSalesHistory(
-                    profile?.business_id
-                  )
-                }
-                disabled={
-                  historyLoading
-                }
+                <h2>
+                  📋 Sales History / Transactions
+                </h2>
+
+                <small>
+                  View, search, filter, and reprint completed transactions.
+                </small>
+
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                }}
               >
-                {historyLoading
-                  ? "Loading..."
-                  : "Refresh"}
-              </button>
+
+                <button
+                  onClick={() =>
+                    loadSalesHistory(
+                      profile?.business_id
+                    )
+                  }
+                  disabled={
+                    historyLoading
+                  }
+                >
+                  {historyLoading
+                    ? "Loading..."
+                    : "🔄 Refresh"}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setHistoryOpen(
+                      false
+                    );
+
+                    setHistorySearch(
+                      ""
+                    );
+
+                    setHistoryPaymentFilter(
+                      "all"
+                    );
+
+                    setHistoryDateFilter(
+                      ""
+                    );
+
+                    setHistoryStatusFilter(
+                      "all"
+                    );
+                  }}
+                >
+                  ✕ Close
+                </button>
+
+              </div>
 
             </div>
 
-            <input
-              className="search"
-              placeholder="Search invoice number..."
-              value={historySearch}
-              onChange={(e) =>
-                setHistorySearch(
-                  e.target.value
-                )
-              }
-            />
+            {/* FILTERS */}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "10px",
+                marginTop: "15px",
+              }}
+            >
+
+              <div>
+
+                <label>
+                  Search Invoice
+                </label>
+
+                <input
+                  className="search"
+                  placeholder="Invoice number..."
+                  value={
+                    historySearch
+                  }
+                  onChange={(e) =>
+                    setHistorySearch(
+                      e.target.value
+                    )
+                  }
+                />
+
+              </div>
+
+              <div>
+
+                <label>
+                  Payment Method
+                </label>
+
+                <select
+                  value={
+                    historyPaymentFilter
+                  }
+                  onChange={(e) =>
+                    setHistoryPaymentFilter(
+                      e.target.value
+                    )
+                  }
+                >
+
+                  <option value="all">
+                    All Payments
+                  </option>
+
+                  <option value="cash">
+                    💵 Cash
+                  </option>
+
+                  <option value="gcash">
+                    📱 GCash
+                  </option>
+
+                  <option value="card">
+                    💳 Card
+                  </option>
+
+                </select>
+
+              </div>
+
+              <div>
+
+                <label>
+                  Date
+                </label>
+
+                <input
+                  type="date"
+                  value={
+                    historyDateFilter
+                  }
+                  onChange={(e) =>
+                    setHistoryDateFilter(
+                      e.target.value
+                    )
+                  }
+                />
+
+              </div>
+
+              <div>
+
+                <label>
+                  Status
+                </label>
+
+                <select
+                  value={
+                    historyStatusFilter
+                  }
+                  onChange={(e) =>
+                    setHistoryStatusFilter(
+                      e.target.value
+                    )
+                  }
+                >
+
+                  <option value="all">
+                    All Status
+                  </option>
+
+                  <option value="completed">
+                    Completed
+                  </option>
+
+                  <option value="cancelled">
+                    Cancelled
+                  </option>
+
+                </select>
+
+              </div>
+
+            </div>
+
+            {/* SUMMARY */}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(150px, 1fr))",
+                gap: "10px",
+                marginTop: "15px",
+              }}
+            >
+
+              <div
+                className="card"
+                style={{
+                  padding: "15px",
+                  margin: 0,
+                }}
+              >
+
+                <small>
+                  Transactions
+                </small>
+
+                <h2
+                  style={{
+                    margin:
+                      "5px 0 0",
+                  }}
+                >
+                  {transactionCount}
+                </h2>
+
+              </div>
+
+              <div
+                className="card"
+                style={{
+                  padding: "15px",
+                  margin: 0,
+                }}
+              >
+
+                <small>
+                  Total Sales
+                </small>
+
+                <h2
+                  style={{
+                    margin:
+                      "5px 0 0",
+                  }}
+                >
+                  {money(
+                    transactionTotal
+                  )}
+                </h2>
+
+              </div>
+
+              <div
+                className="card"
+                style={{
+                  padding: "15px",
+                  margin: 0,
+                }}
+              >
+
+                <small>
+                  💵 Cash
+                </small>
+
+                <h3
+                  style={{
+                    margin:
+                      "5px 0 0",
+                  }}
+                >
+                  {money(
+                    cashTotal
+                  )}
+                </h3>
+
+              </div>
+
+              <div
+                className="card"
+                style={{
+                  padding: "15px",
+                  margin: 0,
+                }}
+              >
+
+                <small>
+                  📱 GCash
+                </small>
+
+                <h3
+                  style={{
+                    margin:
+                      "5px 0 0",
+                  }}
+                >
+                  {money(
+                    gcashTotal
+                  )}
+                </h3>
+
+              </div>
+
+              <div
+                className="card"
+                style={{
+                  padding: "15px",
+                  margin: 0,
+                }}
+              >
+
+                <small>
+                  💳 Card
+                </small>
+
+                <h3
+                  style={{
+                    margin:
+                      "5px 0 0",
+                  }}
+                >
+                  {money(
+                    cardTotal
+                  )}
+                </h3>
+
+              </div>
+
+            </div>
+
+            {/* TRANSACTION TABLE */}
 
             {historyLoading ? (
 
-              <div className="empty">
-                Loading sales...
+              <div
+                className="empty"
+                style={{
+                  marginTop:
+                    "20px",
+                }}
+              >
+                Loading transactions...
               </div>
 
             ) : filteredSales.length >
@@ -1696,6 +1919,8 @@ function App() {
                 style={{
                   overflowX:
                     "auto",
+                  marginTop:
+                    "20px",
                 }}
               >
 
@@ -1704,8 +1929,6 @@ function App() {
                     width: "100%",
                     borderCollapse:
                       "collapse",
-                    marginTop:
-                      "15px",
                   }}
                 >
 
@@ -1775,6 +1998,19 @@ function App() {
                             "1px solid #ddd",
                         }}
                       >
+                        Status
+                      </th>
+
+                      <th
+                        style={{
+                          textAlign:
+                            "center",
+                          padding:
+                            "10px",
+                          borderBottom:
+                            "1px solid #ddd",
+                        }}
+                      >
                         Action
                       </th>
 
@@ -1801,11 +2037,13 @@ function App() {
                                 "1px solid #eee",
                             }}
                           >
+
                             <b>
                               {
                                 sale.invoice_no
                               }
                             </b>
+
                           </td>
 
                           <td
@@ -1818,6 +2056,7 @@ function App() {
                                 "nowrap",
                             }}
                           >
+
                             {sale.created_at
                               ? new Date(
                                   sale.created_at
@@ -1825,6 +2064,7 @@ function App() {
                                   "en-PH"
                                 )
                               : "-"}
+
                           </td>
 
                           <td
@@ -1835,9 +2075,11 @@ function App() {
                                 "1px solid #eee",
                             }}
                           >
+
                             {paymentLabel(
                               sale.payment_method
                             )}
+
                           </td>
 
                           <td
@@ -1852,11 +2094,13 @@ function App() {
                                 "nowrap",
                             }}
                           >
+
                             <b>
                               {money(
                                 sale.total
                               )}
                             </b>
+
                           </td>
 
                           <td
@@ -1869,6 +2113,50 @@ function App() {
                                 "center",
                             }}
                           >
+
+                            <span
+                              style={{
+                                display:
+                                  "inline-block",
+                                padding:
+                                  "4px 8px",
+                                borderRadius:
+                                  "999px",
+                                fontSize:
+                                  "12px",
+                                background:
+                                  sale.status ===
+                                  "completed"
+                                    ? "#dcfce7"
+                                    : "#fee2e2",
+                                color:
+                                  sale.status ===
+                                  "completed"
+                                    ? "#166534"
+                                    : "#991b1b",
+                              }}
+                            >
+
+                              {
+                                sale.status ||
+                                "-"
+                              }
+
+                            </span>
+
+                          </td>
+
+                          <td
+                            style={{
+                              padding:
+                                "10px",
+                              borderBottom:
+                                "1px solid #eee",
+                              textAlign:
+                                "center",
+                            }}
+                          >
+
                             <button
                               onClick={() =>
                                 openSaleDetails(
@@ -1876,8 +2164,9 @@ function App() {
                                 )
                               }
                             >
-                              View
+                              🧾 View
                             </button>
+
                           </td>
 
                         </tr>
@@ -1893,11 +2182,22 @@ function App() {
 
             ) : (
 
-              <div className="empty">
+              <div
+                className="empty"
+                style={{
+                  marginTop:
+                    "20px",
+                }}
+              >
 
-                {historySearch
-                  ? "No matching sales found."
-                  : "No sales recorded yet."}
+                {historySearch ||
+                historyDateFilter ||
+                historyPaymentFilter !==
+                  "all" ||
+                historyStatusFilter !==
+                  "all"
+                  ? "No matching transactions found."
+                  : "No transactions recorded yet."}
 
               </div>
 
@@ -1938,8 +2238,7 @@ function App() {
               <div id="reader"></div>
 
               <small>
-                Allow camera
-                access and point
+                Allow camera access and point
                 at a barcode.
               </small>
 
@@ -2180,19 +2479,10 @@ function App() {
               savingPayment
             }
             onClick={() => {
-
               setCash("");
-
-              setPaymentMethod(
-                "cash"
-              );
-
+              setPaymentMethod("cash");
               setErr("");
-
-              setPaymentOpen(
-                true
-              );
-
+              setPaymentOpen(true);
             }}
           >
             Payment
@@ -2253,10 +2543,8 @@ function App() {
               style={{
                 display: "flex",
                 gap: "10px",
-                marginBottom:
-                  "15px",
-                flexWrap:
-                  "wrap",
+                marginBottom: "15px",
+                flexWrap: "wrap",
               }}
             >
 
@@ -2357,8 +2645,7 @@ function App() {
                   Number(cash) <
                     total && (
                     <p className="error">
-                      Insufficient
-                      cash.
+                      Insufficient cash.
                     </p>
                   )}
 
@@ -2389,8 +2676,7 @@ function App() {
               <div
                 className="change"
                 style={{
-                  marginTop:
-                    "10px",
+                  marginTop: "10px",
                 }}
               >
 
@@ -2412,8 +2698,7 @@ function App() {
               <div
                 className="change"
                 style={{
-                  marginTop:
-                    "10px",
+                  marginTop: "10px",
                 }}
               >
 
