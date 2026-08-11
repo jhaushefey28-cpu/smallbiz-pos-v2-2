@@ -22,7 +22,10 @@ class ErrorBoundary extends React.Component {
             <h1>SmallBiz POS V2.2</h1>
             <h2>App error</h2>
             <pre style={{ whiteSpace: "pre-wrap" }}>
-              {String(this.state.error?.stack || this.state.error)}
+              {String(
+                this.state.error?.stack ||
+                this.state.error
+              )}
             </pre>
           </div>
         </div>
@@ -33,14 +36,21 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL;
 
-const configError = !SUPABASE_URL || !SUPABASE_KEY;
+const SUPABASE_KEY =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+const configError =
+  !SUPABASE_URL || !SUPABASE_KEY;
 
 const supabase = configError
   ? null
-  : createClient(SUPABASE_URL, SUPABASE_KEY);
+  : createClient(
+      SUPABASE_URL,
+      SUPABASE_KEY
+    );
 
 const money = (v) =>
   new Intl.NumberFormat("en-PH", {
@@ -50,6 +60,7 @@ const money = (v) =>
 
 const norm = (p) => ({
   ...p,
+
   name:
     p.name ??
     p.product_name ??
@@ -66,16 +77,16 @@ const norm = (p) => ({
 
   price: Number(
     p.price ??
-      p.selling_price ??
-      p.sale_price ??
-      0
+    p.selling_price ??
+    p.sale_price ??
+    0
   ),
 
   stock: Number(
     p.stock ??
-      p.quantity ??
-      p.current_stock ??
-      0
+    p.quantity ??
+    p.current_stock ??
+    0
   ),
 });
 
@@ -85,10 +96,14 @@ function App() {
       <div className="auth">
         <div className="card">
           <h1>SmallBiz POS V2.2</h1>
-          <h2>Configuration missing</h2>
+
+          <h2>
+            Configuration missing
+          </h2>
 
           <p>
-            Vercel is not receiving the Supabase environment variables.
+            Vercel is not receiving the
+            Supabase environment variables.
           </p>
 
           <pre>
@@ -96,29 +111,49 @@ function App() {
             {"\n"}
             VITE_SUPABASE_PUBLISHABLE_KEY
           </pre>
-
-          <p>
-            Open Vercel → Settings → Environment Variables,
-            save both variables for Production, then redeploy.
-          </p>
         </div>
       </div>
     );
   }
 
-  const [session, setSession] = useState(null);
+  const [session, setSession] =
+    useState(null);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [err, setErr] = useState("");
+  const [email, setEmail] =
+    useState("");
 
-  const [products, setProducts] = useState([]);
-  const [search, setSearch] = useState("");
+  const [password, setPassword] =
+    useState("");
 
-  const [cart, setCart] = useState([]);
+  const [err, setErr] =
+    useState("");
 
-  const [scan, setScan] = useState(false);
-  const [status, setStatus] = useState("");
+  const [products, setProducts] =
+    useState([]);
+
+  const [search, setSearch] =
+    useState("");
+
+  const [cart, setCart] =
+    useState([]);
+
+  const [scan, setScan] =
+    useState(false);
+
+  const [status, setStatus] =
+    useState("");
+
+  const [paymentOpen, setPaymentOpen] =
+    useState(false);
+
+  const [paymentDone, setPaymentDone] =
+    useState(false);
+
+  const [cash, setCash] =
+    useState("");
+
+  const [receiptNo, setReceiptNo] =
+    useState("");
 
   // =========================
   // AUTH
@@ -137,9 +172,12 @@ function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, session) => {
-      setSession(session);
-    });
+    } =
+      supabase.auth.onAuthStateChange(
+        (_, newSession) => {
+          setSession(newSession);
+        }
+      );
 
     return () => {
       mounted = false;
@@ -165,7 +203,9 @@ function App() {
       error: profileError,
     } = await supabase
       .from("profiles")
-      .select("business_id,active,role")
+      .select(
+        "business_id,active,role"
+      )
       .eq("id", uid)
       .single();
 
@@ -188,9 +228,12 @@ function App() {
     const {
       data,
       error,
-    } = await query.order("created_at", {
-      ascending: false,
-    });
+    } = await query.order(
+      "created_at",
+      {
+        ascending: false,
+      }
+    );
 
     if (error) {
       setErr(error.message);
@@ -212,10 +255,11 @@ function App() {
     setErr("");
 
     const { error } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      await supabase.auth
+        .signInWithPassword({
+          email,
+          password,
+        });
 
     if (error) {
       setErr(error.message);
@@ -228,7 +272,14 @@ function App() {
 
   async function logout() {
     await supabase.auth.signOut();
+
     setCart([]);
+
+    setPaymentOpen(false);
+
+    setPaymentDone(false);
+
+    setCash("");
   }
 
   // =========================
@@ -236,67 +287,78 @@ function App() {
   // =========================
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q =
+      search
+        .toLowerCase()
+        .trim();
 
     if (!q) {
       return products;
     }
 
-    return products.filter((p) => {
-      return (
+    return products.filter(
+      (p) =>
         String(p.name)
           .toLowerCase()
           .includes(q) ||
         String(p.barcode)
           .toLowerCase()
           .includes(q)
-      );
-    });
+    );
   }, [products, search]);
 
   // =========================
   // ADD TO CART
   // =========================
 
-  function add(p) {
-    if (p.stock <= 0) {
-      setStatus("Out of stock: " + p.name);
+  function add(product) {
+    if (product.stock <= 0) {
+      setStatus(
+        "Out of stock: " +
+        product.name
+      );
       return;
     }
 
     setCart((current) => {
-      const existing = current.find(
-        (item) => item.id === p.id
-      );
+      const existing =
+        current.find(
+          (item) =>
+            item.id === product.id
+        );
 
       if (existing) {
-        return current.map((item) =>
-          item.id === p.id
-            ? {
-                ...item,
-                qty: Math.min(
-                  item.qty + 1,
-                  p.stock
-                ),
-              }
-            : item
+        return current.map(
+          (item) =>
+            item.id === product.id
+              ? {
+                  ...item,
+                  qty: Math.min(
+                    item.qty + 1,
+                    product.stock
+                  ),
+                }
+              : item
         );
       }
 
       return [
         ...current,
         {
-          ...p,
+          ...product,
           qty: 1,
         },
       ];
     });
 
-    setStatus("Added: " + p.name);
+    setStatus(
+      "Added: " +
+      product.name
+    );
   }
 
   // =========================
-  // CART QUANTITY
+  // QUANTITY
   // =========================
 
   function qty(id, difference) {
@@ -331,9 +393,14 @@ function App() {
 
   const total = cart.reduce(
     (sum, item) =>
-      sum + item.price * item.qty,
+      sum +
+      item.price *
+        item.qty,
     0
   );
+
+  const change =
+    Number(cash || 0) - total;
 
   // =========================
   // BARCODE SCANNER
@@ -344,11 +411,17 @@ function App() {
       return;
     }
 
-    const scanner = new Html5Qrcode("reader");
+    const scanner =
+      new Html5Qrcode(
+        "reader"
+      );
 
     scanner
       .start(
-        { facingMode: "environment" },
+        {
+          facingMode:
+            "environment",
+        },
         {
           fps: 10,
           qrbox: {
@@ -357,21 +430,28 @@ function App() {
           },
         },
         (code) => {
-          const product = products.find(
-            (p) =>
-              String(p.barcode) ===
-              String(code)
-          );
+          const product =
+            products.find(
+              (p) =>
+                String(
+                  p.barcode
+                ) ===
+                String(code)
+            );
 
           if (product) {
             add(product);
+
             setStatus(
-              "Added: " + product.name
+              "Added: " +
+              product.name
             );
           } else {
             setStatus(
-              "Barcode not found: " + code
+              "Barcode not found: " +
+              code
             );
+
             setSearch(code);
           }
         },
@@ -379,20 +459,64 @@ function App() {
       )
       .catch((error) => {
         setStatus(
-          "Camera error: " + error
+          "Camera error: " +
+          error
         );
       });
 
     return () => {
       scanner
         .stop()
-        .then(() => scanner.clear())
+        .then(() =>
+          scanner.clear()
+        )
         .catch(() => {});
     };
   }, [scan, products]);
 
   // =========================
-  // LOGIN SCREEN
+  // COMPLETE PAYMENT
+  // =========================
+
+  function completePayment() {
+    if (
+      !cash ||
+      Number(cash) < total
+    ) {
+      return;
+    }
+
+    const number =
+      "INV-" +
+      Date.now();
+
+    setReceiptNo(number);
+
+    setPaymentOpen(false);
+
+    setPaymentDone(true);
+  }
+
+  // =========================
+  // NEW SALE
+  // =========================
+
+  function newSale() {
+    setCart([]);
+
+    setCash("");
+
+    setReceiptNo("");
+
+    setPaymentDone(false);
+
+    setStatus(
+      "Ready for new sale."
+    );
+  }
+
+  // =========================
+  // LOGIN PAGE
   // =========================
 
   if (!session) {
@@ -402,14 +526,18 @@ function App() {
           className="card"
           onSubmit={login}
         >
-          <h1>SmallBiz POS V2.2</h1>
+          <h1>
+            SmallBiz POS V2.2
+          </h1>
 
           <input
             type="email"
             placeholder="Email"
             value={email}
             onChange={(e) =>
-              setEmail(e.target.value)
+              setEmail(
+                e.target.value
+              )
             }
             required
           />
@@ -419,7 +547,9 @@ function App() {
             placeholder="Password"
             value={password}
             onChange={(e) =>
-              setPassword(e.target.value)
+              setPassword(
+                e.target.value
+              )
             }
             required
           />
@@ -439,7 +569,7 @@ function App() {
   }
 
   // =========================
-  // POS SCREEN
+  // POS
   // =========================
 
   return (
@@ -447,20 +577,26 @@ function App() {
       <header>
         <b>
           SmallBiz POS{" "}
-          <small>V2.2</small>
+          <small>
+            V2.2
+          </small>
         </b>
 
-        <button onClick={logout}>
+        <button
+          onClick={logout}
+        >
           Logout
         </button>
       </header>
 
       <main>
-        {/* ================= PRODUCTS ================= */}
+        {/* PRODUCTS */}
 
         <section className="card">
           <div className="head">
-            <h2>Products</h2>
+            <h2>
+              Products
+            </h2>
 
             <button
               onClick={() => {
@@ -479,7 +615,8 @@ function App() {
               <div id="reader"></div>
 
               <small>
-                Allow camera access and point
+                Allow camera
+                access and point
                 at a barcode.
               </small>
             </div>
@@ -490,7 +627,9 @@ function App() {
             placeholder="Search product or barcode..."
             value={search}
             onChange={(e) =>
-              setSearch(e.target.value)
+              setSearch(
+                e.target.value
+              )
             }
           />
 
@@ -500,45 +639,64 @@ function App() {
             </div>
           )}
 
-          {/* PRODUCT LIST */}
-
           <div className="products-grid">
-            {filtered.length > 0 ? (
-              filtered.map((p) => (
-                <div
-                  className="product-card"
-                  key={p.id}
-                >
-                  <div>
-                    <b>{p.name}</b>
-
-                    <small>
-                      Barcode:{" "}
-                      {p.barcode || "N/A"}
-                    </small>
-
-                    <small>
-                      Stock: {p.stock}
-                    </small>
-                  </div>
-
-                  <strong>
-                    {money(p.price)}
-                  </strong>
-
-                  <button
-                    className="primary"
-                    disabled={p.stock <= 0}
-                    onClick={() =>
-                      add(p)
+            {filtered.length >
+            0 ? (
+              filtered.map(
+                (product) => (
+                  <div
+                    className="product-card"
+                    key={
+                      product.id
                     }
                   >
-                    {p.stock > 0
-                      ? "Add to Cart"
-                      : "Out of Stock"}
-                  </button>
-                </div>
-              ))
+                    <div>
+                      <b>
+                        {
+                          product.name
+                        }
+                      </b>
+
+                      <small>
+                        Barcode:{" "}
+                        {product.barcode ||
+                          "N/A"}
+                      </small>
+
+                      <small>
+                        Stock:{" "}
+                        {
+                          product.stock
+                        }
+                      </small>
+                    </div>
+
+                    <strong>
+                      {money(
+                        product.price
+                      )}
+                    </strong>
+
+                    <button
+                      className="primary"
+                      disabled={
+                        product.stock <=
+                        0
+                      }
+                      onClick={() =>
+                        add(
+                          product
+                        )
+                      }
+                    >
+                      {product.stock >
+                      0
+                        ? "Add to Cart"
+                        : "Out of Stock"}
+                    </button>
+                  </div>
+                )
+              )
             ) : (
               <div className="empty">
                 {search
@@ -549,78 +707,88 @@ function App() {
           </div>
         </section>
 
-        {/* ================= CART ================= */}
+        {/* CART */}
 
         <section className="card">
           <div className="head">
-            <h2>Cart</h2>
+            <h2>
+              Cart
+            </h2>
 
             <span>
               {cart.reduce(
-                (number, item) =>
-                  number + item.qty,
+                (n, item) =>
+                  n +
+                  item.qty,
                 0
               )}{" "}
               item(s)
             </span>
           </div>
 
-          {cart.length > 0 ? (
+          {cart.length >
+          0 ? (
             <>
-              {cart.map((item) => (
-                <div
-                  className="cart"
-                  key={item.id}
-                >
-                  <span>
+              {cart.map(
+                (item) => (
+                  <div
+                    className="cart"
+                    key={
+                      item.id
+                    }
+                  >
+                    <span>
+                      <b>
+                        {
+                          item.name
+                        }
+                      </b>
+
+                      <small>
+                        {money(
+                          item.price
+                        )}{" "}
+                        each
+                      </small>
+                    </span>
+
+                    <span>
+                      <button
+                        onClick={() =>
+                          qty(
+                            item.id,
+                            -1
+                          )
+                        }
+                      >
+                        −
+                      </button>
+
+                      {" "}
+                      {item.qty}
+                      {" "}
+
+                      <button
+                        onClick={() =>
+                          qty(
+                            item.id,
+                            1
+                          )
+                        }
+                      >
+                        +
+                      </button>
+                    </span>
+
                     <b>
-                      {item.name}
-                    </b>
-
-                    <small>
                       {money(
-                        item.price
-                      )}{" "}
-                      each
-                    </small>
-                  </span>
-
-                  <span>
-                    <button
-                      onClick={() =>
-                        qty(
-                          item.id,
-                          -1
-                        )
-                      }
-                    >
-                      −
-                    </button>
-
-                    {" "}
-                    {item.qty}
-                    {" "}
-
-                    <button
-                      onClick={() =>
-                        qty(
-                          item.id,
-                          1
-                        )
-                      }
-                    >
-                      +
-                    </button>
-                  </span>
-
-                  <b>
-                    {money(
-                      item.price *
-                        item.qty
-                    )}
-                  </b>
-                </div>
-              ))}
+                        item.price *
+                          item.qty
+                      )}
+                    </b>
+                  </div>
+                )
+              )}
             </>
           ) : (
             <div className="empty">
@@ -629,7 +797,9 @@ function App() {
           )}
 
           <div className="total">
-            <span>Total</span>
+            <span>
+              Total
+            </span>
 
             <b>
               {money(total)}
@@ -638,17 +808,176 @@ function App() {
 
           <button
             className="primary"
-            disabled={!cart.length}
-            onClick={() =>
-              setStatus(
-                "Payment feature ready for next step."
-              )
+            disabled={
+              !cart.length
             }
+            onClick={() => {
+              setCash("");
+              setPaymentOpen(
+                true
+              );
+            }}
           >
             Payment
           </button>
         </section>
       </main>
+
+      {/* PAYMENT MODAL */}
+
+      {paymentOpen && (
+        <div className="modal-backdrop">
+          <div className="modal card">
+            <div className="head">
+              <h2>
+                Payment
+              </h2>
+
+              <button
+                onClick={() =>
+                  setPaymentOpen(
+                    false
+                  )
+                }
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="payment-total">
+              <span>
+                Total
+              </span>
+
+              <b>
+                {money(total)}
+              </b>
+            </div>
+
+            <label>
+              Cash Received
+            </label>
+
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Enter cash amount"
+              value={cash}
+              onChange={(e) =>
+                setCash(
+                  e.target.value
+                )
+              }
+              autoFocus
+            />
+
+            {cash &&
+              Number(cash) <
+                total && (
+                <p className="error">
+                  Insufficient
+                  cash.
+                </p>
+              )}
+
+            {cash &&
+              Number(cash) >=
+                total && (
+                <div className="change">
+                  <span>
+                    Change
+                  </span>
+
+                  <b>
+                    {money(
+                      change
+                    )}
+                  </b>
+                </div>
+              )}
+
+            <div className="modal-buttons">
+              <button
+                onClick={() =>
+                  setPaymentOpen(
+                    false
+                  )
+                }
+              >
+                Cancel
+              </button>
+
+              <button
+                className="primary"
+                disabled={
+                  !cash ||
+                  Number(cash) <
+                    total
+                }
+                onClick={
+                  completePayment
+                }
+              >
+                Complete Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAYMENT COMPLETE */}
+
+      {paymentDone && (
+        <div className="modal-backdrop">
+          <div className="modal card">
+            <h2>
+              ✓ Payment Complete
+            </h2>
+
+            <p>
+              Invoice:{" "}
+              <b>
+                {receiptNo}
+              </b>
+            </p>
+
+            <p>
+              Total:{" "}
+              <b>
+                {money(total)}
+              </b>
+            </p>
+
+            <p>
+              Cash Received:{" "}
+              <b>
+                {money(
+                  cash
+                )}
+              </b>
+            </p>
+
+            <p>
+              Change:{" "}
+              <b>
+                {money(
+                  change
+                )}
+              </b>
+            </p>
+
+            <button
+              className="primary"
+              onClick={
+                newSale
+              }
+            >
+              New Sale
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
