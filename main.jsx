@@ -92,5 +92,12 @@ VITE_SUPABASE_PUBLISHABLE_KEY</pre><p>Open Vercel → Settings → Environment V
     Payment
   </button>
 </section>
+</main>
+</div>
+}
 
-createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
+createRoot(document.getElementById("root")).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
