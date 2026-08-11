@@ -3,9 +3,11 @@ import React, {
   useMemo,
   useState,
 } from "react";
+
 import { createRoot } from "react-dom/client";
 import { createClient } from "@supabase/supabase-js";
 import { Html5Qrcode } from "html5-qrcode";
+
 import "./styles.css";
 
 /* =========================================================
@@ -15,6 +17,7 @@ import "./styles.css";
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
+
     this.state = {
       error: null,
     };
@@ -31,13 +34,13 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="auth">
           <div className="card">
-            <h1>SmallBiz POS V2.3</h1>
-            <h2>App error</h2>
+            <h1>SmallBiz POS V2.2</h1>
+
+            <h2>App Error</h2>
 
             <pre
               style={{
                 whiteSpace: "pre-wrap",
-                color: "#b91c1c",
               }}
             >
               {String(
@@ -62,7 +65,8 @@ const SUPABASE_URL =
   import.meta.env.VITE_SUPABASE_URL;
 
 const SUPABASE_KEY =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  import.meta.env
+    .VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const configError =
   !SUPABASE_URL || !SUPABASE_KEY;
@@ -84,17 +88,6 @@ const money = (value) =>
     currency: "PHP",
   }).format(Number(value || 0));
 
-const number = (value) =>
-  Number(value || 0);
-
-const escapeHtml = (value) =>
-  String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-
 const norm = (p) => ({
   ...p,
 
@@ -103,7 +96,7 @@ const norm = (p) => ({
     p.product_name ??
     p.productName ??
     p.title ??
-    "",
+    "Unnamed Product",
 
   barcode:
     p.barcode ??
@@ -127,69 +120,52 @@ const norm = (p) => ({
   ),
 });
 
-/* =========================================================
-   EXCEL EXPORT
-   Excel-compatible .xls file
-========================================================= */
-
-function downloadExcel(
+function downloadCSV(
   filename,
-  title,
-  columns,
   rows
 ) {
-  const header = columns
-    .map(
-      (column) =>
-        `<th>${escapeHtml(
-          column.label
-        )}</th>`
-    )
-    .join("");
+  if (!rows || !rows.length) {
+    return;
+  }
 
-  const body = rows
-    .map(
-      (row) =>
-        `<tr>${columns
-          .map(
-            (column) =>
-              `<td>${escapeHtml(
-                row[column.key] ?? ""
-              )}</td>`
+  const headers = Object.keys(
+    rows[0]
+  );
+
+  const escapeCSV = (value) => {
+    const text =
+      value === null ||
+      value === undefined
+        ? ""
+        : String(value);
+
+    return `"${text.replace(
+      /"/g,
+      '""'
+    )}"`;
+  };
+
+  const csv = [
+    headers
+      .map(escapeCSV)
+      .join(","),
+
+    ...rows.map((row) =>
+      headers
+        .map((header) =>
+          escapeCSV(
+            row[header]
           )
-          .join("")}</tr>`
-    )
-    .join("");
-
-  const html = `
-    <html>
-      <head>
-        <meta charset="UTF-8">
-      </head>
-
-      <body>
-        <h2>${escapeHtml(title)}</h2>
-
-        <table border="1">
-          <thead>
-            <tr>
-              ${header}
-            </tr>
-          </thead>
-
-          <tbody>
-            ${body}
-          </tbody>
-        </table>
-      </body>
-    </html>
-  `;
+        )
+        .join(",")
+    ),
+  ].join("\n");
 
   const blob = new Blob(
-    [html],
+    ["\ufeff" + csv],
     {
       type:
-        "application/vnd.ms-excel;charset=utf-8;",
+        "text/csv;charset=utf-8;",
     }
   );
 
@@ -197,14 +173,22 @@ function downloadExcel(
     URL.createObjectURL(blob);
 
   const link =
-    document.createElement("a");
+    document.createElement(
+      "a"
+    );
 
   link.href = url;
   link.download = filename;
 
-  document.body.appendChild(link);
+  document.body.appendChild(
+    link
+  );
+
   link.click();
-  link.remove();
+
+  document.body.removeChild(
+    link
+  );
 
   URL.revokeObjectURL(url);
 }
@@ -230,9 +214,6 @@ function App() {
   const [err, setErr] =
     useState("");
 
-  const [profile, setProfile] =
-    useState(null);
-
   /* =======================================================
      MAIN NAVIGATION
   ======================================================= */
@@ -246,6 +227,9 @@ function App() {
 
   const [products, setProducts] =
     useState([]);
+
+  const [search, setSearch] =
+    useState("");
 
   const [productSearch, setProductSearch] =
     useState("");
@@ -268,14 +252,15 @@ function App() {
     useState(false);
 
   /* =======================================================
-     POS
+     CART
   ======================================================= */
-
-  const [search, setSearch] =
-    useState("");
 
   const [cart, setCart] =
     useState([]);
+
+  /* =======================================================
+     SCANNER
+  ======================================================= */
 
   const [scan, setScan] =
     useState(false);
@@ -306,7 +291,14 @@ function App() {
     useState("cash");
 
   /* =======================================================
-     SALES HISTORY
+     PROFILE
+  ======================================================= */
+
+  const [profile, setProfile] =
+    useState(null);
+
+  /* =======================================================
+     TRANSACTIONS
   ======================================================= */
 
   const [salesHistory, setSalesHistory] =
@@ -343,6 +335,9 @@ function App() {
      REPORTS
   ======================================================= */
 
+  const [reportType, setReportType] =
+    useState("daily");
+
   const [reportDate, setReportDate] =
     useState(
       new Date()
@@ -358,12 +353,18 @@ function App() {
   const [reportMonth, setReportMonth] =
     useState(
       new Date()
-        .toISOString()
+        .toLocaleDateString(
+          "en-CA",
+          {
+            timeZone:
+              "Asia/Manila",
+          }
+        )
         .slice(0, 7)
     );
 
   /* =======================================================
-     CONFIG ERROR
+     CONFIG
   ======================================================= */
 
   if (configError) {
@@ -371,11 +372,11 @@ function App() {
       <div className="auth">
         <div className="card">
           <h1>
-            SmallBiz POS V2.3
+            SmallBiz POS V2.2
           </h1>
 
           <h2>
-            Configuration missing
+            Configuration Missing
           </h2>
 
           <p>
@@ -395,7 +396,7 @@ function App() {
   }
 
   /* =======================================================
-     AUTH STATE
+     AUTH SESSION
   ======================================================= */
 
   useEffect(() => {
@@ -426,12 +427,13 @@ function App() {
 
     return () => {
       mounted = false;
+
       subscription.unsubscribe();
     };
   }, []);
 
   /* =======================================================
-     LOAD DATA
+     LOAD DATA WHEN LOGIN
   ======================================================= */
 
   useEffect(() => {
@@ -441,6 +443,10 @@ function App() {
       );
     }
   }, [session]);
+
+  /* =======================================================
+     LOAD EVERYTHING
+  ======================================================= */
 
   async function load(uid) {
     setErr("");
@@ -462,6 +468,7 @@ function App() {
         "Profile error: " +
           profileError.message
       );
+
       return;
     }
 
@@ -469,61 +476,47 @@ function App() {
       profileData
     );
 
-    if (!profileData?.business_id) {
-      setErr(
-        "Business ID not found in profile."
+    let query =
+      supabase
+        .from("products")
+        .select("*");
+
+    if (
+      profileData?.business_id
+    ) {
+      query = query.eq(
+        "business_id",
+        profileData.business_id
       );
-      return;
-    }
-
-    await loadProducts(
-      profileData.business_id
-    );
-
-    await loadSalesHistory(
-      profileData.business_id
-    );
-  }
-
-  /* =======================================================
-     LOAD PRODUCTS
-  ======================================================= */
-
-  async function loadProducts(
-    businessId
-  ) {
-    if (!businessId) {
-      return;
     }
 
     const {
       data,
       error,
-    } =
-      await supabase
-        .from("products")
-        .select("*")
-        .eq(
-          "business_id",
-          businessId
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false,
-          }
-        );
+    } = await query.order(
+      "created_at",
+      {
+        ascending: false,
+      }
+    );
 
     if (error) {
       setErr(
         "Products error: " +
           error.message
       );
+
       return;
     }
 
     setProducts(
-      (data || []).map(norm)
+      (data || []).map(
+        norm
+      )
+    );
+
+    await loadSalesHistory(
+      profileData.business_id
     );
   }
 
@@ -538,7 +531,9 @@ function App() {
       return;
     }
 
-    setHistoryLoading(true);
+    setHistoryLoading(
+      true
+    );
 
     const {
       data,
@@ -567,7 +562,10 @@ function App() {
           error.message
       );
 
-      setHistoryLoading(false);
+      setHistoryLoading(
+        false
+      );
+
       return;
     }
 
@@ -575,7 +573,9 @@ function App() {
       data || []
     );
 
-    setHistoryLoading(false);
+    setHistoryLoading(
+      false
+    );
   }
 
   /* =======================================================
@@ -612,26 +612,66 @@ function App() {
     await supabase.auth.signOut();
 
     setSession(null);
-    setProfile(null);
-
     setCart([]);
     setPaymentOpen(false);
     setPaymentDone(false);
-
     setCash("");
     setReceiptNo("");
-
-    setProducts([]);
-    setSalesHistory([]);
-
-    setActivePage("pos");
-
+    setProfile(null);
     setStatus("");
     setErr("");
+    setPaymentMethod("cash");
+
+    setSalesHistory([]);
+
+    setHistorySearch("");
+    setHistoryPaymentFilter(
+      "all"
+    );
+    setHistoryDateFilter("");
+    setHistoryStatusFilter(
+      "all"
+    );
+
+    setSelectedSale(null);
+    setSelectedSaleItems([]);
+    setSaleDetailsOpen(
+      false
+    );
+
+    setActivePage("pos");
   }
 
   /* =======================================================
-     PRODUCT SEARCH
+     PRODUCT SEARCH - POS
+  ======================================================= */
+
+  const filtered = useMemo(() => {
+    const q =
+      search
+        .toLowerCase()
+        .trim();
+
+    if (!q) {
+      return products;
+    }
+
+    return products.filter(
+      (p) =>
+        String(p.name)
+          .toLowerCase()
+          .includes(q) ||
+        String(p.barcode)
+          .toLowerCase()
+          .includes(q)
+    );
+  }, [
+    products,
+    search,
+  ]);
+
+  /* =======================================================
+     PRODUCT SEARCH - MASTER FILE
   ======================================================= */
 
   const filteredProducts =
@@ -660,46 +700,16 @@ function App() {
     ]);
 
   /* =======================================================
-     POS PRODUCT SEARCH
-  ======================================================= */
-
-  const filtered =
-    useMemo(() => {
-      const q =
-        search
-          .toLowerCase()
-          .trim();
-
-      if (!q) {
-        return products;
-      }
-
-      return products.filter(
-        (p) =>
-          String(p.name)
-            .toLowerCase()
-            .includes(q) ||
-          String(p.barcode)
-            .toLowerCase()
-            .includes(q)
-      );
-    }, [
-      products,
-      search,
-    ]);
-
-  /* =======================================================
-     ADD CART
+     ADD TO CART
   ======================================================= */
 
   function add(product) {
-    if (
-      Number(product.stock) <= 0
-    ) {
+    if (product.stock <= 0) {
       setStatus(
         "Out of stock: " +
           product.name
       );
+
       return;
     }
 
@@ -756,7 +766,7 @@ function App() {
   }
 
   /* =======================================================
-     QUANTITY
+     CART QUANTITY
   ======================================================= */
 
   function qty(
@@ -869,6 +879,8 @@ function App() {
               "Added: " +
                 product.name
             );
+
+            setScan(false);
           } else {
             setStatus(
               "Barcode not found: " +
@@ -951,6 +963,7 @@ function App() {
       setErr(
         "Cashier profile not found."
       );
+
       return;
     }
 
@@ -958,12 +971,16 @@ function App() {
       !profile?.business_id
     ) {
       setErr(
-        "Business ID not found."
+        "Business ID not found in profile."
       );
+
       return;
     }
 
-    setSavingPayment(true);
+    setSavingPayment(
+      true
+    );
+
     setErr("");
 
     setStatus(
@@ -983,24 +1000,18 @@ function App() {
             ).toFixed(2)
           )
         : Number(
-            total.toFixed(
-              2
-            )
+            total.toFixed(2)
           );
 
     const changeAmount =
       paymentMethod ===
       "cash"
         ? Number(
-            change.toFixed(
-              2
-            )
+            change.toFixed(2)
           )
         : 0;
 
     try {
-      /* SAVE SALE */
-
       const {
         data: sale,
         error: saleError,
@@ -1060,8 +1071,6 @@ function App() {
         );
       }
 
-      /* SAVE SALE ITEMS */
-
       const saleItems =
         cart.map(
           (item) => ({
@@ -1097,9 +1106,7 @@ function App() {
                   Number(
                     item.qty
                   )
-                ).toFixed(
-                  2
-                )
+                ).toFixed(2)
               ),
           })
         );
@@ -1123,14 +1130,13 @@ function App() {
         );
       }
 
-      /* UPDATE STOCK */
-
       for (
         const item of cart
       ) {
         const currentStock =
           Number(
-            item.stock || 0
+            item.stock ||
+              0
           );
 
         const quantitySold =
@@ -1239,17 +1245,237 @@ function App() {
     );
     setErr("");
 
-    setActivePage(
-      "pos"
-    );
-
     setStatus(
       "Ready for new sale."
     );
   }
 
   /* =======================================================
-     SALES FILTER
+     PRINT CURRENT RECEIPT
+  ======================================================= */
+
+  function printReceipt() {
+    const cashierName =
+      profile?.full_name ||
+      profile?.role ||
+      "Cashier";
+
+    const receiptItems =
+      cart
+        .map(
+          (item) => `
+            <tr>
+              <td>${item.name}</td>
+              <td style="text-align:center">${item.qty}</td>
+              <td style="text-align:right">${money(
+                item.price
+              )}</td>
+              <td style="text-align:right">${money(
+                item.price *
+                  item.qty
+              )}</td>
+            </tr>
+          `
+        )
+        .join("");
+
+    const receiptWindow =
+      window.open(
+        "",
+        "_blank",
+        "width=420,height=700"
+      );
+
+    if (!receiptWindow) {
+      setErr(
+        "Please allow pop-ups to print the receipt."
+      );
+
+      return;
+    }
+
+    receiptWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${receiptNo}</title>
+
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            width: 360px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #111;
+          }
+
+          h1 {
+            text-align: center;
+            font-size: 22px;
+            margin-bottom: 4px;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .line {
+            border-top: 1px dashed #000;
+            margin: 12px 0;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+          }
+
+          th {
+            border-bottom: 1px solid #000;
+            padding-bottom: 6px;
+          }
+
+          td {
+            padding: 5px 0;
+            vertical-align: top;
+          }
+
+          .row {
+            display: flex;
+            justify-content: space-between;
+            margin: 7px 0;
+          }
+
+          .total {
+            font-size: 18px;
+            font-weight: bold;
+          }
+
+          .footer {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 12px;
+          }
+        </style>
+      </head>
+
+      <body>
+
+        <h1>SmallBiz POS</h1>
+
+        <div class="center">
+          <div>Sales Receipt</div>
+          <div>${receiptNo}</div>
+
+          <div>
+            ${new Date().toLocaleString(
+              "en-PH"
+            )}
+          </div>
+
+          <div>
+            Cashier: ${cashierName}
+          </div>
+        </div>
+
+        <div class="line"></div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left">Item</th>
+              <th>Qty</th>
+              <th style="text-align:right">Price</th>
+              <th style="text-align:right">Total</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${receiptItems}
+          </tbody>
+        </table>
+
+        <div class="line"></div>
+
+        <div class="row">
+          <span>Subtotal</span>
+          <span>${money(
+            subtotal
+          )}</span>
+        </div>
+
+        <div class="row">
+          <span>Discount</span>
+          <span>${money(
+            discount
+          )}</span>
+        </div>
+
+        <div class="row total">
+          <span>TOTAL</span>
+          <span>${money(
+            total
+          )}</span>
+        </div>
+
+        <div class="line"></div>
+
+        <div class="row">
+          <span>Payment Method</span>
+          <span>${paymentLabel(
+            paymentMethod
+          )}</span>
+        </div>
+
+        <div class="row">
+          <span>Amount Paid</span>
+          <span>${money(
+            paymentMethod ===
+              "cash"
+              ? cash
+              : total
+          )}</span>
+        </div>
+
+        ${
+          paymentMethod ===
+          "cash"
+            ? `
+              <div class="row">
+                <span>Change</span>
+                <span>${money(
+                  change
+                )}</span>
+              </div>
+            `
+            : ""
+        }
+
+        <div class="footer">
+          <div>
+            Thank you for your purchase!
+          </div>
+
+          <div>
+            SmallBiz POS V2.2
+          </div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+          };
+        </script>
+
+      </body>
+      </html>
+    `);
+
+    receiptWindow.document.close();
+  }
+
+  /* =======================================================
+     FILTER TRANSACTIONS
   ======================================================= */
 
   const filteredSales =
@@ -1273,7 +1499,7 @@ function App() {
                 ""
             ).toLowerCase();
 
-          const status =
+          const saleStatus =
             String(
               sale.status ||
                 ""
@@ -1283,13 +1509,14 @@ function App() {
             sale.created_at
               ? new Date(
                   sale.created_at
-                ).toLocaleDateString(
-                  "en-CA",
-                  {
-                    timeZone:
-                      "Asia/Manila",
-                  }
                 )
+                  .toLocaleDateString(
+                    "en-CA",
+                    {
+                      timeZone:
+                        "Asia/Manila",
+                    }
+                  )
               : "";
 
           return (
@@ -1306,7 +1533,7 @@ function App() {
                 historyDateFilter) &&
             (historyStatusFilter ===
               "all" ||
-              status ===
+              saleStatus ===
                 historyStatusFilter)
           );
         }
@@ -1385,47 +1612,42 @@ function App() {
       );
 
   /* =======================================================
-     DAILY REPORT
+     REPORT SALES
   ======================================================= */
 
-  const dailySales =
+  const reportSales =
     useMemo(() => {
-      return salesHistory.filter(
-        (sale) => {
-          if (
-            !sale.created_at
-          ) {
-            return false;
-          }
+      if (
+        reportType ===
+        "daily"
+      ) {
+        return salesHistory.filter(
+          (sale) => {
+            if (
+              !sale.created_at
+            ) {
+              return false;
+            }
 
-          const date =
-            new Date(
-              sale.created_at
-            ).toLocaleDateString(
-              "en-CA",
-              {
-                timeZone:
-                  "Asia/Manila",
-              }
+            const date =
+              new Date(
+                sale.created_at
+              ).toLocaleDateString(
+                "en-CA",
+                {
+                  timeZone:
+                    "Asia/Manila",
+                }
+              );
+
+            return (
+              date ===
+              reportDate
             );
+          }
+        );
+      }
 
-          return (
-            date ===
-            reportDate
-          );
-        }
-      );
-    }, [
-      salesHistory,
-      reportDate,
-    ]);
-
-  /* =======================================================
-     MONTHLY REPORT
-  ======================================================= */
-
-  const monthlySales =
-    useMemo(() => {
       return salesHistory.filter(
         (sale) => {
           if (
@@ -1445,10 +1667,7 @@ function App() {
                     "Asia/Manila",
                 }
               )
-              .slice(
-                0,
-                7
-              );
+              .slice(0, 7);
 
           return (
             month ===
@@ -1458,11 +1677,13 @@ function App() {
       );
     }, [
       salesHistory,
+      reportType,
+      reportDate,
       reportMonth,
     ]);
 
-  const dailyTotal =
-    dailySales.reduce(
+  const reportTotal =
+    reportSales.reduce(
       (sum, sale) =>
         sum +
         Number(
@@ -1471,182 +1692,252 @@ function App() {
       0
     );
 
-  const monthlyTotal =
-    monthlySales.reduce(
-      (sum, sale) =>
-        sum +
-        Number(
-          sale.total || 0
-        ),
-      0
-    );
-
-  const dailyCash =
-    dailySales
+  const reportCash =
+    reportSales
       .filter(
-        (s) =>
-          s.payment_method ===
+        (sale) =>
+          sale.payment_method ===
           "cash"
       )
       .reduce(
-        (sum, s) =>
+        (sum, sale) =>
           sum +
           Number(
-            s.total || 0
+            sale.total || 0
           ),
         0
       );
 
-  const dailyGcash =
-    dailySales
+  const reportGCash =
+    reportSales
       .filter(
-        (s) =>
-          s.payment_method ===
+        (sale) =>
+          sale.payment_method ===
           "gcash"
       )
       .reduce(
-        (sum, s) =>
+        (sum, sale) =>
           sum +
           Number(
-            s.total || 0
+            sale.total || 0
           ),
         0
       );
 
-  const dailyCard =
-    dailySales
+  const reportCard =
+    reportSales
       .filter(
-        (s) =>
-          s.payment_method ===
+        (sale) =>
+          sale.payment_method ===
           "card"
       )
       .reduce(
-        (sum, s) =>
+        (sum, sale) =>
           sum +
           Number(
-            s.total || 0
-          ),
-        0
-      );
-
-  const monthlyCash =
-    monthlySales
-      .filter(
-        (s) =>
-          s.payment_method ===
-          "cash"
-      )
-      .reduce(
-        (sum, s) =>
-          sum +
-          Number(
-            s.total || 0
-          ),
-        0
-      );
-
-  const monthlyGcash =
-    monthlySales
-      .filter(
-        (s) =>
-          s.payment_method ===
-          "gcash"
-      )
-      .reduce(
-        (sum, s) =>
-          sum +
-          Number(
-            s.total || 0
-          ),
-        0
-      );
-
-  const monthlyCard =
-    monthlySales
-      .filter(
-        (s) =>
-          s.payment_method ===
-          "card"
-      )
-      .reduce(
-        (sum, s) =>
-          sum +
-          Number(
-            s.total || 0
+            sale.total || 0
           ),
         0
       );
 
   /* =======================================================
-     OPEN SALE DETAILS
+     REPORT EXPORT
   ======================================================= */
 
-  async function openSaleDetails(
-    sale
-  ) {
-    setSelectedSale(
-      sale
-    );
-
-    setSelectedSaleItems(
-      []
-    );
-
-    setSaleDetailsOpen(
-      true
-    );
-
-    setSaleDetailsLoading(
-      true
-    );
-
-    const {
-      data,
-      error,
-    } =
-      await supabase
-        .from(
-          "sale_items"
-        )
-        .select(
-          "id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total"
-        )
-        .eq(
-          "sale_id",
-          sale.id
-        )
-        .order(
-          "id",
-          {
-            ascending:
-              true,
-          }
-        );
-
-    if (error) {
-      setErr(
-        "Unable to load sale items: " +
-          error.message
-      );
-
-      setSaleDetailsLoading(
-        false
+  function exportReport() {
+    if (!reportSales.length) {
+      setStatus(
+        "No report data to export."
       );
 
       return;
     }
 
-    setSelectedSaleItems(
-      data || []
-    );
+    const rows =
+      reportSales.map(
+        (sale) => ({
+          Invoice:
+            sale.invoice_no,
 
-    setSaleDetailsLoading(
-      false
+          Date:
+            sale.created_at
+              ? new Date(
+                  sale.created_at
+                ).toLocaleString(
+                  "en-PH"
+                )
+              : "",
+
+          Payment:
+            paymentLabel(
+              sale.payment_method
+            ),
+
+          Subtotal:
+            Number(
+              sale.subtotal ||
+                0
+            ).toFixed(2),
+
+          Discount:
+            Number(
+              sale.discount ||
+                0
+            ).toFixed(2),
+
+          Total:
+            Number(
+              sale.total ||
+                0
+            ).toFixed(2),
+
+          Amount_Paid:
+            Number(
+              sale.amount_tendered ||
+                0
+            ).toFixed(2),
+
+          Change:
+            Number(
+              sale.change_amount ||
+                0
+            ).toFixed(2),
+
+          Status:
+            sale.status ||
+            "",
+        })
+      );
+
+    const filename =
+      reportType ===
+      "daily"
+        ? `SmallBiz_POS_Daily_Report_${reportDate}.csv`
+        : `SmallBiz_POS_Monthly_Report_${reportMonth}.csv`;
+
+    downloadCSV(
+      filename,
+      rows
     );
   }
 
   /* =======================================================
-     PRODUCT MODAL
+     EXPORT TRANSACTIONS
+  ======================================================= */
+
+  function exportTransactions() {
+    if (
+      !filteredSales.length
+    ) {
+      setStatus(
+        "No transaction data to export."
+      );
+
+      return;
+    }
+
+    const rows =
+      filteredSales.map(
+        (sale) => ({
+          Invoice:
+            sale.invoice_no,
+
+          Date:
+            sale.created_at
+              ? new Date(
+                  sale.created_at
+                ).toLocaleString(
+                  "en-PH"
+                )
+              : "",
+
+          Payment:
+            paymentLabel(
+              sale.payment_method
+            ),
+
+          Subtotal:
+            Number(
+              sale.subtotal ||
+                0
+            ).toFixed(2),
+
+          Discount:
+            Number(
+              sale.discount ||
+                0
+            ).toFixed(2),
+
+          Total:
+            Number(
+              sale.total ||
+                0
+            ).toFixed(2),
+
+          Status:
+            sale.status ||
+            "",
+        })
+      );
+
+    downloadCSV(
+      "SmallBiz_POS_Transactions.csv",
+      rows
+    );
+  }
+
+  /* =======================================================
+     EXPORT PRODUCTS
+  ======================================================= */
+
+  function exportProducts() {
+    if (
+      !products.length
+    ) {
+      setStatus(
+        "No products to export."
+      );
+
+      return;
+    }
+
+    const rows =
+      products.map(
+        (product) => ({
+          Product:
+            product.name,
+
+          Barcode:
+            product.barcode,
+
+          Price:
+            Number(
+              product.price ||
+                0
+            ).toFixed(2),
+
+          Stock:
+            Number(
+              product.stock ||
+                0
+            ),
+
+          Stock_Value:
+            Number(
+              product.price *
+                product.stock
+            ).toFixed(2),
+        })
+      );
+
+    downloadCSV(
+      "SmallBiz_POS_Product_Master.csv",
+      rows
+    );
+  }
+
+  /* =======================================================
+     OPEN ADD PRODUCT
   ======================================================= */
 
   function openAddProduct() {
@@ -1667,6 +1958,10 @@ function App() {
 
     setErr("");
   }
+
+  /* =======================================================
+     OPEN EDIT PRODUCT
+  ======================================================= */
 
   function openEditProduct(
     product
@@ -1721,6 +2016,7 @@ function App() {
       setErr(
         "Business ID not found."
       );
+
       return;
     }
 
@@ -1730,28 +2026,7 @@ function App() {
       setErr(
         "Product name is required."
       );
-      return;
-    }
 
-    if (
-      Number(
-        productForm.price
-      ) < 0
-    ) {
-      setErr(
-        "Price cannot be negative."
-      );
-      return;
-    }
-
-    if (
-      Number(
-        productForm.stock
-      ) < 0
-    ) {
-      setErr(
-        "Stock cannot be negative."
-      );
       return;
     }
 
@@ -1780,9 +2055,6 @@ function App() {
             productForm.stock ||
               0
           ),
-
-        business_id:
-          profile.business_id,
 
         updated_at:
           new Date().toISOString(),
@@ -1825,9 +2097,12 @@ function App() {
             .from(
               "products"
             )
-            .insert(
-              payload
-            );
+            .insert({
+              ...payload,
+
+              business_id:
+                profile.business_id,
+            });
 
         if (error) {
           throw error;
@@ -1838,24 +2113,13 @@ function App() {
         );
       }
 
-      await loadProducts(
-        profile.business_id
+      await load(
+        session.user.id
       );
 
       setProductModalOpen(
         false
       );
-
-      setEditingProduct(
-        null
-      );
-
-      setProductForm({
-        name: "",
-        barcode: "",
-        price: "",
-        stock: "",
-      });
     } catch (error) {
       console.error(
         error
@@ -1873,92 +2137,110 @@ function App() {
   }
 
   /* =======================================================
-     DELETE PRODUCT
+     OPEN SALE DETAILS
   ======================================================= */
 
-  async function deleteProduct(
-    product
+  async function openSaleDetails(
+    sale
   ) {
-    const confirmed =
-      window.confirm(
-        `Delete product "${product.name}"?`
-      );
+    setSelectedSale(
+      sale
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    setSelectedSaleItems(
+      []
+    );
+
+    setSaleDetailsOpen(
+      true
+    );
+
+    setSaleDetailsLoading(
+      true
+    );
 
     setErr("");
 
     const {
+      data,
       error,
     } =
       await supabase
         .from(
-          "products"
+          "sale_items"
         )
-        .delete()
+        .select(
+          "id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total"
+        )
         .eq(
+          "sale_id",
+          sale.id
+        )
+        .order(
           "id",
-          product.id
-        )
-        .eq(
-          "business_id",
-          profile.business_id
+          {
+            ascending: true,
+          }
         );
 
     if (error) {
       setErr(
-        "Unable to delete product: " +
+        "Unable to load sale items: " +
           error.message
       );
+
+      setSaleDetailsLoading(
+        false
+      );
+
       return;
     }
 
-    setStatus(
-      "Product deleted."
+    setSelectedSaleItems(
+      data || []
     );
 
-    await loadProducts(
-      profile.business_id
+    setSaleDetailsLoading(
+      false
     );
   }
 
   /* =======================================================
-     PRINT CURRENT RECEIPT
+     PRINT OLD SALE
   ======================================================= */
 
-  function printReceipt() {
+  function printOldSale() {
+    if (
+      !selectedSale
+    ) {
+      return;
+    }
+
     const cashierName =
       profile?.full_name ||
       profile?.role ||
       "Cashier";
 
-    const receiptItems =
-      cart
+    const itemsHtml =
+      selectedSaleItems
         .map(
           (item) => `
             <tr>
-              <td>
-                ${escapeHtml(
-                  item.name
-                )}
-              </td>
+              <td>${item.product_name}</td>
 
               <td style="text-align:center">
-                ${item.qty}
+                ${item.quantity}
               </td>
 
               <td style="text-align:right">
                 ${money(
-                  item.price
+                  item.unit_price
                 )}
               </td>
 
               <td style="text-align:right">
                 ${money(
-                  item.price *
-                    item.qty
+                  item.line_total
                 )}
               </td>
             </tr>
@@ -1966,35 +2248,41 @@ function App() {
         )
         .join("");
 
-    const receiptWindow =
+    const win =
       window.open(
         "",
         "_blank",
         "width=420,height=700"
       );
 
-    if (!receiptWindow) {
+    if (!win) {
       setErr(
         "Please allow pop-ups to print the receipt."
       );
+
       return;
     }
 
-    receiptWindow.document.write(`
-      <!DOCTYPE html>
+    const saleDate =
+      selectedSale.created_at
+        ? new Date(
+            selectedSale.created_at
+          ).toLocaleString(
+            "en-PH"
+          )
+        : "";
 
+    win.document.write(`
+      <!DOCTYPE html>
       <html>
 
       <head>
 
         <title>
-          ${escapeHtml(
-            receiptNo
-          )}
+          ${selectedSale.invoice_no}
         </title>
 
         <style>
-
           body {
             font-family: Arial, sans-serif;
             width: 360px;
@@ -2030,7 +2318,6 @@ function App() {
 
           td {
             padding: 5px 0;
-            vertical-align: top;
           }
 
           .row {
@@ -2049,47 +2336,29 @@ function App() {
             margin-top: 25px;
             font-size: 12px;
           }
-
-          @media print {
-            body {
-              width: auto;
-              margin: 0;
-            }
-          }
-
         </style>
 
       </head>
 
       <body>
 
-        <h1>
-          SmallBiz POS
-        </h1>
+        <h1>SmallBiz POS</h1>
 
         <div class="center">
 
+          <div>Sales Receipt</div>
+
           <div>
-            Sales Receipt
+            ${selectedSale.invoice_no}
           </div>
 
           <div>
-            ${escapeHtml(
-              receiptNo
-            )}
-          </div>
-
-          <div>
-            ${new Date().toLocaleString(
-              "en-PH"
-            )}
+            ${saleDate}
           </div>
 
           <div>
             Cashier:
-            ${escapeHtml(
-              cashierName
-            )}
+            ${cashierName}
           </div>
 
         </div>
@@ -2123,311 +2392,7 @@ function App() {
           </thead>
 
           <tbody>
-
-            ${receiptItems}
-
-          </tbody>
-
-        </table>
-
-        <div class="line"></div>
-
-        <div class="row">
-          <span>Subtotal</span>
-          <span>
-            ${money(
-              subtotal
-            )}
-          </span>
-        </div>
-
-        <div class="row">
-          <span>Discount</span>
-          <span>
-            ${money(
-              discount
-            )}
-          </span>
-        </div>
-
-        <div class="row total">
-          <span>TOTAL</span>
-          <span>
-            ${money(
-              total
-            )}
-          </span>
-        </div>
-
-        <div class="line"></div>
-
-        <div class="row">
-          <span>Payment Method</span>
-          <span>
-            ${paymentLabel(
-              paymentMethod
-            )}
-          </span>
-        </div>
-
-        <div class="row">
-          <span>Amount Paid</span>
-          <span>
-            ${money(
-              paymentMethod ===
-                "cash"
-                ? cash
-                : total
-            )}
-          </span>
-        </div>
-
-        ${
-          paymentMethod ===
-          "cash"
-            ? `
-              <div class="row">
-                <span>Change</span>
-                <span>
-                  ${money(
-                    change
-                  )}
-                </span>
-              </div>
-            `
-            : ""
-        }
-
-        <div class="footer">
-
-          <div>
-            Thank you for your purchase!
-          </div>
-
-          <div>
-            SmallBiz POS V2.3
-          </div>
-
-        </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-          };
-        </script>
-
-      </body>
-
-      </html>
-    `);
-
-    receiptWindow.document.close();
-  }
-
-  /* =======================================================
-     PRINT OLD SALE
-  ======================================================= */
-
-  function printOldSale() {
-    if (!selectedSale) {
-      return;
-    }
-
-    const cashierName =
-      profile?.full_name ||
-      profile?.role ||
-      "Cashier";
-
-    const itemsHtml =
-      selectedSaleItems
-        .map(
-          (item) => `
-            <tr>
-
-              <td>
-                ${escapeHtml(
-                  item.product_name
-                )}
-              </td>
-
-              <td style="text-align:center">
-                ${item.quantity}
-              </td>
-
-              <td style="text-align:right">
-                ${money(
-                  item.unit_price
-                )}
-              </td>
-
-              <td style="text-align:right">
-                ${money(
-                  item.line_total
-                )}
-              </td>
-
-            </tr>
-          `
-        )
-        .join("");
-
-    const win =
-      window.open(
-        "",
-        "_blank",
-        "width=420,height=700"
-      );
-
-    if (!win) {
-      setErr(
-        "Please allow pop-ups to print the receipt."
-      );
-      return;
-    }
-
-    const saleDate =
-      selectedSale.created_at
-        ? new Date(
-            selectedSale.created_at
-          ).toLocaleString(
-            "en-PH"
-          )
-        : "";
-
-    win.document.write(`
-      <!DOCTYPE html>
-
-      <html>
-
-      <head>
-
-        <title>
-          ${escapeHtml(
-            selectedSale.invoice_no
-          )}
-        </title>
-
-        <style>
-
-          body {
-            font-family: Arial, sans-serif;
-            width: 360px;
-            margin: 0 auto;
-            padding: 20px;
-            color: #111;
-          }
-
-          h1 {
-            text-align: center;
-          }
-
-          .center {
-            text-align: center;
-          }
-
-          .line {
-            border-top: 1px dashed #000;
-            margin: 12px 0;
-          }
-
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-          }
-
-          th {
-            border-bottom: 1px solid #000;
-          }
-
-          td {
-            padding: 5px 0;
-          }
-
-          .row {
-            display: flex;
-            justify-content: space-between;
-            margin: 7px 0;
-          }
-
-          .total {
-            font-size: 18px;
-            font-weight: bold;
-          }
-
-          .footer {
-            text-align: center;
-            margin-top: 25px;
-            font-size: 12px;
-          }
-
-        </style>
-
-      </head>
-
-      <body>
-
-        <h1>
-          SmallBiz POS
-        </h1>
-
-        <div class="center">
-
-          <div>
-            Sales Receipt
-          </div>
-
-          <div>
-            ${escapeHtml(
-              selectedSale.invoice_no
-            )}
-          </div>
-
-          <div>
-            ${saleDate}
-          </div>
-
-          <div>
-            Cashier:
-            ${escapeHtml(
-              cashierName
-            )}
-          </div>
-
-        </div>
-
-        <div class="line"></div>
-
-        <table>
-
-          <thead>
-
-            <tr>
-
-              <th>
-                Item
-              </th>
-
-              <th>
-                Qty
-              </th>
-
-              <th>
-                Price
-              </th>
-
-              <th>
-                Total
-              </th>
-
-            </tr>
-
-          </thead>
-
-          <tbody>
-
             ${itemsHtml}
-
           </tbody>
 
         </table>
@@ -2464,7 +2429,7 @@ function App() {
         <div class="line"></div>
 
         <div class="row">
-          <span>Payment Method</span>
+          <span>Payment</span>
           <span>
             ${paymentLabel(
               selectedSale.payment_method
@@ -2498,9 +2463,15 @@ function App() {
         }
 
         <div class="footer">
-          Thank you for your purchase!
-          <br />
-          SmallBiz POS V2.3
+
+          <div>
+            Thank you for your purchase!
+          </div>
+
+          <div>
+            SmallBiz POS V2.2
+          </div>
+
         </div>
 
         <script>
@@ -2510,7 +2481,6 @@ function App() {
         </script>
 
       </body>
-
       </html>
     `);
 
@@ -2518,307 +2488,7 @@ function App() {
   }
 
   /* =======================================================
-     EXPORT TRANSACTIONS
-  ======================================================= */
-
-  function exportTransactions() {
-    const rows =
-      filteredSales.map(
-        (sale) => ({
-          invoice:
-            sale.invoice_no,
-
-          date:
-            sale.created_at
-              ? new Date(
-                  sale.created_at
-                ).toLocaleString(
-                  "en-PH"
-                )
-              : "",
-
-          payment:
-            paymentLabel(
-              sale.payment_method
-            ),
-
-          subtotal:
-            Number(
-              sale.subtotal ||
-                0
-            ),
-
-          discount:
-            Number(
-              sale.discount ||
-                0
-            ),
-
-          total:
-            Number(
-              sale.total ||
-                0
-            ),
-
-          amount_paid:
-            Number(
-              sale.amount_tendered ||
-                0
-            ),
-
-          change:
-            Number(
-              sale.change_amount ||
-                0
-            ),
-
-          status:
-            sale.status,
-        })
-      );
-
-    downloadExcel(
-      "sales_transactions.xls",
-      "Sales Transactions",
-      [
-        {
-          key: "invoice",
-          label: "Invoice",
-        },
-        {
-          key: "date",
-          label: "Date",
-        },
-        {
-          key: "payment",
-          label: "Payment Method",
-        },
-        {
-          key: "subtotal",
-          label: "Subtotal",
-        },
-        {
-          key: "discount",
-          label: "Discount",
-        },
-        {
-          key: "total",
-          label: "Total",
-        },
-        {
-          key: "amount_paid",
-          label: "Amount Paid",
-        },
-        {
-          key: "change",
-          label: "Change",
-        },
-        {
-          key: "status",
-          label: "Status",
-        },
-      ],
-      rows
-    );
-  }
-
-  /* =======================================================
-     EXPORT DAILY REPORT
-  ======================================================= */
-
-  function exportDailyReport() {
-    const rows =
-      dailySales.map(
-        (sale) => ({
-          invoice:
-            sale.invoice_no,
-
-          date:
-            sale.created_at
-              ? new Date(
-                  sale.created_at
-                ).toLocaleString(
-                  "en-PH"
-                )
-              : "",
-
-          payment:
-            paymentLabel(
-              sale.payment_method
-            ),
-
-          total:
-            Number(
-              sale.total ||
-                0
-            ),
-
-          status:
-            sale.status,
-        })
-      );
-
-    downloadExcel(
-      `daily_sales_${reportDate}.xls`,
-      `Daily Sales Report - ${reportDate}`,
-      [
-        {
-          key: "invoice",
-          label: "Invoice",
-        },
-        {
-          key: "date",
-          label: "Date",
-        },
-        {
-          key: "payment",
-          label: "Payment Method",
-        },
-        {
-          key: "total",
-          label: "Total Sales",
-        },
-        {
-          key: "status",
-          label: "Status",
-        },
-      ],
-      rows
-    );
-  }
-
-  /* =======================================================
-     EXPORT MONTHLY REPORT
-  ======================================================= */
-
-  function exportMonthlyReport() {
-    const rows =
-      monthlySales.map(
-        (sale) => ({
-          invoice:
-            sale.invoice_no,
-
-          date:
-            sale.created_at
-              ? new Date(
-                  sale.created_at
-                ).toLocaleString(
-                  "en-PH"
-                )
-              : "",
-
-          payment:
-            paymentLabel(
-              sale.payment_method
-            ),
-
-          total:
-            Number(
-              sale.total ||
-                0
-            ),
-
-          status:
-            sale.status,
-        })
-      );
-
-    downloadExcel(
-      `monthly_sales_${reportMonth}.xls`,
-      `Monthly Sales Report - ${reportMonth}`,
-      [
-        {
-          key: "invoice",
-          label: "Invoice",
-        },
-        {
-          key: "date",
-          label: "Date",
-        },
-        {
-          key: "payment",
-          label: "Payment Method",
-        },
-        {
-          key: "total",
-          label: "Total Sales",
-        },
-        {
-          key: "status",
-          label: "Status",
-        },
-      ],
-      rows
-    );
-  }
-
-  /* =======================================================
-     EXPORT PRODUCTS
-  ======================================================= */
-
-  function exportProducts() {
-    const rows =
-      filteredProducts.map(
-        (product) => ({
-          name:
-            product.name,
-
-          barcode:
-            product.barcode,
-
-          price:
-            Number(
-              product.price ||
-                0
-            ),
-
-          stock:
-            Number(
-              product.stock ||
-                0
-            ),
-
-          status:
-            Number(
-              product.stock ||
-                0
-            ) <= 0
-              ? "Out of Stock"
-              : "Available",
-        })
-      );
-
-    downloadExcel(
-      "product_master_file.xls",
-      "Product Master File",
-      [
-        {
-          key: "name",
-          label: "Product Name",
-        },
-        {
-          key: "barcode",
-          label: "Barcode",
-        },
-        {
-          key: "price",
-          label: "Selling Price",
-        },
-        {
-          key: "stock",
-          label: "Stock",
-        },
-        {
-          key: "status",
-          label: "Status",
-        },
-      ],
-      rows
-    );
-  }
-
-  /* =======================================================
-     LOGIN SCREEN
+     LOGIN PAGE
   ======================================================= */
 
   if (!session) {
@@ -2828,14 +2498,27 @@ function App() {
         <form
           className="card"
           onSubmit={login}
+          style={{
+            maxWidth:
+              "420px",
+            width: "100%",
+          }}
         >
 
           <h1>
-            SmallBiz POS V2.3
+            🛒 SmallBiz POS
           </h1>
 
-          <p>
-            Login to continue
+          <p
+            style={{
+              color:
+                "#64748b",
+              marginBottom:
+                "20px",
+            }}
+          >
+            Small Business
+            Point of Sale
           </p>
 
           <input
@@ -2864,6 +2547,7 @@ function App() {
 
           <button
             className="primary"
+            type="submit"
           >
             Login
           </button>
@@ -2881,37 +2565,55 @@ function App() {
   }
 
   /* =======================================================
-     MAIN UI
+     MAIN APPLICATION
   ======================================================= */
 
   return (
-    <div>
+    <div
+      className="smallbiz-app"
+      style={{
+        minHeight:
+          "100vh",
+        background:
+          "#f8fafc",
+      }}
+    >
 
       {/* ===================================================
-          HEADER
+          SIDEBAR
       =================================================== */}
 
-      <header
+      <aside
         style={{
           position:
-            "sticky",
+            "fixed",
+          left: 0,
           top: 0,
-          zIndex: 20,
+          bottom: 0,
+          width:
+            "245px",
           background:
-            "white",
-          borderBottom:
-            "1px solid #ddd",
+            "#ffffff",
+          borderRight:
+            "1px solid #e2e8f0",
+          display:
+            "flex",
+          flexDirection:
+            "column",
+          zIndex: 50,
+          boxShadow:
+            "4px 0 18px rgba(15,23,42,.04)",
         }}
       >
 
+        {/* BRAND */}
+
         <div
           style={{
-            maxWidth:
-              "1400px",
-            margin:
-              "0 auto",
             padding:
-              "12px 16px",
+              "22px 20px",
+            borderBottom:
+              "1px solid #e2e8f0",
           }}
         >
 
@@ -2919,193 +2621,337 @@ function App() {
             style={{
               display:
                 "flex",
-              justifyContent:
-                "space-between",
               alignItems:
                 "center",
-              gap: "12px",
-              flexWrap:
-                "wrap",
+              gap:
+                "10px",
+              fontSize:
+                "19px",
+              fontWeight:
+                800,
+              color:
+                "#0f172a",
             }}
           >
 
-            <div>
+            <span>
+              🛒
+            </span>
 
-              <b
-                style={{
-                  fontSize:
-                    "20px",
-                }}
-              >
-                SmallBiz POS
-              </b>
-
-              <small
-                style={{
-                  marginLeft:
-                    "6px",
-                }}
-              >
-                V2.3
-              </small>
-
-              <div
-                style={{
-                  fontSize:
-                    "12px",
-                  color:
-                    "#666",
-                  marginTop:
-                    "3px",
-                }}
-              >
-                {profile?.full_name ||
-                  profile?.role ||
-                  "Cashier"}
-              </div>
-
-            </div>
-
-            <button
-              onClick={
-                logout
-              }
-            >
-              Logout
-            </button>
+            <span>
+              SmallBiz POS
+            </span>
 
           </div>
 
-          {/* NAVIGATION */}
-
-          <div
+          <small
             style={{
               display:
-                "flex",
-              gap: "7px",
+                "block",
               marginTop:
-                "12px",
-              overflowX:
-                "auto",
-              paddingBottom:
-                "3px",
+                "5px",
+              color:
+                "#64748b",
             }}
           >
-
-            <button
-              className={
-                activePage ===
-                "pos"
-                  ? "primary"
-                  : ""
-              }
-              onClick={() =>
-                setActivePage(
-                  "pos"
-                )
-              }
-            >
-              🛒 POS
-            </button>
-
-            <button
-              className={
-                activePage ===
-                "transactions"
-                  ? "primary"
-                  : ""
-              }
-              onClick={() => {
-                setActivePage(
-                  "transactions"
-                );
-
-                loadSalesHistory(
-                  profile?.business_id
-                );
-              }}
-            >
-              📋 Transactions
-            </button>
-
-            <button
-              className={
-                activePage ===
-                "reports"
-                  ? "primary"
-                  : ""
-              }
-              onClick={() => {
-                setActivePage(
-                  "reports"
-                );
-
-                loadSalesHistory(
-                  profile?.business_id
-                );
-              }}
-            >
-              📊 Reports
-            </button>
-
-            <button
-              className={
-                activePage ===
-                "products"
-                  ? "primary"
-                  : ""
-              }
-              onClick={() =>
-                setActivePage(
-                  "products"
-                )
-              }
-            >
-              📦 Products
-            </button>
-
-          </div>
+            V2.2
+          </small>
 
         </div>
 
-      </header>
+        {/* USER */}
+
+        <div
+          style={{
+            margin:
+              "16px",
+            padding:
+              "13px",
+            background:
+              "#f8fafc",
+            border:
+              "1px solid #e2e8f0",
+            borderRadius:
+              "12px",
+          }}
+        >
+
+          <div
+            style={{
+              fontWeight:
+                700,
+              color:
+                "#0f172a",
+            }}
+          >
+            {profile?.full_name ||
+              "User"}
+          </div>
+
+          <small
+            style={{
+              color:
+                "#64748b",
+            }}
+          >
+            {profile?.role ||
+              "Cashier"}
+          </small>
+
+        </div>
+
+        {/* NAVIGATION */}
+
+        <nav
+          style={{
+            padding:
+              "0 12px",
+            display:
+              "flex",
+            flexDirection:
+              "column",
+            gap:
+              "6px",
+          }}
+        >
+
+          <button
+            onClick={() =>
+              setActivePage(
+                "pos"
+              )
+            }
+            style={{
+              ...sideButton,
+              ...(activePage ===
+              "pos"
+                ? activeSideButton
+                : {}),
+            }}
+          >
+            <span>
+              🛒
+            </span>
+
+            <span>
+              POS
+            </span>
+          </button>
+
+          <button
+            onClick={() =>
+              setActivePage(
+                "transactions"
+              )
+            }
+            style={{
+              ...sideButton,
+              ...(activePage ===
+              "transactions"
+                ? activeSideButton
+                : {}),
+            }}
+          >
+            <span>
+              📋
+            </span>
+
+            <span>
+              Transactions
+            </span>
+          </button>
+
+          <button
+            onClick={() =>
+              setActivePage(
+                "reports"
+              )
+            }
+            style={{
+              ...sideButton,
+              ...(activePage ===
+              "reports"
+                ? activeSideButton
+                : {}),
+            }}
+          >
+            <span>
+              📊
+            </span>
+
+            <span>
+              Reports
+            </span>
+          </button>
+
+          <button
+            onClick={() =>
+              setActivePage(
+                "products"
+              )
+            }
+            style={{
+              ...sideButton,
+              ...(activePage ===
+              "products"
+                ? activeSideButton
+                : {}),
+            }}
+          >
+            <span>
+              📦
+            </span>
+
+            <span>
+              Products
+            </span>
+          </button>
+
+        </nav>
+
+        {/* LOGOUT */}
+
+        <div
+          style={{
+            marginTop:
+              "auto",
+            padding:
+              "16px 12px",
+            borderTop:
+              "1px solid #e2e8f0",
+          }}
+        >
+
+          <button
+            onClick={logout}
+            style={{
+              ...sideButton,
+              color:
+                "#dc2626",
+            }}
+          >
+            <span>
+              🚪
+            </span>
+
+            <span>
+              Logout
+            </span>
+          </button>
+
+        </div>
+
+      </aside>
+
+      {/* ===================================================
+          MAIN CONTENT
+      =================================================== */}
 
       <main
         style={{
-          maxWidth:
-            "1400px",
-          margin:
-            "0 auto",
+          marginLeft:
+            "245px",
+          minHeight:
+            "100vh",
           padding:
-            "16px",
+            "28px",
         }}
       >
 
         {/* =================================================
-            GLOBAL ERROR / STATUS
+            TOP HEADER
         ================================================= */}
 
-        {err && (
-          <div
-            className="error"
-            style={{
-              marginBottom:
-                "12px",
-            }}
-          >
-            {err}
+        <div
+          style={{
+            marginBottom:
+              "22px",
+            display:
+              "flex",
+            alignItems:
+              "center",
+            justifyContent:
+              "space-between",
+            gap:
+              "15px",
+          }}
+        >
+
+          <div>
+
+            <h1
+              style={{
+                margin:
+                  0,
+                fontSize:
+                  "26px",
+                color:
+                  "#0f172a",
+              }}
+            >
+              {activePage ===
+              "pos"
+                ? "🛒 Point of Sale"
+                : activePage ===
+                  "transactions"
+                ? "📋 Transactions"
+                : activePage ===
+                  "reports"
+                ? "📊 Reports"
+                : "📦 Products"}
+            </h1>
+
+            <p
+              style={{
+                margin:
+                  "5px 0 0",
+                color:
+                  "#64748b",
+              }}
+            >
+              {profile?.full_name ||
+                "SmallBiz User"}
+            </p>
+
           </div>
-        )}
+
+          <button
+            onClick={() =>
+              loadSalesHistory(
+                profile?.business_id
+              )
+            }
+          >
+            🔄 Refresh
+          </button>
+
+        </div>
+
+        {/* =================================================
+            STATUS / ERROR
+        ================================================= */}
 
         {status && (
           <div
             className="status"
             style={{
               marginBottom:
-                "12px",
+                "15px",
             }}
           >
             {status}
+          </div>
+        )}
+
+        {err && (
+          <div
+            className="error"
+            style={{
+              marginBottom:
+                "15px",
+            }}
+          >
+            {err}
           </div>
         )}
 
@@ -3119,18 +2965,21 @@ function App() {
 
             {/* PRODUCTS */}
 
-            <section className="card">
+            <section
+              className="card"
+            >
 
               <div className="head">
 
                 <div>
 
                   <h2>
-                    🛒 Point of Sale
+                    Products
                   </h2>
 
                   <small>
-                    Search product or scan barcode.
+                    Search or scan a
+                    product.
                   </small>
 
                 </div>
@@ -3157,15 +3006,19 @@ function App() {
                 <div
                   className="scanner"
                   style={{
-                    marginTop:
-                      "12px",
+                    marginBottom:
+                      "15px",
                   }}
                 >
+
                   <div id="reader"></div>
 
                   <small>
-                    Allow camera access and point at a barcode.
+                    Allow camera access
+                    and point at a
+                    barcode.
                   </small>
+
                 </div>
               )}
 
@@ -3180,20 +3033,12 @@ function App() {
                 }
               />
 
-              <div
-                className="products-grid"
-                style={{
-                  marginTop:
-                    "15px",
-                }}
-              >
+              <div className="products-grid">
 
                 {filtered.length >
                 0 ? (
                   filtered.map(
-                    (
-                      product
-                    ) => (
+                    (product) => (
                       <div
                         className="product-card"
                         key={
@@ -3253,7 +3098,8 @@ function App() {
                   )
                 ) : (
                   <div className="empty">
-                    No product found.
+                    No products
+                    available.
                   </div>
                 )}
 
@@ -3267,7 +3113,7 @@ function App() {
               className="card"
               style={{
                 marginTop:
-                  "15px",
+                  "20px",
               }}
             >
 
@@ -3279,10 +3125,7 @@ function App() {
 
                 <span>
                   {cart.reduce(
-                    (
-                      n,
-                      item
-                    ) =>
+                    (n, item) =>
                       n +
                       item.qty,
                     0
@@ -3296,9 +3139,7 @@ function App() {
               0 ? (
                 <>
                   {cart.map(
-                    (
-                      item
-                    ) => (
+                    (item) => (
                       <div
                         className="cart"
                         key={
@@ -3307,6 +3148,7 @@ function App() {
                       >
 
                         <span>
+
                           <b>
                             {
                               item.name
@@ -3319,6 +3161,7 @@ function App() {
                             )}{" "}
                             each
                           </small>
+
                         </span>
 
                         <span>
@@ -3335,10 +3178,9 @@ function App() {
                           </button>
 
                           {" "}
-
-                          {item.qty}
-
-                          {" "}
+                          {
+                            item.qty
+                          }{" "}
 
                           <button
                             onClick={() =>
@@ -3391,22 +3233,17 @@ function App() {
                   savingPayment
                 }
                 onClick={() => {
-                  setCash(
-                    ""
-                  );
-
+                  setCash("");
                   setPaymentMethod(
                     "cash"
                   );
-
                   setErr("");
-
                   setPaymentOpen(
                     true
                   );
                 }}
               >
-                Payment
+                💳 Payment
               </button>
 
             </section>
@@ -3420,55 +3257,36 @@ function App() {
 
         {activePage ===
           "transactions" && (
-          <section className="card">
+          <section
+            className="card"
+          >
 
             <div className="head">
 
               <div>
 
                 <h2>
-                  📋 Sales History / Transactions
+                  📋 Sales History /
+                  Transactions
                 </h2>
 
                 <small>
-                  View, filter and reprint completed transactions.
+                  View, search, filter
+                  and reprint completed
+                  transactions.
                 </small>
 
               </div>
 
-              <div
-                style={{
-                  display:
-                    "flex",
-                  gap: "8px",
-                  flexWrap:
-                    "wrap",
-                }}
+              <button
+                onClick={
+                  exportTransactions
+                }
               >
-
-                <button
-                  onClick={() =>
-                    loadSalesHistory(
-                      profile?.business_id
-                    )
-                  }
-                >
-                  🔄 Refresh
-                </button>
-
-                <button
-                  onClick={
-                    exportTransactions
-                  }
-                >
-                  📥 Excel
-                </button>
-
-              </div>
+                📥 Export Excel
+              </button>
 
             </div>
-
-            {/* FILTERS */}
 
             <div
               style={{
@@ -3476,114 +3294,86 @@ function App() {
                   "grid",
                 gridTemplateColumns:
                   "repeat(auto-fit,minmax(180px,1fr))",
-                gap: "10px",
+                gap:
+                  "10px",
                 marginTop:
                   "15px",
               }}
             >
 
-              <div>
-                <label>
-                  Search Invoice
-                </label>
+              <input
+                placeholder="Search invoice..."
+                value={
+                  historySearch
+                }
+                onChange={(e) =>
+                  setHistorySearch(
+                    e.target.value
+                  )
+                }
+              />
 
-                <input
-                  className="search"
-                  placeholder="Invoice number..."
-                  value={
-                    historySearch
-                  }
-                  onChange={(e) =>
-                    setHistorySearch(
-                      e.target.value
-                    )
-                  }
-                />
-              </div>
+              <select
+                value={
+                  historyPaymentFilter
+                }
+                onChange={(e) =>
+                  setHistoryPaymentFilter(
+                    e.target.value
+                  )
+                }
+              >
+                <option value="all">
+                  All Payments
+                </option>
 
-              <div>
-                <label>
-                  Payment
-                </label>
+                <option value="cash">
+                  💵 Cash
+                </option>
 
-                <select
-                  value={
-                    historyPaymentFilter
-                  }
-                  onChange={(e) =>
-                    setHistoryPaymentFilter(
-                      e.target.value
-                    )
-                  }
-                >
+                <option value="gcash">
+                  📱 GCash
+                </option>
 
-                  <option value="all">
-                    All Payments
-                  </option>
+                <option value="card">
+                  💳 Card
+                </option>
+              </select>
 
-                  <option value="cash">
-                    Cash
-                  </option>
+              <input
+                type="date"
+                value={
+                  historyDateFilter
+                }
+                onChange={(e) =>
+                  setHistoryDateFilter(
+                    e.target.value
+                  )
+                }
+              />
 
-                  <option value="gcash">
-                    GCash
-                  </option>
+              <select
+                value={
+                  historyStatusFilter
+                }
+                onChange={(e) =>
+                  setHistoryStatusFilter(
+                    e.target.value
+                  )
+                }
+              >
+                <option value="all">
+                  All Status
+                </option>
 
-                  <option value="card">
-                    Card
-                  </option>
+                <option value="completed">
+                  Completed
+                </option>
 
-                </select>
-              </div>
-
-              <div>
-                <label>
-                  Date
-                </label>
-
-                <input
-                  type="date"
-                  value={
-                    historyDateFilter
-                  }
-                  onChange={(e) =>
-                    setHistoryDateFilter(
-                      e.target.value
-                    )
-                  }
-                />
-              </div>
-
-              <div>
-                <label>
-                  Status
-                </label>
-
-                <select
-                  value={
-                    historyStatusFilter
-                  }
-                  onChange={(e) =>
-                    setHistoryStatusFilter(
-                      e.target.value
-                    )
-                  }
-                >
-
-                  <option value="all">
-                    All Status
-                  </option>
-
-                  <option value="completed">
-                    Completed
-                  </option>
-
-                  <option value="cancelled">
-                    Cancelled
-                  </option>
-
-                </select>
-              </div>
+                <option value="cancelled">
+                  Cancelled
+                </option>
+              </select>
 
             </div>
 
@@ -3595,71 +3385,47 @@ function App() {
                   "grid",
                 gridTemplateColumns:
                   "repeat(auto-fit,minmax(150px,1fr))",
-                gap: "10px",
+                gap:
+                  "10px",
                 marginTop:
                   "15px",
               }}
             >
 
-              <div className="card">
-                <small>
-                  Transactions
-                </small>
+              <SummaryCard
+                title="Transactions"
+                value={
+                  transactionCount
+                }
+              />
 
-                <h2>
-                  {
-                    transactionCount
-                  }
-                </h2>
-              </div>
+              <SummaryCard
+                title="Total Sales"
+                value={money(
+                  transactionTotal
+                )}
+              />
 
-              <div className="card">
-                <small>
-                  Total Sales
-                </small>
+              <SummaryCard
+                title="💵 Cash"
+                value={money(
+                  cashTotal
+                )}
+              />
 
-                <h2>
-                  {money(
-                    transactionTotal
-                  )}
-                </h2>
-              </div>
+              <SummaryCard
+                title="📱 GCash"
+                value={money(
+                  gcashTotal
+                )}
+              />
 
-              <div className="card">
-                <small>
-                  💵 Cash
-                </small>
-
-                <h3>
-                  {money(
-                    cashTotal
-                  )}
-                </h3>
-              </div>
-
-              <div className="card">
-                <small>
-                  📱 GCash
-                </small>
-
-                <h3>
-                  {money(
-                    gcashTotal
-                  )}
-                </h3>
-              </div>
-
-              <div className="card">
-                <small>
-                  💳 Card
-                </small>
-
-                <h3>
-                  {money(
-                    cardTotal
-                  )}
-                </h3>
-              </div>
+              <SummaryCard
+                title="💳 Card"
+                value={money(
+                  cardTotal
+                )}
+              />
 
             </div>
 
@@ -3686,7 +3452,6 @@ function App() {
                 >
 
                   <thead>
-
                     <tr>
 
                       <th>
@@ -3701,7 +3466,12 @@ function App() {
                         Payment
                       </th>
 
-                      <th>
+                      <th
+                        style={{
+                          textAlign:
+                            "right",
+                        }}
+                      >
                         Total
                       </th>
 
@@ -3714,15 +3484,12 @@ function App() {
                       </th>
 
                     </tr>
-
                   </thead>
 
                   <tbody>
 
                     {filteredSales.map(
-                      (
-                        sale
-                      ) => (
+                      (sale) => (
                         <tr
                           key={
                             sale.id
@@ -3767,12 +3534,12 @@ function App() {
                           </td>
 
                           <td>
-                            {
-                              sale.status
-                            }
+                            {sale.status ||
+                              "-"}
                           </td>
 
                           <td>
+
                             <button
                               onClick={() =>
                                 openSaleDetails(
@@ -3782,6 +3549,7 @@ function App() {
                             >
                               🧾 View
                             </button>
+
                           </td>
 
                         </tr>
@@ -3793,7 +3561,8 @@ function App() {
                 </table>
               ) : (
                 <div className="empty">
-                  No transactions found.
+                  No matching
+                  transactions.
                 </div>
               )}
 
@@ -3808,308 +3577,83 @@ function App() {
 
         {activePage ===
           "reports" && (
-          <section className="card">
+          <section
+            className="card"
+          >
 
             <div className="head">
 
               <div>
 
                 <h2>
-                  📊 Reports
+                  📊 Sales Reports
                 </h2>
 
                 <small>
-                  Daily and monthly sales reports.
+                  Daily and monthly sales
+                  summary.
                 </small>
 
               </div>
 
               <button
-                onClick={() =>
-                  loadSalesHistory(
-                    profile?.business_id
-                  )
+                onClick={
+                  exportReport
                 }
               >
-                🔄 Refresh
+                📥 Export Excel
               </button>
 
             </div>
 
-            {/* DAILY */}
-
             <div
-              className="card"
               style={{
+                display:
+                  "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(180px,1fr))",
+                gap:
+                  "10px",
                 marginTop:
-                  "15px",
+                  "20px",
               }}
             >
 
-              <div className="head">
+              <select
+                value={
+                  reportType
+                }
+                onChange={(e) =>
+                  setReportType(
+                    e.target.value
+                  )
+                }
+              >
 
-                <div>
+                <option value="daily">
+                  Daily Report
+                </option>
 
-                  <h3>
-                    📅 Daily Sales
-                  </h3>
+                <option value="monthly">
+                  Monthly Report
+                </option>
 
-                  <small>
-                    Sales for selected date
-                  </small>
+              </select>
 
-                </div>
-
-                <button
-                  onClick={
-                    exportDailyReport
+              {reportType ===
+              "daily" ? (
+                <input
+                  type="date"
+                  value={
+                    reportDate
                   }
-                >
-                  📥 Download Excel
-                </button>
-
-              </div>
-
-              <div
-                style={{
-                  display:
-                    "flex",
-                  gap: "10px",
-                  alignItems:
-                    "end",
-                  flexWrap:
-                    "wrap",
-                }}
-              >
-
-                <div>
-
-                  <label>
-                    Date
-                  </label>
-
-                  <input
-                    type="date"
-                    value={
-                      reportDate
-                    }
-                    onChange={(e) =>
-                      setReportDate(
-                        e.target.value
-                      )
-                    }
-                  />
-
-                </div>
-
-              </div>
-
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fit,minmax(160px,1fr))",
-                  gap: "10px",
-                  marginTop:
-                    "15px",
-                }}
-              >
-
-                <div className="card">
-                  <small>
-                    Transactions
-                  </small>
-
-                  <h2>
-                    {
-                      dailySales.length
-                    }
-                  </h2>
-                </div>
-
-                <div className="card">
-                  <small>
-                    Total Sales
-                  </small>
-
-                  <h2>
-                    {money(
-                      dailyTotal
-                    )}
-                  </h2>
-                </div>
-
-                <div className="card">
-                  <small>
-                    Cash
-                  </small>
-
-                  <h3>
-                    {money(
-                      dailyCash
-                    )}
-                  </h3>
-                </div>
-
-                <div className="card">
-                  <small>
-                    GCash
-                  </small>
-
-                  <h3>
-                    {money(
-                      dailyGcash
-                    )}
-                  </h3>
-                </div>
-
-                <div className="card">
-                  <small>
-                    Card
-                  </small>
-
-                  <h3>
-                    {money(
-                      dailyCard
-                    )}
-                  </h3>
-                </div>
-
-              </div>
-
-              <div
-                style={{
-                  overflowX:
-                    "auto",
-                  marginTop:
-                    "15px",
-                }}
-              >
-
-                <table
-                  style={{
-                    width:
-                      "100%",
-                    borderCollapse:
-                      "collapse",
-                  }}
-                >
-
-                  <thead>
-
-                    <tr>
-
-                      <th>
-                        Invoice
-                      </th>
-
-                      <th>
-                        Time
-                      </th>
-
-                      <th>
-                        Payment
-                      </th>
-
-                      <th>
-                        Total
-                      </th>
-
-                    </tr>
-
-                  </thead>
-
-                  <tbody>
-
-                    {dailySales.map(
-                      (
-                        sale
-                      ) => (
-                        <tr
-                          key={
-                            sale.id
-                          }
-                        >
-
-                          <td>
-                            {
-                              sale.invoice_no
-                            }
-                          </td>
-
-                          <td>
-                            {new Date(
-                              sale.created_at
-                            ).toLocaleTimeString(
-                              "en-PH"
-                            )}
-                          </td>
-
-                          <td>
-                            {paymentLabel(
-                              sale.payment_method
-                            )}
-                          </td>
-
-                          <td>
-                            {money(
-                              sale.total
-                            )}
-                          </td>
-
-                        </tr>
-                      )
-                    )}
-
-                  </tbody>
-
-                </table>
-
-              </div>
-
-            </div>
-
-            {/* MONTHLY */}
-
-            <div
-              className="card"
-              style={{
-                marginTop:
-                  "15px",
-              }}
-            >
-
-              <div className="head">
-
-                <div>
-
-                  <h3>
-                    📆 Monthly Sales
-                  </h3>
-
-                  <small>
-                    Sales for selected month
-                  </small>
-
-                </div>
-
-                <button
-                  onClick={
-                    exportMonthlyReport
+                  onChange={(e) =>
+                    setReportDate(
+                      e.target.value
+                    )
                   }
-                >
-                  📥 Download Excel
-                </button>
-
-              </div>
-
-              <div>
-
-                <label>
-                  Month
-                </label>
-
+                />
+              ) : (
                 <input
                   type="month"
                   value={
@@ -4121,92 +3665,75 @@ function App() {
                     )
                   }
                 />
+              )}
 
-              </div>
+            </div>
 
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fit,minmax(160px,1fr))",
-                  gap: "10px",
-                  marginTop:
-                    "15px",
-                }}
-              >
+            {/* REPORT SUMMARY */}
 
-                <div className="card">
-                  <small>
-                    Transactions
-                  </small>
+            <div
+              style={{
+                display:
+                  "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(170px,1fr))",
+                gap:
+                  "10px",
+                marginTop:
+                  "20px",
+              }}
+            >
 
-                  <h2>
-                    {
-                      monthlySales.length
-                    }
-                  </h2>
-                </div>
+              <SummaryCard
+                title="Transactions"
+                value={
+                  reportSales.length
+                }
+              />
 
-                <div className="card">
-                  <small>
-                    Total Sales
-                  </small>
+              <SummaryCard
+                title="Total Sales"
+                value={money(
+                  reportTotal
+                )}
+              />
 
-                  <h2>
-                    {money(
-                      monthlyTotal
-                    )}
-                  </h2>
-                </div>
+              <SummaryCard
+                title="💵 Cash"
+                value={money(
+                  reportCash
+                )}
+              />
 
-                <div className="card">
-                  <small>
-                    Cash
-                  </small>
+              <SummaryCard
+                title="📱 GCash"
+                value={money(
+                  reportGCash
+                )}
+              />
 
-                  <h3>
-                    {money(
-                      monthlyCash
-                    )}
-                  </h3>
-                </div>
+              <SummaryCard
+                title="💳 Card"
+                value={money(
+                  reportCard
+                )}
+              />
 
-                <div className="card">
-                  <small>
-                    GCash
-                  </small>
+            </div>
 
-                  <h3>
-                    {money(
-                      monthlyGcash
-                    )}
-                  </h3>
-                </div>
+            {/* REPORT TABLE */}
 
-                <div className="card">
-                  <small>
-                    Card
-                  </small>
+            <div
+              style={{
+                overflowX:
+                  "auto",
+                marginTop:
+                  "25px",
+              }}
+            >
 
-                  <h3>
-                    {money(
-                      monthlyCard
-                    )}
-                  </h3>
-                </div>
-
-              </div>
-
-              <div
-                style={{
-                  overflowX:
-                    "auto",
-                  marginTop:
-                    "15px",
-                }}
-              >
-
+              {reportSales.length >
+              0 ? (
                 <table
                   style={{
                     width:
@@ -4232,8 +3759,17 @@ function App() {
                         Payment
                       </th>
 
-                      <th>
+                      <th
+                        style={{
+                          textAlign:
+                            "right",
+                        }}
+                      >
                         Total
+                      </th>
+
+                      <th>
+                        Status
                       </th>
 
                     </tr>
@@ -4242,10 +3778,8 @@ function App() {
 
                   <tbody>
 
-                    {monthlySales.map(
-                      (
-                        sale
-                      ) => (
+                    {reportSales.map(
+                      (sale) => (
                         <tr
                           key={
                             sale.id
@@ -4272,10 +3806,21 @@ function App() {
                             )}
                           </td>
 
-                          <td>
+                          <td
+                            style={{
+                              textAlign:
+                                "right",
+                            }}
+                          >
                             {money(
                               sale.total
                             )}
+                          </td>
+
+                          <td>
+                            {
+                              sale.status
+                            }
                           </td>
 
                         </tr>
@@ -4285,8 +3830,12 @@ function App() {
                   </tbody>
 
                 </table>
-
-              </div>
+              ) : (
+                <div className="empty">
+                  No sales recorded for
+                  this period.
+                </div>
+              )}
 
             </div>
 
@@ -4294,12 +3843,14 @@ function App() {
         )}
 
         {/* =================================================
-            PRODUCTS / MASTER FILE
+            PRODUCTS PAGE
         ================================================= */}
 
         {activePage ===
           "products" && (
-          <section className="card">
+          <section
+            className="card"
+          >
 
             <div className="head">
 
@@ -4310,7 +3861,9 @@ function App() {
                 </h2>
 
                 <small>
-                  Manage products, barcode, selling price and stock.
+                  Manage products,
+                  barcode, price and
+                  inventory.
                 </small>
 
               </div>
@@ -4319,11 +3872,20 @@ function App() {
                 style={{
                   display:
                     "flex",
-                  gap: "8px",
+                  gap:
+                    "8px",
                   flexWrap:
                     "wrap",
                 }}
               >
+
+                <button
+                  onClick={
+                    exportProducts
+                  }
+                >
+                  📥 Export Excel
+                </button>
 
                 <button
                   className="primary"
@@ -4331,25 +3893,7 @@ function App() {
                     openAddProduct
                   }
                 >
-                  ＋ Add Product
-                </button>
-
-                <button
-                  onClick={
-                    exportProducts
-                  }
-                >
-                  📥 Excel
-                </button>
-
-                <button
-                  onClick={() =>
-                    loadProducts(
-                      profile?.business_id
-                    )
-                  }
-                >
-                  🔄 Refresh
+                  ➕ Add Product
                 </button>
 
               </div>
@@ -4358,6 +3902,10 @@ function App() {
 
             <input
               className="search"
+              style={{
+                marginTop:
+                  "18px",
+              }}
               placeholder="Search product or barcode..."
               value={
                 productSearch
@@ -4367,70 +3915,79 @@ function App() {
                   e.target.value
                 )
               }
-              style={{
-                marginTop:
-                  "15px",
-              }}
             />
 
             <div
               style={{
-                marginTop:
-                  "15px",
                 overflowX:
                   "auto",
+                marginTop:
+                  "20px",
               }}
             >
 
-              <table
-                style={{
-                  width:
-                    "100%",
-                  borderCollapse:
-                    "collapse",
-                }}
-              >
+              {filteredProducts.length >
+              0 ? (
+                <table
+                  style={{
+                    width:
+                      "100%",
+                    borderCollapse:
+                      "collapse",
+                  }}
+                >
 
-                <thead>
+                  <thead>
 
-                  <tr>
+                    <tr>
 
-                    <th>
-                      Product
-                    </th>
+                      <th>
+                        Product
+                      </th>
 
-                    <th>
-                      Barcode
-                    </th>
+                      <th>
+                        Barcode
+                      </th>
 
-                    <th>
-                      Price
-                    </th>
+                      <th
+                        style={{
+                          textAlign:
+                            "right",
+                        }}
+                      >
+                        Price
+                      </th>
 
-                    <th>
-                      Stock
-                    </th>
+                      <th
+                        style={{
+                          textAlign:
+                            "center",
+                        }}
+                      >
+                        Stock
+                      </th>
 
-                    <th>
-                      Status
-                    </th>
+                      <th
+                        style={{
+                          textAlign:
+                            "right",
+                        }}
+                      >
+                        Stock Value
+                      </th>
 
-                    <th>
-                      Action
-                    </th>
+                      <th>
+                        Action
+                      </th>
 
-                  </tr>
+                    </tr>
 
-                </thead>
+                  </thead>
 
-                <tbody>
+                  <tbody>
 
-                  {filteredProducts.length >
-                  0 ? (
-                    filteredProducts.map(
-                      (
-                        product
-                      ) => (
+                    {filteredProducts.map(
+                      (product) => (
                         <tr
                           key={
                             product.id
@@ -4452,107 +4009,68 @@ function App() {
                             }
                           </td>
 
-                          <td>
+                          <td
+                            style={{
+                              textAlign:
+                                "right",
+                            }}
+                          >
                             {money(
                               product.price
                             )}
                           </td>
 
-                          <td>
+                          <td
+                            style={{
+                              textAlign:
+                                "center",
+                              fontWeight:
+                                700,
+                            }}
+                          >
                             {
                               product.stock
                             }
                           </td>
 
-                          <td>
-
-                            {product.stock <=
-                            0 ? (
-                              <span
-                                style={{
-                                  color:
-                                    "#b91c1c",
-                                  fontWeight:
-                                    "bold",
-                                }}
-                              >
-                                Out of Stock
-                              </span>
-                            ) : (
-                              <span
-                                style={{
-                                  color:
-                                    "#15803d",
-                                  fontWeight:
-                                    "bold",
-                                }}
-                              >
-                                Available
-                              </span>
+                          <td
+                            style={{
+                              textAlign:
+                                "right",
+                            }}
+                          >
+                            {money(
+                              product.price *
+                                product.stock
                             )}
-
                           </td>
 
                           <td>
 
-                            <div
-                              style={{
-                                display:
-                                  "flex",
-                                gap: "5px",
-                                flexWrap:
-                                  "wrap",
-                              }}
+                            <button
+                              onClick={() =>
+                                openEditProduct(
+                                  product
+                                )
+                              }
                             >
-
-                              <button
-                                onClick={() =>
-                                  openEditProduct(
-                                    product
-                                  )
-                                }
-                              >
-                                ✏️ Edit
-                              </button>
-
-                              <button
-                                onClick={() =>
-                                  deleteProduct(
-                                    product
-                                  )
-                                }
-                              >
-                                🗑️ Delete
-                              </button>
-
-                            </div>
+                              ✏️ Edit
+                            </button>
 
                           </td>
 
                         </tr>
                       )
-                    )
-                  ) : (
-                    <tr>
+                    )}
 
-                      <td
-                        colSpan="6"
-                        style={{
-                          textAlign:
-                            "center",
-                          padding:
-                            "30px",
-                        }}
-                      >
-                        No products found.
-                      </td>
+                  </tbody>
 
-                    </tr>
-                  )}
-
-                </tbody>
-
-              </table>
+                </table>
+              ) : (
+                <div className="empty">
+                  No products found.
+                </div>
+              )}
 
             </div>
 
@@ -4561,184 +4079,9 @@ function App() {
 
       </main>
 
-      {/* =================================================
-          ADD / EDIT PRODUCT MODAL
-      ================================================= */}
-
-      {productModalOpen && (
-        <div className="modal-backdrop">
-
-          <form
-            className="modal card"
-            onSubmit={
-              saveProduct
-            }
-            style={{
-              maxWidth:
-                "520px",
-              width:
-                "95%",
-            }}
-          >
-
-            <div className="head">
-
-              <h2>
-                {editingProduct
-                  ? "✏️ Edit Product"
-                  : "＋ Add Product"}
-              </h2>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setProductModalOpen(
-                    false
-                  )
-                }
-              >
-                ✕
-              </button>
-
-            </div>
-
-            <label>
-              Product Name
-            </label>
-
-            <input
-              type="text"
-              placeholder="Product name"
-              value={
-                productForm.name
-              }
-              onChange={(e) =>
-                setProductForm(
-                  {
-                    ...productForm,
-                    name:
-                      e.target.value,
-                  }
-                )
-              }
-              required
-            />
-
-            <label>
-              Barcode
-            </label>
-
-            <input
-              type="text"
-              placeholder="Barcode"
-              value={
-                productForm.barcode
-              }
-              onChange={(e) =>
-                setProductForm(
-                  {
-                    ...productForm,
-                    barcode:
-                      e.target.value,
-                  }
-                )
-              }
-            />
-
-            <label>
-              Selling Price
-            </label>
-
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              value={
-                productForm.price
-              }
-              onChange={(e) =>
-                setProductForm(
-                  {
-                    ...productForm,
-                    price:
-                      e.target.value,
-                  }
-                )
-              }
-              required
-            />
-
-            <label>
-              Stock
-            </label>
-
-            <input
-              type="number"
-              min="0"
-              step="1"
-              placeholder="0"
-              value={
-                productForm.stock
-              }
-              onChange={(e) =>
-                setProductForm(
-                  {
-                    ...productForm,
-                    stock:
-                      e.target.value,
-                  }
-                )
-              }
-              required
-            />
-
-            {err && (
-              <p className="error">
-                {err}
-              </p>
-            )}
-
-            <div className="modal-buttons">
-
-              <button
-                type="button"
-                onClick={() =>
-                  setProductModalOpen(
-                    false
-                  )
-                }
-                disabled={
-                  productSaving
-                }
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                className="primary"
-                disabled={
-                  productSaving
-                }
-              >
-                {productSaving
-                  ? "Saving..."
-                  : editingProduct
-                  ? "Update Product"
-                  : "Add Product"}
-              </button>
-
-            </div>
-
-          </form>
-
-        </div>
-      )}
-
-      {/* =================================================
+      {/* ===================================================
           PAYMENT MODAL
-      ================================================= */}
+      =================================================== */}
 
       {paymentOpen && (
         <div className="modal-backdrop">
@@ -4788,7 +4131,8 @@ function App() {
               style={{
                 display:
                   "flex",
-                gap: "8px",
+                gap:
+                  "10px",
                 marginBottom:
                   "15px",
                 flexWrap:
@@ -4808,7 +4152,9 @@ function App() {
                   setPaymentMethod(
                     "cash"
                   );
+
                   setCash("");
+
                   setErr("");
                 }}
               >
@@ -4827,7 +4173,9 @@ function App() {
                   setPaymentMethod(
                     "gcash"
                   );
+
                   setCash("");
+
                   setErr("");
                 }}
               >
@@ -4846,7 +4194,9 @@ function App() {
                   setPaymentMethod(
                     "card"
                   );
+
                   setCash("");
+
                   setErr("");
                 }}
               >
@@ -4858,7 +4208,6 @@ function App() {
             {paymentMethod ===
               "cash" && (
               <>
-
                 <label>
                   Cash Received
                 </label>
@@ -4888,7 +4237,8 @@ function App() {
                   ) <
                     total && (
                     <p className="error">
-                      Insufficient cash.
+                      Insufficient
+                      cash.
                     </p>
                   )}
 
@@ -4911,13 +4261,18 @@ function App() {
 
                     </div>
                   )}
-
               </>
             )}
 
             {paymentMethod !==
               "cash" && (
-              <div className="change">
+              <div
+                className="change"
+                style={{
+                  marginTop:
+                    "10px",
+                }}
+              >
 
                 <span>
                   Payment
@@ -4932,9 +4287,9 @@ function App() {
               </div>
             )}
 
-            {savingPayment && (
-              <p>
-                Saving payment...
+            {err && (
+              <p className="error">
+                {err}
               </p>
             )}
 
@@ -4985,9 +4340,9 @@ function App() {
         </div>
       )}
 
-      {/* =================================================
+      {/* ===================================================
           PAYMENT COMPLETE
-      ================================================= */}
+      =================================================== */}
 
       {paymentDone && (
         <div className="modal-backdrop">
@@ -5014,19 +4369,15 @@ function App() {
               <p>
                 Invoice:{" "}
                 <b>
-                  {
-                    receiptNo
-                  }
+                  {receiptNo}
                 </b>
               </p>
 
               <p>
                 Cashier:{" "}
                 <b>
-                  {
-                    profile?.full_name ||
-                    "Cashier"
-                  }
+                  {profile?.full_name ||
+                    "Cashier"}
                 </b>
               </p>
 
@@ -5082,42 +4433,50 @@ function App() {
 
             </div>
 
-            <b>
-              Items
-            </b>
+            <div>
 
-            {cart.map(
-              (item) => (
-                <div
-                  key={
-                    item.id
-                  }
-                  style={{
-                    display:
-                      "flex",
-                    justifyContent:
-                      "space-between",
-                    gap: "10px",
-                    padding:
-                      "6px 0",
-                  }}
-                >
+              <b>
+                Items
+              </b>
 
-                  <span>
-                    {item.name} ×{" "}
-                    {item.qty}
-                  </span>
+              {cart.map(
+                (item) => (
+                  <div
+                    key={
+                      item.id
+                    }
+                    style={{
+                      display:
+                        "flex",
+                      justifyContent:
+                        "space-between",
+                      padding:
+                        "6px 0",
+                    }}
+                  >
 
-                  <b>
-                    {money(
-                      item.price *
+                    <span>
+                      {
+                        item.name
+                      }{" "}
+                      ×{" "}
+                      {
                         item.qty
-                    )}
-                  </b>
+                      }
+                    </span>
 
-                </div>
-              )
-            )}
+                    <b>
+                      {money(
+                        item.price *
+                          item.qty
+                      )}
+                    </b>
+
+                  </div>
+                )
+              )}
+
+            </div>
 
             <div className="modal-buttons">
 
@@ -5145,9 +4504,9 @@ function App() {
         </div>
       )}
 
-      {/* =================================================
+      {/* ===================================================
           SALE DETAILS
-      ================================================= */}
+      =================================================== */}
 
       {saleDetailsOpen &&
         selectedSale && (
@@ -5157,7 +4516,7 @@ function App() {
               className="modal card"
               style={{
                 maxWidth:
-                  "760px",
+                  "700px",
                 width:
                   "95%",
               }}
@@ -5183,7 +4542,8 @@ function App() {
 
               {saleDetailsLoading ? (
                 <div className="empty">
-                  Loading sale details...
+                  Loading sale
+                  details...
                 </div>
               ) : (
                 <>
@@ -5290,9 +4650,7 @@ function App() {
                       <tbody>
 
                         {selectedSaleItems.map(
-                          (
-                            item
-                          ) => (
+                          (item) => (
                             <tr
                               key={
                                 item.id
@@ -5337,10 +4695,15 @@ function App() {
                     style={{
                       marginTop:
                         "15px",
+                      borderTop:
+                        "1px solid #ddd",
+                      paddingTop:
+                        "12px",
                     }}
                   >
 
                     <div className="total">
+
                       <span>
                         Subtotal
                       </span>
@@ -5350,9 +4713,11 @@ function App() {
                           selectedSale.subtotal
                         )}
                       </b>
+
                     </div>
 
                     <div className="total">
+
                       <span>
                         Discount
                       </span>
@@ -5362,9 +4727,11 @@ function App() {
                           selectedSale.discount
                         )}
                       </b>
+
                     </div>
 
                     <div className="total">
+
                       <span>
                         TOTAL
                       </span>
@@ -5374,9 +4741,11 @@ function App() {
                           selectedSale.total
                         )}
                       </b>
+
                     </div>
 
                     <div className="total">
+
                       <span>
                         Amount Paid
                       </span>
@@ -5386,11 +4755,13 @@ function App() {
                           selectedSale.amount_tendered
                         )}
                       </b>
+
                     </div>
 
                     {selectedSale.payment_method ===
                       "cash" && (
                       <div className="total">
+
                         <span>
                           Change
                         </span>
@@ -5400,6 +4771,7 @@ function App() {
                             selectedSale.change_amount
                           )}
                         </b>
+
                       </div>
                     )}
 
@@ -5436,12 +4808,332 @@ function App() {
           </div>
         )}
 
+      {/* ===================================================
+          PRODUCT MODAL
+      =================================================== */}
+
+      {productModalOpen && (
+        <div className="modal-backdrop">
+
+          <form
+            className="modal card"
+            onSubmit={
+              saveProduct
+            }
+            style={{
+              maxWidth:
+                "500px",
+              width:
+                "95%",
+            }}
+          >
+
+            <div className="head">
+
+              <h2>
+                {editingProduct
+                  ? "✏️ Edit Product"
+                  : "➕ Add Product"}
+              </h2>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setProductModalOpen(
+                    false
+                  )
+                }
+              >
+                ✕
+              </button>
+
+            </div>
+
+            <label>
+              Product Name
+            </label>
+
+            <input
+              type="text"
+              placeholder="Product name"
+              value={
+                productForm.name
+              }
+              onChange={(e) =>
+                setProductForm(
+                  (current) => ({
+                    ...current,
+                    name:
+                      e.target
+                        .value,
+                  })
+                )
+              }
+              required
+            />
+
+            <label>
+              Barcode
+            </label>
+
+            <input
+              type="text"
+              placeholder="Barcode"
+              value={
+                productForm.barcode
+              }
+              onChange={(e) =>
+                setProductForm(
+                  (current) => ({
+                    ...current,
+                    barcode:
+                      e.target
+                        .value,
+                  })
+                )
+              }
+            />
+
+            <label>
+              Selling Price
+            </label>
+
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={
+                productForm.price
+              }
+              onChange={(e) =>
+                setProductForm(
+                  (current) => ({
+                    ...current,
+                    price:
+                      e.target
+                        .value,
+                  })
+                )
+              }
+            />
+
+            <label>
+              Stock
+            </label>
+
+            <input
+              type="number"
+              min="0"
+              step="1"
+              placeholder="0"
+              value={
+                productForm.stock
+              }
+              onChange={(e) =>
+                setProductForm(
+                  (current) => ({
+                    ...current,
+                    stock:
+                      e.target
+                        .value,
+                  })
+                )
+              }
+            />
+
+            {err && (
+              <p className="error">
+                {err}
+              </p>
+            )}
+
+            <div className="modal-buttons">
+
+              <button
+                type="button"
+                onClick={() =>
+                  setProductModalOpen(
+                    false
+                  )
+                }
+                disabled={
+                  productSaving
+                }
+              >
+                Cancel
+              </button>
+
+              <button
+                className="primary"
+                type="submit"
+                disabled={
+                  productSaving
+                }
+              >
+                {productSaving
+                  ? "Saving..."
+                  : editingProduct
+                  ? "Save Changes"
+                  : "Add Product"}
+              </button>
+
+            </div>
+
+          </form>
+
+        </div>
+      )}
+
+      {/* ===================================================
+          RESPONSIVE STYLE OVERRIDE
+      =================================================== */}
+
+      <style>{`
+        @media (max-width: 800px) {
+          .smallbiz-app aside {
+            width: 82px !important;
+          }
+
+          .smallbiz-app aside > div:first-child {
+            padding: 18px 10px !important;
+            text-align: center;
+          }
+
+          .smallbiz-app aside > div:first-child span:last-child,
+          .smallbiz-app aside > div:first-child small,
+          .smallbiz-app aside .user-box,
+          .smallbiz-app aside nav button span:last-child,
+          .smallbiz-app aside > div:last-child button span:last-child {
+            display: none !important;
+          }
+
+          .smallbiz-app aside nav button,
+          .smallbiz-app aside > div:last-child button {
+            justify-content: center !important;
+          }
+
+          .smallbiz-app main {
+            margin-left: 82px !important;
+            padding: 18px !important;
+          }
+        }
+
+        table th,
+        table td {
+          padding: 10px;
+          border-bottom: 1px solid #e2e8f0;
+        }
+
+        table th {
+          text-align: left;
+          background: #f8fafc;
+          color: #475569;
+          font-size: 13px;
+        }
+
+        table tr:hover td {
+          background: #f8fafc;
+        }
+
+        .modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, .55);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+          z-index: 100;
+          overflow-y: auto;
+        }
+
+        .modal {
+          max-height: calc(100vh - 40px);
+          overflow-y: auto;
+        }
+
+        input,
+        select,
+        button {
+          min-height: 40px;
+        }
+      `}</style>
+
     </div>
   );
 }
 
 /* =========================================================
-   RENDER
+   SUMMARY CARD
+========================================================= */
+
+function SummaryCard({
+  title,
+  value,
+}) {
+  return (
+    <div
+      className="card"
+      style={{
+        margin: 0,
+        padding:
+          "15px",
+      }}
+    >
+
+      <small
+        style={{
+          color:
+            "#64748b",
+        }}
+      >
+        {title}
+      </small>
+
+      <h2
+        style={{
+          margin:
+            "5px 0 0",
+          color:
+            "#0f172a",
+        }}
+      >
+        {value}
+      </h2>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   SIDEBAR STYLES
+========================================================= */
+
+const sideButton = {
+  width: "100%",
+  border: "0",
+  background: "transparent",
+  color: "#475569",
+  padding: "12px 14px",
+  borderRadius: "10px",
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  textAlign: "left",
+  fontWeight: 600,
+  cursor: "pointer",
+  fontSize: "14px",
+};
+
+const activeSideButton = {
+  background:
+    "#2563eb",
+  color: "#ffffff",
+};
+
+/* =========================================================
+   ROOT
 ========================================================= */
 
 createRoot(
