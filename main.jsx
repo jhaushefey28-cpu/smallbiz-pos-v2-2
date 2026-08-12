@@ -109,6 +109,10 @@ function App() {
 
   const [activePage, setActivePage] = useState("pos");
 
+  const [autoPrintReceipt, setAutoPrintReceipt] = useState(() => {
+    return localStorage.getItem("smallbiz_auto_print_receipt") === "true";
+  });
+
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentDone, setPaymentDone] = useState(false);
 
@@ -612,6 +616,16 @@ function App() {
       return;
     }
 
+    let autoPrintWindow = null;
+
+    if (autoPrintReceipt) {
+      autoPrintWindow = window.open(
+        "",
+        "_blank",
+        "width=420,height=700"
+      );
+    }
+
     setSavingPayment(true);
     setErr("");
     setStatus(
@@ -791,7 +805,18 @@ function App() {
       setStatus(
         "Payment saved successfully."
       );
+
+      if (autoPrintReceipt) {
+        printReceipt({
+          receiptNo: invoiceNumber,
+          printWindow: autoPrintWindow,
+        });
+      }
     } catch (error) {
+      if (autoPrintWindow && !autoPrintWindow.closed) {
+        autoPrintWindow.close();
+      }
+
       console.error(
         "Payment error:",
         error
@@ -1261,7 +1286,13 @@ function App() {
   // PRINT RECEIPT
   // =========================
 
-  function printReceipt() {
+  function printReceipt(options = {}) {
+    const receiptNumber =
+      options.receiptNo || receiptNo;
+
+    const printWindow =
+      options.printWindow || null;
+
     const cashierName =
       profile?.full_name ||
       profile?.role ||
@@ -1291,6 +1322,7 @@ function App() {
         .join("");
 
     const win =
+      printWindow ||
       window.open(
         "",
         "_blank",
@@ -1308,7 +1340,7 @@ function App() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>${receiptNo}</title>
+        <title>${receiptNumber}</title>
 
         <style>
           body {
@@ -1371,7 +1403,7 @@ function App() {
 
         <div class="center">
           <div>Sales Receipt</div>
-          <div>${receiptNo}</div>
+          <div>${receiptNumber}</div>
           <div>
             ${new Date().toLocaleString(
               "en-PH"
@@ -1705,6 +1737,53 @@ function App() {
         </nav>
 
         <div className="sidebar-bottom">
+
+          <div style={{
+            padding: "12px",
+            marginBottom: "10px",
+            borderRadius: "12px",
+            background: "rgba(255,255,255,0.06)"
+          }}>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "10px"
+            }}>
+              <div>
+                <b style={{ display: "block" }}>🖨️ Auto Print</b>
+                <small style={{ opacity: 0.7 }}>
+                  Print receipt after payment
+                </small>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !autoPrintReceipt;
+                  setAutoPrintReceipt(next);
+                  localStorage.setItem(
+                    "smallbiz_auto_print_receipt",
+                    String(next)
+                  );
+                  setStatus(
+                    next
+                      ? "Auto Print Receipt: ON"
+                      : "Auto Print Receipt: OFF"
+                  );
+                }}
+                style={{
+                  border: "none",
+                  borderRadius: "999px",
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                  fontWeight: 700
+                }}
+              >
+                {autoPrintReceipt ? "ON" : "OFF"}
+              </button>
+            </div>
+          </div>
 
           <button
             className="logout-btn"
