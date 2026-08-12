@@ -1,18 +1,34 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import { createRoot } from "react-dom/client";
 import { createClient } from "@supabase/supabase-js";
 import { Html5Qrcode } from "html5-qrcode";
 import * as XLSX from "xlsx";
+
 import "./styles.css";
+
+
+/* =========================================================
+   ERROR BOUNDARY
+========================================================= */
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { error: null };
+
+    this.state = {
+      error: null,
+    };
   }
 
   static getDerivedStateFromError(error) {
-    return { error };
+    return {
+      error,
+    };
   }
 
   render() {
@@ -20,9 +36,16 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="auth">
           <div className="card error-card">
-            <h1>SmallBiz POS V2.2</h1>
+            <h1>SmallBiz POS V2.3</h1>
+
             <h2>App error</h2>
-            <pre>{String(this.state.error?.stack || this.state.error)}</pre>
+
+            <pre>
+              {String(
+                this.state.error?.stack ||
+                  this.state.error
+              )}
+            </pre>
           </div>
         </div>
       );
@@ -32,20 +55,39 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-const configError = !SUPABASE_URL || !SUPABASE_KEY;
+/* =========================================================
+   SUPABASE
+========================================================= */
+
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL;
+
+const SUPABASE_KEY =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+const configError =
+  !SUPABASE_URL ||
+  !SUPABASE_KEY;
 
 const supabase = configError
   ? null
-  : createClient(SUPABASE_URL, SUPABASE_KEY);
+  : createClient(
+      SUPABASE_URL,
+      SUPABASE_KEY
+    );
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
 
 const money = (value) =>
   new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: "PHP",
   }).format(Number(value || 0));
+
 
 function norm(product) {
   return {
@@ -90,90 +132,266 @@ function norm(product) {
   };
 }
 
+
+/* =========================================================
+   APP
+========================================================= */
+
 function App() {
-  const [session, setSession] = useState(null);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  /* =======================================================
+     SESSION
+  ======================================================= */
 
-  const [products, setProducts] = useState([]);
-  const [search, setSearch] = useState("");
+  const [session, setSession] =
+    useState(null);
 
-  const [cart, setCart] = useState([]);
 
-  const [scan, setScan] = useState(false);
-  const [status, setStatus] = useState("");
-  const [err, setErr] = useState("");
+  /* =======================================================
+     LOGIN
+  ======================================================= */
 
-  const [profile, setProfile] = useState(null);
-
-  const [activePage, setActivePage] = useState("pos");
-
-  const [autoPrintReceipt, setAutoPrintReceipt] = useState(() => {
-    return localStorage.getItem("smallbiz_auto_print_receipt") === "true";
-  });
-
-  const [paymentOpen, setPaymentOpen] = useState(false);
-  const [paymentDone, setPaymentDone] = useState(false);
-
-  const [cash, setCash] = useState("");
-  const [receiptNo, setReceiptNo] = useState("");
-
-  const [savingPayment, setSavingPayment] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("cash");
-
-  const [salesHistory, setSalesHistory] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-
-  const [historySearch, setHistorySearch] = useState("");
-  const [historyPaymentFilter, setHistoryPaymentFilter] =
-    useState("all");
-  const [historyDateFilter, setHistoryDateFilter] =
+  const [email, setEmail] =
     useState("");
-  const [historyStatusFilter, setHistoryStatusFilter] =
-    useState("all");
 
-  const [selectedSale, setSelectedSale] = useState(null);
-  const [selectedSaleItems, setSelectedSaleItems] = useState([]);
+  const [password, setPassword] =
+    useState("");
 
-  const [saleDetailsOpen, setSaleDetailsOpen] = useState(false);
-  const [saleDetailsLoading, setSaleDetailsLoading] =
+
+  /* =======================================================
+     PRODUCTS
+  ======================================================= */
+
+  const [products, setProducts] =
+    useState([]);
+
+  const [search, setSearch] =
+    useState("");
+
+
+  /* =======================================================
+     CART
+  ======================================================= */
+
+  const [cart, setCart] =
+    useState([]);
+
+
+  /* =======================================================
+     GENERAL STATUS
+  ======================================================= */
+
+  const [scan, setScan] =
     useState(false);
 
-  const [recentScanned, setRecentScanned] = useState([]);
+  const [status, setStatus] =
+    useState("");
 
-  // =========================
-  // LOGIN SESSION
-  // =========================
+  const [err, setErr] =
+    useState("");
+
+
+  /* =======================================================
+     PROFILE
+  ======================================================= */
+
+  const [profile, setProfile] =
+    useState(null);
+
+
+  /* =======================================================
+     PAGE
+  ======================================================= */
+
+  const [activePage, setActivePage] =
+    useState("pos");
+
+
+  /* =======================================================
+     AUTO PRINT
+  ======================================================= */
+
+  const [
+    autoPrintReceipt,
+    setAutoPrintReceipt,
+  ] = useState(() => {
+    return (
+      localStorage.getItem(
+        "smallbiz_auto_print_receipt"
+      ) === "true"
+    );
+  });
+
+
+  /* =======================================================
+     PAYMENT
+  ======================================================= */
+
+  const [
+    paymentOpen,
+    setPaymentOpen,
+  ] = useState(false);
+
+  const [
+    paymentDone,
+    setPaymentDone,
+  ] = useState(false);
+
+  const [cash, setCash] =
+    useState("");
+
+  const [receiptNo, setReceiptNo] =
+    useState("");
+
+  const [
+    savingPayment,
+    setSavingPayment,
+  ] = useState(false);
+
+  const [
+    paymentMethod,
+    setPaymentMethod,
+  ] = useState("cash");
+
+
+  /* =======================================================
+     SALES HISTORY
+  ======================================================= */
+
+  const [
+    salesHistory,
+    setSalesHistory,
+  ] = useState([]);
+
+  const [
+    historyLoading,
+    setHistoryLoading,
+  ] = useState(false);
+
+  const [
+    historySearch,
+    setHistorySearch,
+  ] = useState("");
+
+  const [
+    historyPaymentFilter,
+    setHistoryPaymentFilter,
+  ] = useState("all");
+
+  const [
+    historyDateFilter,
+    setHistoryDateFilter,
+  ] = useState("");
+
+  const [
+    historyStatusFilter,
+    setHistoryStatusFilter,
+  ] = useState("all");
+
+
+  /* =======================================================
+     SALE DETAILS
+  ======================================================= */
+
+  const [
+    selectedSale,
+    setSelectedSale,
+  ] = useState(null);
+
+  const [
+    selectedSaleItems,
+    setSelectedSaleItems,
+  ] = useState([]);
+
+  const [
+    saleDetailsOpen,
+    setSaleDetailsOpen,
+  ] = useState(false);
+
+  const [
+    saleDetailsLoading,
+    setSaleDetailsLoading,
+  ] = useState(false);
+
+
+  /* =======================================================
+     RECENT SCANNED
+  ======================================================= */
+
+  const [
+    recentScanned,
+    setRecentScanned,
+  ] = useState([]);
+
+
+  /* =======================================================
+     VOID
+  ======================================================= */
+
+  const [
+    voidOpen,
+    setVoidOpen,
+  ] = useState(false);
+
+  const [
+    voidingSale,
+    setVoidingSale,
+  ] = useState(null);
+
+  const [
+    voidReason,
+    setVoidReason,
+  ] = useState("");
+
+  const [
+    voiding,
+    setVoiding,
+  ] = useState(false);
+
+
+  /* =======================================================
+     LOGIN SESSION
+  ======================================================= */
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      return;
+    }
 
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) {
-        setSession(data.session);
-      }
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (mounted) {
+          setSession(data.session);
+        }
+      });
 
     const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_, newSession) => {
-        setSession(newSession);
-      }
-    );
+      data: {
+        subscription,
+      },
+    } =
+      supabase.auth.onAuthStateChange(
+        (_, newSession) => {
+          setSession(
+            newSession
+          );
+        }
+      );
 
     return () => {
       mounted = false;
+
       subscription.unsubscribe();
     };
   }, []);
 
-  // =========================
-  // LOAD DATA
-  // =========================
+
+  /* =======================================================
+     LOAD DATA
+  ======================================================= */
 
   useEffect(() => {
     if (session?.user) {
@@ -181,8 +399,11 @@ function App() {
     }
   }, [session]);
 
+
   async function load(uid) {
-    if (!supabase) return;
+    if (!supabase) {
+      return;
+    }
 
     setErr("");
 
@@ -202,16 +423,22 @@ function App() {
         "Profile error: " +
           profileError.message
       );
+
       return;
     }
 
-    setProfile(profileData);
+    setProfile(
+      profileData
+    );
 
-    let query = supabase
-      .from("products")
-      .select("*");
+    let query =
+      supabase
+        .from("products")
+        .select("*");
 
-    if (profileData?.business_id) {
+    if (
+      profileData?.business_id
+    ) {
       query = query.eq(
         "business_id",
         profileData.business_id
@@ -221,15 +448,19 @@ function App() {
     const {
       data,
       error,
-    } = await query.order("created_at", {
-      ascending: false,
-    });
+    } = await query.order(
+      "created_at",
+      {
+        ascending: false,
+      }
+    );
 
     if (error) {
       setErr(
         "Products error: " +
           error.message
       );
+
       return;
     }
 
@@ -242,12 +473,18 @@ function App() {
     );
   }
 
-  // =========================
-  // SALES HISTORY
-  // =========================
 
-  async function loadSalesHistory(businessId) {
-    if (!supabase || !businessId) {
+  /* =======================================================
+     SALES HISTORY
+  ======================================================= */
+
+  async function loadSalesHistory(
+    businessId
+  ) {
+    if (
+      !supabase ||
+      !businessId
+    ) {
       return;
     }
 
@@ -259,12 +496,18 @@ function App() {
     } = await supabase
       .from("sales")
       .select(
-        "id,business_id,invoice_no,cashier_id,subtotal,discount,total,payment_method,amount_tendered,change_amount,status,created_at"
+        "id,business_id,invoice_no,cashier_id,subtotal,discount,total,payment_method,amount_tendered,change_amount,status,created_at,voided_at,voided_by,void_reason"
       )
-      .eq("business_id", businessId)
-      .order("created_at", {
-        ascending: false,
-      })
+      .eq(
+        "business_id",
+        businessId
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        }
+      )
       .limit(500);
 
     if (error) {
@@ -274,38 +517,52 @@ function App() {
       );
 
       setHistoryLoading(false);
+
       return;
     }
 
-    setSalesHistory(data || []);
+    setSalesHistory(
+      data || []
+    );
+
     setHistoryLoading(false);
   }
 
-  // =========================
-  // LOGIN
-  // =========================
+
+  /* =======================================================
+     LOGIN
+  ======================================================= */
 
   async function login(e) {
     e.preventDefault();
 
-    if (!supabase) return;
+    if (!supabase) {
+      return;
+    }
 
     setErr("");
 
-    const { error } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const {
+      error,
+    } =
+      await supabase.auth.signInWithPassword(
+        {
+          email,
+          password,
+        }
+      );
 
     if (error) {
-      setErr(error.message);
+      setErr(
+        error.message
+      );
     }
   }
 
-  // =========================
-  // LOGOUT
-  // =========================
+
+  /* =======================================================
+     LOGOUT
+  ======================================================= */
 
   async function logout() {
     if (supabase) {
@@ -313,53 +570,86 @@ function App() {
     }
 
     setCart([]);
-    setPaymentOpen(false);
-    setPaymentDone(false);
+
+    setPaymentOpen(
+      false
+    );
+
+    setPaymentDone(
+      false
+    );
 
     setCash("");
+
     setReceiptNo("");
 
     setProfile(null);
+
     setStatus("");
+
     setErr("");
 
-    setPaymentMethod("cash");
+    setPaymentMethod(
+      "cash"
+    );
+
     setRecentScanned([]);
 
     setSalesHistory([]);
+
     setSelectedSale(null);
+
     setSelectedSaleItems([]);
 
-    setSaleDetailsOpen(false);
+    setSaleDetailsOpen(
+      false
+    );
+
+    setVoidOpen(false);
+
+    setVoidingSale(null);
+
+    setVoidReason("");
   }
 
-  // =========================
-  // PRODUCT SEARCH
-  // =========================
 
-  const filtered = useMemo(() => {
-    const q = search
-      .toLowerCase()
-      .trim();
+  /* =======================================================
+     PRODUCT SEARCH
+  ======================================================= */
 
-    if (!q) {
-      return products;
-    }
-
-    return products.filter(
-      (product) =>
-        String(product.name)
+  const filtered =
+    useMemo(() => {
+      const q =
+        search
           .toLowerCase()
-          .includes(q) ||
-        String(product.barcode)
-          .toLowerCase()
-          .includes(q)
-    );
-  }, [products, search]);
+          .trim();
 
-  // =========================
-  // ADD PRODUCT TO CART
-  // =========================
+      if (!q) {
+        return products;
+      }
+
+      return products.filter(
+        (product) =>
+          String(
+            product.name
+          )
+            .toLowerCase()
+            .includes(q) ||
+          String(
+            product.barcode
+          )
+            .toLowerCase()
+            .includes(q)
+      );
+    }, [
+      products,
+      search,
+    ]);
+
+
+  /* =======================================================
+     ADD PRODUCT
+  ======================================================= */
 
   function add(product) {
     if (product.stock <= 0) {
@@ -371,45 +661,51 @@ function App() {
       return;
     }
 
-    setCart((current) => {
-      const existing = current.find(
-        (item) =>
-          item.id === product.id
-      );
-
-      if (existing) {
-        if (
-          existing.qty >=
-          product.stock
-        ) {
-          setStatus(
-            "Maximum available stock reached: " +
-              product.name
+    setCart(
+      (current) => {
+        const existing =
+          current.find(
+            (item) =>
+              item.id ===
+              product.id
           );
 
-          return current;
+        if (existing) {
+          if (
+            existing.qty >=
+            product.stock
+          ) {
+            setStatus(
+              "Maximum available stock reached: " +
+                product.name
+            );
+
+            return current;
+          }
+
+          return current.map(
+            (item) =>
+              item.id ===
+              product.id
+                ? {
+                    ...item,
+                    qty:
+                      item.qty +
+                      1,
+                  }
+                : item
+          );
         }
 
-        return current.map(
-          (item) =>
-            item.id === product.id
-              ? {
-                  ...item,
-                  qty:
-                    item.qty + 1,
-                }
-              : item
-        );
+        return [
+          ...current,
+          {
+            ...product,
+            qty: 1,
+          },
+        ];
       }
-
-      return [
-        ...current,
-        {
-          ...product,
-          qty: 1,
-        },
-      ];
-    });
+    );
 
     setStatus(
       "Added: " +
@@ -417,85 +713,113 @@ function App() {
     );
   }
 
-  // =========================
-  // SCANNED PRODUCT
-  // =========================
 
-  function handleScannedProduct(product) {
-    setRecentScanned((current) => {
-      const filteredRecent =
-        current.filter(
-          (item) =>
-            item.id !== product.id
-        );
+  /* =======================================================
+     SCANNED PRODUCT
+  ======================================================= */
 
-      return [
-        {
-          ...product,
-          scannedAt:
-            new Date().toISOString(),
-        },
-        ...filteredRecent,
-      ].slice(0, 6);
-    });
+  function handleScannedProduct(
+    product
+  ) {
+    setRecentScanned(
+      (current) => {
+        const filteredRecent =
+          current.filter(
+            (item) =>
+              item.id !==
+              product.id
+          );
+
+        return [
+          {
+            ...product,
+            scannedAt:
+              new Date().toISOString(),
+          },
+          ...filteredRecent,
+        ].slice(0, 6);
+      }
+    );
 
     add(product);
   }
 
-  // =========================
-  // CART QUANTITY
-  // =========================
 
-  function qty(id, difference) {
-    setCart((current) =>
-      current.flatMap((item) => {
-        if (item.id !== id) {
-          return [item];
-        }
+  /* =======================================================
+     CART QUANTITY
+  ======================================================= */
 
-        const newQty = Math.min(
-          item.stock || 999999,
-          item.qty + difference
-        );
+  function qty(
+    id,
+    difference
+  ) {
+    setCart(
+      (current) =>
+        current.flatMap(
+          (item) => {
+            if (
+              item.id !== id
+            ) {
+              return [item];
+            }
 
-        if (newQty <= 0) {
-          return [];
-        }
+            const newQty =
+              Math.min(
+                item.stock ||
+                  999999,
+                item.qty +
+                  difference
+              );
 
-        return [
-          {
-            ...item,
-            qty: newQty,
-          },
-        ];
-      })
+            if (
+              newQty <= 0
+            ) {
+              return [];
+            }
+
+            return [
+              {
+                ...item,
+                qty: newQty,
+              },
+            ];
+          }
+        )
     );
   }
 
-  // =========================
-  // TOTALS
-  // =========================
 
-  const subtotal = cart.reduce(
-    (sum, item) =>
-      sum +
-      Number(item.price) *
-        Number(item.qty),
-    0
-  );
+  /* =======================================================
+     TOTALS
+  ======================================================= */
+
+  const subtotal =
+    cart.reduce(
+      (sum, item) =>
+        sum +
+        Number(
+          item.price
+        ) *
+          Number(
+            item.qty
+          ),
+      0
+    );
 
   const discount = 0;
 
   const total =
-    subtotal - discount;
+    subtotal -
+    discount;
 
   const change =
     Number(cash || 0) -
     total;
 
-  // =========================
-  // BARCODE SCANNER
-  // =========================
+
+  /* =======================================================
+     BARCODE SCANNER
+  ======================================================= */
 
   useEffect(() => {
     if (!scan) {
@@ -512,7 +836,9 @@ function App() {
     }
 
     const scanner =
-      new Html5Qrcode("reader");
+      new Html5Qrcode(
+        "reader"
+      );
 
     scanner
       .start(
@@ -522,6 +848,7 @@ function App() {
         },
         {
           fps: 10,
+
           qrbox: {
             width: 280,
             height: 120,
@@ -576,27 +903,40 @@ function App() {
         )
         .catch(() => {});
     };
-  }, [scan, products]);
+  }, [
+    scan,
+    products,
+  ]);
 
-  // =========================
-  // PAYMENT LABEL
-  // =========================
 
-  function paymentLabel(method) {
-    if (method === "gcash") {
+  /* =======================================================
+     PAYMENT LABEL
+  ======================================================= */
+
+  function paymentLabel(
+    method
+  ) {
+    if (
+      method ===
+      "gcash"
+    ) {
       return "GCash";
     }
 
-    if (method === "card") {
+    if (
+      method ===
+      "card"
+    ) {
       return "Card";
     }
 
     return "Cash";
   }
 
-  // =========================
-  // COMPLETE PAYMENT
-  // =========================
+
+  /* =======================================================
+     COMPLETE PAYMENT
+  ======================================================= */
 
   async function completePayment() {
     if (
@@ -609,25 +949,35 @@ function App() {
     }
 
     if (
-      paymentMethod === "cash" &&
+      paymentMethod ===
+        "cash" &&
       (!cash ||
-        Number(cash) < total)
+        Number(cash) <
+          total)
     ) {
       return;
     }
 
-    let autoPrintWindow = null;
+    let autoPrintWindow =
+      null;
 
-    if (autoPrintReceipt) {
-      autoPrintWindow = window.open(
-        "",
-        "_blank",
-        "width=420,height=700"
-      );
+    if (
+      autoPrintReceipt
+    ) {
+      autoPrintWindow =
+        window.open(
+          "",
+          "_blank",
+          "width=420,height=700"
+        );
     }
 
-    setSavingPayment(true);
+    setSavingPayment(
+      true
+    );
+
     setErr("");
+
     setStatus(
       "Saving payment..."
     );
@@ -637,18 +987,24 @@ function App() {
       Date.now();
 
     const amountTendered =
-      paymentMethod === "cash"
+      paymentMethod ===
+      "cash"
         ? Number(
-            Number(cash).toFixed(2)
+            Number(
+              cash
+            ).toFixed(2)
           )
         : Number(
             total.toFixed(2)
           );
 
     const changeAmount =
-      paymentMethod === "cash"
+      paymentMethod ===
+      "cash"
         ? Number(
-            change.toFixed(2)
+            change.toFixed(
+              2
+            )
           )
         : 0;
 
@@ -656,47 +1012,54 @@ function App() {
       const {
         data: sale,
         error: saleError,
-      } = await supabase
-        .from("sales")
-        .insert({
-          business_id:
-            profile.business_id,
+      } =
+        await supabase
+          .from("sales")
+          .insert({
+            business_id:
+              profile.business_id,
 
-          invoice_no:
-            invoiceNumber,
+            invoice_no:
+              invoiceNumber,
 
-          cashier_id:
-            profile.id,
+            cashier_id:
+              profile.id,
 
-          subtotal:
-            Number(
-              subtotal.toFixed(2)
-            ),
+            subtotal:
+              Number(
+                subtotal.toFixed(
+                  2
+                )
+              ),
 
-          discount:
-            Number(
-              discount.toFixed(2)
-            ),
+            discount:
+              Number(
+                discount.toFixed(
+                  2
+                )
+              ),
 
-          total:
-            Number(
-              total.toFixed(2)
-            ),
+            total:
+              Number(
+                total.toFixed(
+                  2
+                )
+              ),
 
-          payment_method:
-            paymentMethod,
+            payment_method:
+              paymentMethod,
 
-          amount_tendered:
-            amountTendered,
+            amount_tendered:
+              amountTendered,
 
-          change_amount:
-            changeAmount,
+            change_amount:
+              changeAmount,
 
-          status:
-            "completed",
-        })
-        .select()
-        .single();
+            status:
+              "completed",
+          })
+          .select()
+          .single();
 
       if (saleError) {
         throw new Error(
@@ -706,38 +1069,56 @@ function App() {
       }
 
       const saleItems =
-        cart.map((item) => ({
-          sale_id: sale.id,
+        cart.map(
+          (item) => ({
+            sale_id:
+              sale.id,
 
-          product_id:
-            item.id,
+            product_id:
+              item.id,
 
-          product_name:
-            item.name,
+            product_name:
+              item.name,
 
-          barcode:
-            item.barcode || "",
+            barcode:
+              item.barcode ||
+              "",
 
-          quantity:
-            Number(item.qty),
+            quantity:
+              Number(
+                item.qty
+              ),
 
-          unit_price:
-            Number(item.price),
+            unit_price:
+              Number(
+                item.price
+              ),
 
-          line_total:
-            Number(
-              (
-                Number(item.price) *
-                Number(item.qty)
-              ).toFixed(2)
-            ),
-        }));
+            line_total:
+              Number(
+                (
+                  Number(
+                    item.price
+                  ) *
+                  Number(
+                    item.qty
+                  )
+                ).toFixed(2)
+              ),
+          })
+        );
 
       const {
-        error: itemsError,
-      } = await supabase
-        .from("sale_items")
-        .insert(saleItems);
+        error:
+          itemsError,
+      } =
+        await supabase
+          .from(
+            "sale_items"
+          )
+          .insert(
+            saleItems
+          );
 
       if (itemsError) {
         throw new Error(
@@ -746,12 +1127,18 @@ function App() {
         );
       }
 
-      for (const item of cart) {
+      for (
+        const item of cart
+      ) {
         const currentStock =
-          Number(item.stock || 0);
+          Number(
+            item.stock || 0
+          );
 
         const quantitySold =
-          Number(item.qty || 0);
+          Number(
+            item.qty || 0
+          );
 
         if (
           quantitySold >
@@ -768,18 +1155,24 @@ function App() {
           quantitySold;
 
         const {
-          error: stockError,
-        } = await supabase
-          .from("products")
-          .update({
-            stock: newStock,
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq(
-            "id",
-            item.id
-          );
+          error:
+            stockError,
+        } =
+          await supabase
+            .from(
+              "products"
+            )
+            .update({
+              stock:
+                newStock,
+
+              updated_at:
+                new Date().toISOString(),
+            })
+            .eq(
+              "id",
+              item.id
+            );
 
         if (stockError) {
           throw new Error(
@@ -799,21 +1192,36 @@ function App() {
         invoiceNumber
       );
 
-      setPaymentOpen(false);
-      setPaymentDone(true);
+      setPaymentOpen(
+        false
+      );
+
+      setPaymentDone(
+        true
+      );
 
       setStatus(
         "Payment saved successfully."
       );
 
-      if (autoPrintReceipt) {
+      if (
+        autoPrintReceipt
+      ) {
         printReceipt({
-          receiptNo: invoiceNumber,
-          printWindow: autoPrintWindow,
+          receiptNo:
+            invoiceNumber,
+
+          printWindow:
+            autoPrintWindow,
         });
       }
+
     } catch (error) {
-      if (autoPrintWindow && !autoPrintWindow.closed) {
+
+      if (
+        autoPrintWindow &&
+        !autoPrintWindow.closed
+      ) {
         autoPrintWindow.close();
       }
 
@@ -828,24 +1236,38 @@ function App() {
       );
 
       setStatus("");
+
     } finally {
-      setSavingPayment(false);
+
+      setSavingPayment(
+        false
+      );
     }
   }
 
-  // =========================
-  // NEW SALE
-  // =========================
+
+  /* =======================================================
+     NEW SALE
+  ======================================================= */
 
   function newSale() {
     setCart([]);
+
     setCash("");
+
     setPaymentMethod(
       "cash"
     );
+
     setReceiptNo("");
-    setPaymentDone(false);
-    setPaymentOpen(false);
+
+    setPaymentDone(
+      false
+    );
+
+    setPaymentOpen(
+      false
+    );
 
     setRecentScanned([]);
 
@@ -856,74 +1278,111 @@ function App() {
     );
   }
 
-  // =========================
-  // FILTER SALES
-  // =========================
 
-  const filteredSales = useMemo(() => {
-    const q =
-      historySearch
-        .toLowerCase()
-        .trim();
+  /* =======================================================
+     FILTER SALES
+  ======================================================= */
 
-    return salesHistory.filter(
-      (sale) => {
-        const invoice =
-          String(
-            sale.invoice_no ||
-              ""
-          ).toLowerCase();
+  const filteredSales =
+    useMemo(() => {
+      const q =
+        historySearch
+          .toLowerCase()
+          .trim();
 
-        const payment =
-          String(
-            sale.payment_method ||
-              ""
-          ).toLowerCase();
+      return salesHistory.filter(
+        (sale) => {
+          const invoice =
+            String(
+              sale.invoice_no ||
+                ""
+            ).toLowerCase();
 
-        const status =
+          const payment =
+            String(
+              sale.payment_method ||
+                ""
+            ).toLowerCase();
+
+          const status =
+            String(
+              sale.status ||
+                ""
+            ).toLowerCase();
+
+          const saleDate =
+            sale.created_at
+              ? new Date(
+                  sale.created_at
+                )
+                  .toLocaleDateString(
+                    "en-CA",
+                    {
+                      timeZone:
+                        "Asia/Manila",
+                    }
+                  )
+              : "";
+
+          return (
+            (!q ||
+              invoice.includes(
+                q
+              )) &&
+
+            (
+              historyPaymentFilter ===
+                "all" ||
+              payment ===
+                historyPaymentFilter
+            ) &&
+
+            (
+              !historyDateFilter ||
+              saleDate ===
+                historyDateFilter
+            ) &&
+
+            (
+              historyStatusFilter ===
+                "all" ||
+              status ===
+                historyStatusFilter
+            )
+          );
+        }
+      );
+    }, [
+      salesHistory,
+      historySearch,
+      historyPaymentFilter,
+      historyDateFilter,
+      historyStatusFilter,
+    ]);
+
+
+  /* =======================================================
+     COMPLETED SALES ONLY
+  ======================================================= */
+
+  const completedSales =
+    useMemo(() => {
+      return salesHistory.filter(
+        (sale) =>
           String(
             sale.status ||
               ""
-          ).toLowerCase();
+          ).toLowerCase() ===
+          "completed"
+      );
+    }, [
+      salesHistory,
+    ]);
 
-        const saleDate =
-          sale.created_at
-            ? new Date(
-                sale.created_at
-              )
-                .toLocaleDateString(
-                  "en-CA",
-                  {
-                    timeZone:
-                      "Asia/Manila",
-                  }
-                )
-            : "";
 
-        return (
-          (!q ||
-            invoice.includes(q)) &&
-          (historyPaymentFilter ===
-            "all" ||
-            payment ===
-              historyPaymentFilter) &&
-          (!historyDateFilter ||
-            saleDate ===
-              historyDateFilter) &&
-          (historyStatusFilter ===
-            "all" ||
-            status ===
-              historyStatusFilter)
-        );
-      }
-    );
-  }, [
-    salesHistory,
-    historySearch,
-    historyPaymentFilter,
-    historyDateFilter,
-    historyStatusFilter,
-  ]);
+  /* =======================================================
+     TRANSACTION SUMMARY
+  ======================================================= */
 
   const transactionCount =
     filteredSales.length;
@@ -943,7 +1402,12 @@ function App() {
       .filter(
         (sale) =>
           sale.payment_method ===
-          "cash"
+          "cash" &&
+          String(
+            sale.status ||
+              ""
+          ).toLowerCase() ===
+            "completed"
       )
       .reduce(
         (sum, sale) =>
@@ -959,7 +1423,12 @@ function App() {
       .filter(
         (sale) =>
           sale.payment_method ===
-          "gcash"
+          "gcash" &&
+          String(
+            sale.status ||
+              ""
+          ).toLowerCase() ===
+            "completed"
       )
       .reduce(
         (sum, sale) =>
@@ -975,7 +1444,12 @@ function App() {
       .filter(
         (sale) =>
           sale.payment_method ===
-          "card"
+          "card" &&
+          String(
+            sale.status ||
+              ""
+          ).toLowerCase() ===
+            "completed"
       )
       .reduce(
         (sum, sale) =>
@@ -986,24 +1460,31 @@ function App() {
         0
       );
 
-  // =========================
-  // EXCEL EXPORT
-  // =========================
+
+  /* =======================================================
+     EXCEL EXPORT
+  ======================================================= */
 
   function downloadExcel(
     data,
     fileName,
     sheetName = "Sheet1"
   ) {
-    if (!data || data.length === 0) {
+    if (
+      !data ||
+      data.length === 0
+    ) {
       setStatus(
         "No data available to download."
       );
+
       return;
     }
 
     const worksheet =
-      XLSX.utils.json_to_sheet(data);
+      XLSX.utils.json_to_sheet(
+        data
+      );
 
     const workbook =
       XLSX.utils.book_new();
@@ -1024,20 +1505,23 @@ function App() {
     );
   }
 
+
   function downloadTransactionsExcel() {
     const data =
       filteredSales.map(
         (sale) => ({
           Invoice:
-            sale.invoice_no || "",
+            sale.invoice_no ||
+            "",
 
-          Date: sale.created_at
-            ? new Date(
-                sale.created_at
-              ).toLocaleString(
-                "en-PH"
-              )
-            : "",
+          Date:
+            sale.created_at
+              ? new Date(
+                  sale.created_at
+                ).toLocaleString(
+                  "en-PH"
+                )
+              : "",
 
           Payment:
             paymentLabel(
@@ -1046,17 +1530,20 @@ function App() {
 
           Subtotal:
             Number(
-              sale.subtotal || 0
+              sale.subtotal ||
+                0
             ),
 
           Discount:
             Number(
-              sale.discount || 0
+              sale.discount ||
+                0
             ),
 
           Total:
             Number(
-              sale.total || 0
+              sale.total ||
+                0
             ),
 
           AmountTendered:
@@ -1072,7 +1559,12 @@ function App() {
             ),
 
           Status:
-            sale.status || "",
+            sale.status ||
+            "",
+
+          VoidReason:
+            sale.void_reason ||
+            "",
         })
       );
 
@@ -1084,6 +1576,7 @@ function App() {
       "Transactions"
     );
   }
+
 
   async function downloadSalesItemsExcel() {
     if (
@@ -1099,37 +1592,48 @@ function App() {
 
     const saleIds =
       salesHistory.map(
-        (sale) => sale.id
+        (sale) =>
+          sale.id
       );
 
-    if (!saleIds.length) {
+    if (
+      !saleIds.length
+    ) {
       setStatus(
         "No sales available."
       );
+
       return;
     }
 
     const {
       data,
       error,
-    } = await supabase
-      .from("sale_items")
-      .select(
-        "id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total"
-      )
-      .in(
-        "sale_id",
-        saleIds
-      )
-      .order("id", {
-        ascending: true,
-      });
+    } =
+      await supabase
+        .from(
+          "sale_items"
+        )
+        .select(
+          "id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total"
+        )
+        .in(
+          "sale_id",
+          saleIds
+        )
+        .order(
+          "id",
+          {
+            ascending: true,
+          }
+        );
 
     if (error) {
       setErr(
         "Unable to export sale items: " +
           error.message
       );
+
       return;
     }
 
@@ -1137,7 +1641,8 @@ function App() {
 
     salesHistory.forEach(
       (sale) => {
-        saleMap[sale.id] = sale;
+        saleMap[sale.id] =
+          sale;
       }
     );
 
@@ -1145,7 +1650,9 @@ function App() {
       (data || []).map(
         (item) => {
           const sale =
-            saleMap[item.sale_id];
+            saleMap[
+              item.sale_id
+            ];
 
           return {
             Invoice:
@@ -1171,11 +1678,13 @@ function App() {
               "",
 
             Barcode:
-              item.barcode || "",
+              item.barcode ||
+              "",
 
             Quantity:
               Number(
-                item.quantity || 0
+                item.quantity ||
+                  0
               ),
 
             UnitPrice:
@@ -1189,6 +1698,10 @@ function App() {
                 item.line_total ||
                   0
               ),
+
+            Status:
+              sale?.status ||
+              "",
           };
         }
       );
@@ -1202,28 +1715,34 @@ function App() {
     );
   }
 
+
   function downloadProductsExcel() {
     const data =
       products.map(
         (product) => ({
           Product:
-            product.name || "",
+            product.name ||
+            "",
 
           Barcode:
-            product.barcode || "",
+            product.barcode ||
+            "",
 
           Price:
             Number(
-              product.price || 0
+              product.price ||
+                0
             ),
 
           Stock:
             Number(
-              product.stock || 0
+              product.stock ||
+                0
             ),
 
           Image:
-            product.imageUrl || "",
+            product.imageUrl ||
+            "",
         })
       );
 
@@ -1236,34 +1755,53 @@ function App() {
     );
   }
 
-  // =========================
-  // SALE DETAILS
-  // =========================
+
+  /* =======================================================
+     SALE DETAILS
+  ======================================================= */
 
   async function openSaleDetails(
     sale
   ) {
-    setSelectedSale(sale);
-    setSelectedSaleItems([]);
-    setSaleDetailsOpen(true);
-    setSaleDetailsLoading(true);
+    setSelectedSale(
+      sale
+    );
+
+    setSelectedSaleItems(
+      []
+    );
+
+    setSaleDetailsOpen(
+      true
+    );
+
+    setSaleDetailsLoading(
+      true
+    );
+
     setErr("");
 
     const {
       data,
       error,
-    } = await supabase
-      .from("sale_items")
-      .select(
-        "id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total"
-      )
-      .eq(
-        "sale_id",
-        sale.id
-      )
-      .order("id", {
-        ascending: true,
-      });
+    } =
+      await supabase
+        .from(
+          "sale_items"
+        )
+        .select(
+          "id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total"
+        )
+        .eq(
+          "sale_id",
+          sale.id
+        )
+        .order(
+          "id",
+          {
+            ascending: true,
+          }
+        );
 
     if (error) {
       setErr(
@@ -1271,7 +1809,10 @@ function App() {
           error.message
       );
 
-      setSaleDetailsLoading(false);
+      setSaleDetailsLoading(
+        false
+      );
+
       return;
     }
 
@@ -1279,19 +1820,188 @@ function App() {
       data || []
     );
 
-    setSaleDetailsLoading(false);
+    setSaleDetailsLoading(
+      false
+    );
   }
 
-  // =========================
-  // PRINT RECEIPT
-  // =========================
 
-  function printReceipt(options = {}) {
+  /* =======================================================
+     VOID SALE
+  ======================================================= */
+
+  function canVoidSale(
+    sale
+  ) {
+    return (
+      sale &&
+      sale.id &&
+      String(
+        sale.status ||
+          ""
+      ).toLowerCase() ===
+        "completed"
+    );
+  }
+
+
+  function openVoidModal(
+    sale
+  ) {
+    if (
+      !canVoidSale(sale)
+    ) {
+      setStatus(
+        "Only completed transactions can be voided."
+      );
+
+      return;
+    }
+
+    setVoidingSale(
+      sale
+    );
+
+    setVoidReason("");
+
+    setVoidOpen(true);
+
+    setErr("");
+  }
+
+
+  async function confirmVoidSale() {
+    if (
+      voiding ||
+      !canVoidSale(
+        voidingSale
+      ) ||
+      !supabase
+    ) {
+      return;
+    }
+
+    setVoiding(true);
+
+    setErr("");
+
+    setStatus(
+      "Voiding transaction..."
+    );
+
+    try {
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          "void_sale",
+          {
+            p_sale_id:
+              voidingSale.id,
+
+            p_reason:
+              voidReason.trim() ||
+              "Voided transaction",
+          }
+        );
+
+      if (error) {
+        throw new Error(
+          error.message
+        );
+      }
+
+      if (
+        !data?.success
+      ) {
+        throw new Error(
+          "Unable to void transaction."
+        );
+      }
+
+      setVoidOpen(
+        false
+      );
+
+      setVoidingSale(
+        null
+      );
+
+      setVoidReason("");
+
+      await load(
+        session.user.id
+      );
+
+      if (
+        selectedSale?.id ===
+        data.sale_id
+      ) {
+        setSelectedSale(
+          (current) =>
+            current
+              ? {
+                  ...current,
+
+                  status:
+                    "voided",
+
+                  void_reason:
+                    voidReason.trim() ||
+                    "Voided transaction",
+
+                  voided_at:
+                    new Date().toISOString(),
+                }
+              : current
+        );
+      }
+
+      setStatus(
+        `Transaction ${
+          data.invoice_no ||
+          ""
+        } successfully voided. Inventory restored.`
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Void sale error:",
+        error
+      );
+
+      setErr(
+        error?.message ||
+          "Unable to void transaction."
+      );
+
+      setStatus("");
+
+    } finally {
+
+      setVoiding(
+        false
+      );
+    }
+  }
+
+
+  /* =======================================================
+     PRINT RECEIPT
+  ======================================================= */
+
+  function printReceipt(
+    options = {}
+  ) {
     const receiptNumber =
-      options.receiptNo || receiptNo;
+      options.receiptNo ||
+      receiptNo;
 
     const printWindow =
-      options.printWindow || null;
+      options.printWindow ||
+      null;
 
     const cashierName =
       profile?.full_name ||
@@ -1303,13 +2013,20 @@ function App() {
         .map(
           (item) => `
             <tr>
-              <td>${item.name}</td>
+              <td>
+                ${item.name}
+              </td>
+
               <td style="text-align:center">
                 ${item.qty}
               </td>
+
               <td style="text-align:right">
-                ${money(item.price)}
+                ${money(
+                  item.price
+                )}
               </td>
+
               <td style="text-align:right">
                 ${money(
                   item.price *
@@ -1333,16 +2050,23 @@ function App() {
       setErr(
         "Please allow pop-ups to print the receipt."
       );
+
       return;
     }
 
     win.document.write(`
       <!DOCTYPE html>
+
       <html>
+
       <head>
-        <title>${receiptNumber}</title>
+
+        <title>
+          ${receiptNumber}
+        </title>
 
         <style>
+
           body {
             font-family: Arial, sans-serif;
             width: 360px;
@@ -1371,7 +2095,8 @@ function App() {
             font-size: 12px;
           }
 
-          td, th {
+          td,
+          th {
             padding: 5px 0;
           }
 
@@ -1394,31 +2119,48 @@ function App() {
             text-align: center;
             margin-top: 25px;
           }
+
         </style>
+
       </head>
 
       <body>
 
-        <h1>SmallBiz POS</h1>
+        <h1>
+          SmallBiz POS
+        </h1>
 
         <div class="center">
-          <div>Sales Receipt</div>
-          <div>${receiptNumber}</div>
+
+          <div>
+            Sales Receipt
+          </div>
+
+          <div>
+            ${receiptNumber}
+          </div>
+
           <div>
             ${new Date().toLocaleString(
               "en-PH"
             )}
           </div>
+
           <div>
-            Cashier: ${cashierName}
+            Cashier:
+            ${cashierName}
           </div>
+
         </div>
 
         <div class="line"></div>
 
         <table>
+
           <thead>
+
             <tr>
+
               <th style="text-align:left">
                 Item
               </th>
@@ -1434,50 +2176,85 @@ function App() {
               <th style="text-align:right">
                 Total
               </th>
+
             </tr>
+
           </thead>
 
           <tbody>
+
             ${itemsHtml}
+
           </tbody>
+
         </table>
 
         <div class="line"></div>
 
         <div class="row">
-          <span>Subtotal</span>
+
           <span>
-            ${money(subtotal)}
+            Subtotal
           </span>
+
+          <span>
+            ${money(
+              subtotal
+            )}
+          </span>
+
         </div>
 
         <div class="row">
-          <span>Discount</span>
+
           <span>
-            ${money(discount)}
+            Discount
           </span>
+
+          <span>
+            ${money(
+              discount
+            )}
+          </span>
+
         </div>
 
         <div class="row total">
-          <span>TOTAL</span>
+
           <span>
-            ${money(total)}
+            TOTAL
           </span>
+
+          <span>
+            ${money(
+              total
+            )}
+          </span>
+
         </div>
 
         <div class="line"></div>
 
         <div class="row">
-          <span>Payment</span>
+
+          <span>
+            Payment
+          </span>
+
           <span>
             ${paymentLabel(
               paymentMethod
             )}
           </span>
+
         </div>
 
         <div class="row">
-          <span>Amount Paid</span>
+
+          <span>
+            Amount Paid
+          </span>
+
           <span>
             ${money(
               paymentMethod ===
@@ -1486,6 +2263,7 @@ function App() {
                 : total
             )}
           </span>
+
         </div>
 
         ${
@@ -1493,43 +2271,63 @@ function App() {
           "cash"
             ? `
               <div class="row">
-                <span>Change</span>
+
                 <span>
-                  ${money(change)}
+                  Change
                 </span>
+
+                <span>
+                  ${money(
+                    change
+                  )}
+                </span>
+
               </div>
             `
             : ""
         }
 
         <div class="footer">
+
           Thank you for your purchase!
+
           <br />
-          SmallBiz POS V2.2
+
+          SmallBiz POS V2.3
+
         </div>
 
         <script>
-          window.onload = function() {
-            window.print();
-          };
+
+          window.onload =
+            function() {
+              window.print();
+            };
+
         </script>
 
       </body>
+
       </html>
     `);
 
     win.document.close();
   }
 
-  // =========================
-  // CONFIG ERROR
-  // =========================
+
+  /* =======================================================
+     CONFIG ERROR
+  ======================================================= */
 
   if (configError) {
     return (
       <div className="auth">
+
         <div className="card">
-          <h1>SmallBiz POS V2.2</h1>
+
+          <h1>
+            SmallBiz POS V2.3
+          </h1>
 
           <h2>
             Configuration missing
@@ -1545,22 +2343,27 @@ function App() {
             {"\n"}
             VITE_SUPABASE_PUBLISHABLE_KEY
           </pre>
+
         </div>
+
       </div>
     );
   }
 
-  // =========================
-  // LOGIN
-  // =========================
+
+  /* =======================================================
+     LOGIN SCREEN
+  ======================================================= */
 
   if (!session) {
     return (
       <div className="auth">
+
         <form
           className="login-card"
           onSubmit={login}
         >
+
           <div className="login-logo">
             🛒
           </div>
@@ -1607,19 +2410,25 @@ function App() {
               {err}
             </p>
           )}
+
         </form>
+
       </div>
     );
   }
 
-  // =========================
-  // MAIN APP
-  // =========================
+
+  /* =======================================================
+     MAIN APP
+  ======================================================= */
 
   return (
     <div className="app-shell">
 
-      {/* SIDEBAR */}
+
+      {/* =================================================
+          SIDEBAR
+      ================================================= */}
 
       <aside className="sidebar">
 
@@ -1630,16 +2439,21 @@ function App() {
           </div>
 
           <div>
+
             <h1>
               SmallBiz POS
             </h1>
 
             <span>
-              V2.2
+              V2.3
             </span>
+
           </div>
 
         </div>
+
+
+        {/* PROFILE */}
 
         <div className="profile-box">
 
@@ -1648,6 +2462,7 @@ function App() {
           </div>
 
           <div>
+
             <b>
               {profile?.full_name ||
                 "Business Owner"}
@@ -1661,25 +2476,39 @@ function App() {
             <small className="online">
               ● Online
             </small>
+
           </div>
 
         </div>
+
+
+        {/* NAVIGATION */}
 
         <nav className="sidebar-nav">
 
           <button
             className={
-              activePage === "pos"
+              activePage ===
+              "pos"
                 ? "nav-item active"
                 : "nav-item"
             }
             onClick={() =>
-              setActivePage("pos")
+              setActivePage(
+                "pos"
+              )
             }
           >
-            <span>🛒</span>
-            <b>POS</b>
+            <span>
+              🛒
+            </span>
+
+            <b>
+              POS
+            </b>
+
           </button>
+
 
           <button
             className={
@@ -1694,11 +2523,16 @@ function App() {
               )
             }
           >
-            <span>📋</span>
+            <span>
+              📋
+            </span>
+
             <b>
               Transactions
             </b>
+
           </button>
+
 
           <button
             className={
@@ -1713,9 +2547,16 @@ function App() {
               )
             }
           >
-            <span>📊</span>
-            <b>Reports</b>
+            <span>
+              📊
+            </span>
+
+            <b>
+              Reports
+            </b>
+
           </button>
+
 
           <button
             className={
@@ -1730,42 +2571,94 @@ function App() {
               )
             }
           >
-            <span>📦</span>
-            <b>Products</b>
+            <span>
+              📦
+            </span>
+
+            <b>
+              Products
+            </b>
+
           </button>
 
         </nav>
 
+
+        {/* SIDEBAR BOTTOM */}
+
         <div className="sidebar-bottom">
 
-          <div style={{
-            padding: "12px",
-            marginBottom: "10px",
-            borderRadius: "12px",
-            background: "rgba(255,255,255,0.06)"
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "10px"
-            }}>
+          {/* AUTO PRINT */}
+
+          <div
+            style={{
+              padding:
+                "12px",
+
+              marginBottom:
+                "10px",
+
+              borderRadius:
+                "12px",
+
+              background:
+                "rgba(255,255,255,0.06)",
+            }}
+          >
+
+            <div
+              style={{
+                display:
+                  "flex",
+
+                alignItems:
+                  "center",
+
+                justifyContent:
+                  "space-between",
+
+                gap: "10px",
+              }}
+            >
+
               <div>
-                <b style={{ display: "block" }}>🖨️ Auto Print</b>
-                <small style={{ opacity: 0.7 }}>
+
+                <b
+                  style={{
+                    display:
+                      "block",
+                  }}
+                >
+                  🖨️ Auto Print
+                </b>
+
+                <small
+                  style={{
+                    opacity:
+                      0.7,
+                  }}
+                >
                   Print receipt after payment
                 </small>
+
               </div>
+
 
               <button
                 type="button"
                 onClick={() => {
-                  const next = !autoPrintReceipt;
-                  setAutoPrintReceipt(next);
+                  const next =
+                    !autoPrintReceipt;
+
+                  setAutoPrintReceipt(
+                    next
+                  );
+
                   localStorage.setItem(
                     "smallbiz_auto_print_receipt",
                     String(next)
                   );
+
                   setStatus(
                     next
                       ? "Auto Print Receipt: ON"
@@ -1773,39 +2666,67 @@ function App() {
                   );
                 }}
                 style={{
-                  border: "none",
-                  borderRadius: "999px",
-                  padding: "6px 10px",
-                  cursor: "pointer",
-                  fontWeight: 700
+                  border:
+                    "none",
+
+                  borderRadius:
+                    "999px",
+
+                  padding:
+                    "6px 10px",
+
+                  cursor:
+                    "pointer",
+
+                  fontWeight:
+                    700,
                 }}
               >
-                {autoPrintReceipt ? "ON" : "OFF"}
+                {autoPrintReceipt
+                  ? "ON"
+                  : "OFF"}
               </button>
+
             </div>
+
           </div>
+
+
+          {/* LOGOUT */}
 
           <button
             className="logout-btn"
-            onClick={logout}
+            onClick={
+              logout
+            }
           >
-            <span>↪</span>
+
+            <span>
+              ↪
+            </span>
+
             Logout
+
           </button>
 
         </div>
 
       </aside>
 
-      {/* MAIN AREA */}
+
+      {/* =================================================
+          MAIN AREA
+      ================================================= */}
 
       <div className="main-area">
 
-        {/* =========================
-            POS
-        ========================= */}
 
-        {activePage === "pos" && (
+        {/* =================================================
+            POS
+        ================================================= */}
+
+        {activePage ===
+          "pos" && (
           <>
 
             <div className="page-header">
@@ -1823,6 +2744,7 @@ function App() {
 
               </div>
 
+
               <button
                 className="refresh-btn"
                 onClick={() =>
@@ -1836,15 +2758,18 @@ function App() {
 
             </div>
 
+
             <div className="pos-layout">
 
-              {/* PRODUCTS */}
+
+              {/* PRODUCTS PANEL */}
 
               <section className="products-panel">
 
                 <div className="panel-title">
 
                   <div>
+
                     <h2>
                       Products
                     </h2>
@@ -1852,7 +2777,9 @@ function App() {
                     <p>
                       Search or scan a product.
                     </p>
+
                   </div>
+
 
                   <button
                     className={
@@ -1861,17 +2788,25 @@ function App() {
                         : "scan-btn"
                     }
                     onClick={() => {
-                      setScan(!scan);
-                      setStatus("");
+                      setScan(
+                        !scan
+                      );
+
+                      setStatus(
+                        ""
+                      );
                     }}
                   >
                     📷{" "}
+
                     {scan
                       ? "Close Scanner"
                       : "Scan Barcode"}
+
                   </button>
 
                 </div>
+
 
                 {scan && (
                   <div className="scanner-box">
@@ -1886,6 +2821,7 @@ function App() {
 
                   </div>
                 )}
+
 
                 <div className="search-row">
 
@@ -1906,11 +2842,13 @@ function App() {
 
                 </div>
 
+
                 {status && (
                   <div className="success-status">
                     ✓ {status}
                   </div>
                 )}
+
 
                 {err && (
                   <div className="error-status">
@@ -1918,12 +2856,17 @@ function App() {
                   </div>
                 )}
 
+
                 <div className="products-grid">
 
-                  {filtered.length > 0 ? (
+                  {filtered.length >
+                  0 ? (
 
                     filtered.map(
-                      (product) => (
+                      (
+                        product
+                      ) => (
+
                         <div
                           className="product-card"
                           key={
@@ -1960,6 +2903,7 @@ function App() {
 
                           </div>
 
+
                           <div className="product-info">
 
                             <h3>
@@ -1984,6 +2928,7 @@ function App() {
                             </small>
 
                           </div>
+
 
                           <div className="product-bottom">
 
@@ -2014,15 +2959,18 @@ function App() {
                           </div>
 
                         </div>
+
                       )
                     )
 
                   ) : (
 
                     <div className="empty-products">
+
                       {search
                         ? "No product found."
                         : "No products available."}
+
                     </div>
 
                   )}
@@ -2031,9 +2979,11 @@ function App() {
 
               </section>
 
-              {/* RIGHT SIDE */}
+
+              {/* RIGHT PANEL */}
 
               <aside className="right-panel">
+
 
                 {/* CART */}
 
@@ -2047,7 +2997,10 @@ function App() {
 
                     <span>
                       {cart.reduce(
-                        (n, item) =>
+                        (
+                          n,
+                          item
+                        ) =>
                           n +
                           item.qty,
                         0
@@ -2057,12 +3010,17 @@ function App() {
 
                   </div>
 
+
                   <div className="cart-body">
 
-                    {cart.length > 0 ? (
+                    {cart.length >
+                    0 ? (
 
                       cart.map(
-                        (item) => (
+                        (
+                          item
+                        ) => (
+
                           <div
                             className="cart-item"
                             key={
@@ -2089,6 +3047,7 @@ function App() {
 
                             </div>
 
+
                             <div className="cart-item-info">
 
                               <b>
@@ -2102,6 +3061,7 @@ function App() {
                                   item.price
                                 )}
                               </small>
+
 
                               <div className="qty-controls">
 
@@ -2137,6 +3097,7 @@ function App() {
 
                             </div>
 
+
                             <strong>
                               {money(
                                 item.price *
@@ -2145,6 +3106,7 @@ function App() {
                             </strong>
 
                           </div>
+
                         )
                       )
 
@@ -2166,9 +3128,11 @@ function App() {
 
                   </div>
 
+
                   <div className="cart-summary">
 
                     <div>
+
                       <span>
                         Subtotal
                       </span>
@@ -2178,9 +3142,12 @@ function App() {
                           subtotal
                         )}
                       </b>
+
                     </div>
 
+
                     <div>
+
                       <span>
                         Discount
                       </span>
@@ -2190,7 +3157,9 @@ function App() {
                           discount
                         )}
                       </b>
+
                     </div>
+
 
                     <div className="grand-total">
 
@@ -2206,6 +3175,7 @@ function App() {
 
                     </div>
 
+
                     <button
                       className="payment-btn"
                       disabled={
@@ -2213,14 +3183,19 @@ function App() {
                         savingPayment
                       }
                       onClick={() => {
+
                         setCash("");
+
                         setPaymentMethod(
                           "cash"
                         );
+
                         setErr("");
+
                         setPaymentOpen(
                           true
                         );
+
                       }}
                     >
                       💳 Payment
@@ -2229,6 +3204,7 @@ function App() {
                   </div>
 
                 </section>
+
 
                 {/* RECENT SCANNED */}
 
@@ -2242,13 +3218,17 @@ function App() {
 
                   </div>
 
+
                   {recentScanned.length >
                   0 ? (
 
                     <div className="recent-list">
 
                       {recentScanned.map(
-                        (item) => (
+                        (
+                          item
+                        ) => (
+
                           <div
                             className="recent-item"
                             key={
@@ -2275,6 +3255,7 @@ function App() {
 
                             </div>
 
+
                             <div>
 
                               <b>
@@ -2292,6 +3273,7 @@ function App() {
 
                             </div>
 
+
                             <button
                               onClick={() =>
                                 add(
@@ -2303,6 +3285,7 @@ function App() {
                             </button>
 
                           </div>
+
                         )
                       )}
 
@@ -2341,9 +3324,10 @@ function App() {
           </>
         )}
 
-        {/* =========================
+
+        {/* =================================================
             TRANSACTIONS
-        ========================= */}
+        ================================================= */}
 
         {activePage ===
           "transactions" && (
@@ -2353,6 +3337,7 @@ function App() {
             <div className="page-header">
 
               <div>
+
                 <h2>
                   📋 Transactions
                 </h2>
@@ -2360,13 +3345,22 @@ function App() {
                 <p>
                   Sales History / Transactions
                 </p>
+
               </div>
 
-              <div style={{
-                display: "flex",
-                gap: "8px",
-                flexWrap: "wrap"
-              }}>
+
+              <div
+                style={{
+                  display:
+                    "flex",
+
+                  gap:
+                    "8px",
+
+                  flexWrap:
+                    "wrap",
+                }}
+              >
 
                 <button
                   className="refresh-btn"
@@ -2378,6 +3372,7 @@ function App() {
                 >
                   🔄 Refresh
                 </button>
+
 
                 <button
                   className="excel-btn"
@@ -2391,6 +3386,9 @@ function App() {
               </div>
 
             </div>
+
+
+            {/* FILTERS */}
 
             <div className="filters">
 
@@ -2406,6 +3404,7 @@ function App() {
                 }
               />
 
+
               <select
                 value={
                   historyPaymentFilter
@@ -2416,6 +3415,7 @@ function App() {
                   )
                 }
               >
+
                 <option value="all">
                   All Payments
                 </option>
@@ -2431,7 +3431,9 @@ function App() {
                 <option value="card">
                   Card
                 </option>
+
               </select>
+
 
               <input
                 type="date"
@@ -2445,6 +3447,7 @@ function App() {
                 }
               />
 
+
               <select
                 value={
                   historyStatusFilter
@@ -2455,6 +3458,7 @@ function App() {
                   )
                 }
               >
+
                 <option value="all">
                   All Status
                 </option>
@@ -2463,16 +3467,21 @@ function App() {
                   Completed
                 </option>
 
-                <option value="cancelled">
-                  Cancelled
+                <option value="voided">
+                  Voided
                 </option>
+
               </select>
 
             </div>
 
+
+            {/* SUMMARY */}
+
             <div className="summary-grid">
 
               <div>
+
                 <small>
                   Transactions
                 </small>
@@ -2482,21 +3491,47 @@ function App() {
                     transactionCount
                   }
                 </strong>
+
               </div>
 
+
               <div>
+
                 <small>
                   Total Sales
                 </small>
 
                 <strong>
                   {money(
-                    transactionTotal
+                    filteredSales
+                      .filter(
+                        (sale) =>
+                          String(
+                            sale.status ||
+                              ""
+                          ).toLowerCase() ===
+                          "completed"
+                      )
+                      .reduce(
+                        (
+                          sum,
+                          sale
+                        ) =>
+                          sum +
+                          Number(
+                            sale.total ||
+                              0
+                          ),
+                        0
+                      )
                   )}
                 </strong>
+
               </div>
 
+
               <div>
+
                 <small>
                   Cash
                 </small>
@@ -2506,9 +3541,12 @@ function App() {
                     cashTotal
                   )}
                 </strong>
+
               </div>
 
+
               <div>
+
                 <small>
                   GCash
                 </small>
@@ -2518,9 +3556,12 @@ function App() {
                     gcashTotal
                   )}
                 </strong>
+
               </div>
 
+
               <div>
+
                 <small>
                   Card
                 </small>
@@ -2530,9 +3571,13 @@ function App() {
                     cardTotal
                   )}
                 </strong>
+
               </div>
 
             </div>
+
+
+            {/* TABLE */}
 
             {historyLoading ? (
 
@@ -2548,7 +3593,9 @@ function App() {
                 <table>
 
                   <thead>
+
                     <tr>
+
                       <th>
                         Invoice
                       </th>
@@ -2572,13 +3619,19 @@ function App() {
                       <th>
                         Action
                       </th>
+
                     </tr>
+
                   </thead>
+
 
                   <tbody>
 
                     {filteredSales.map(
-                      (sale) => (
+                      (
+                        sale
+                      ) => (
+
                         <tr
                           key={
                             sale.id
@@ -2593,6 +3646,7 @@ function App() {
                             </b>
                           </td>
 
+
                           <td>
                             {sale.created_at
                               ? new Date(
@@ -2603,11 +3657,13 @@ function App() {
                               : "-"}
                           </td>
 
+
                           <td>
                             {paymentLabel(
                               sale.payment_method
                             )}
                           </td>
+
 
                           <td>
                             <b>
@@ -2617,27 +3673,80 @@ function App() {
                             </b>
                           </td>
 
-                          <td>
-                            <span className="status-badge">
-                              {
-                                sale.status
-                              }
-                            </span>
-                          </td>
 
                           <td>
-                            <button
-                              onClick={() =>
-                                openSaleDetails(
-                                  sale
-                                )
+
+                            <span
+                              className={
+                                String(
+                                  sale.status ||
+                                    ""
+                                ).toLowerCase() ===
+                                "voided"
+                                  ? "status-badge voided"
+                                  : "status-badge"
                               }
                             >
-                              🧾 View
-                            </button>
+                              {String(
+                                sale.status ||
+                                  ""
+                              ).toUpperCase()}
+                            </span>
+
+                          </td>
+
+
+                          <td>
+
+                            <div
+                              style={{
+                                display:
+                                  "flex",
+
+                                gap:
+                                  "6px",
+
+                                flexWrap:
+                                  "wrap",
+                              }}
+                            >
+
+                              <button
+                                onClick={() =>
+                                  openSaleDetails(
+                                    sale
+                                  )
+                                }
+                              >
+                                🧾 View
+                              </button>
+
+
+                              {String(
+                                sale.status ||
+                                  ""
+                              ).toLowerCase() ===
+                                "completed" && (
+
+                                <button
+                                  className="danger-btn"
+                                  onClick={() =>
+                                    openVoidModal(
+                                      sale
+                                    )
+                                  }
+                                >
+                                  🚫 Void
+                                </button>
+
+                              )}
+
+                            </div>
+
                           </td>
 
                         </tr>
+
                       )
                     )}
 
@@ -2656,11 +3765,13 @@ function App() {
             )}
 
           </section>
+
         )}
 
-        {/* =========================
+
+        {/* =================================================
             REPORTS
-        ========================= */}
+        ================================================= */}
 
         {activePage ===
           "reports" && (
@@ -2670,6 +3781,7 @@ function App() {
             <div className="page-header">
 
               <div>
+
                 <h2>
                   📊 Reports
                 </h2>
@@ -2677,7 +3789,9 @@ function App() {
                 <p>
                   Sales and business performance summary.
                 </p>
+
               </div>
+
 
               <button
                 className="refresh-btn"
@@ -2692,29 +3806,38 @@ function App() {
 
             </div>
 
+
             <div className="report-grid">
 
+
               <div className="report-card">
+
                 <small>
-                  Total Transactions
+                  Completed Transactions
                 </small>
 
                 <strong>
                   {
-                    salesHistory.length
+                    completedSales.length
                   }
                 </strong>
+
               </div>
 
+
               <div className="report-card">
+
                 <small>
                   Total Sales
                 </small>
 
                 <strong>
                   {money(
-                    salesHistory.reduce(
-                      (sum, sale) =>
+                    completedSales.reduce(
+                      (
+                        sum,
+                        sale
+                      ) =>
                         sum +
                         Number(
                           sale.total ||
@@ -2724,18 +3847,23 @@ function App() {
                     )
                   )}
                 </strong>
+
               </div>
 
+
               <div className="report-card">
+
                 <small>
                   Cash Sales
                 </small>
 
                 <strong>
                   {money(
-                    salesHistory
+                    completedSales
                       .filter(
-                        (sale) =>
+                        (
+                          sale
+                        ) =>
                           sale.payment_method ===
                           "cash"
                       )
@@ -2753,18 +3881,23 @@ function App() {
                       )
                   )}
                 </strong>
+
               </div>
 
+
               <div className="report-card">
+
                 <small>
                   GCash Sales
                 </small>
 
                 <strong>
                   {money(
-                    salesHistory
+                    completedSales
                       .filter(
-                        (sale) =>
+                        (
+                          sale
+                        ) =>
                           sale.payment_method ===
                           "gcash"
                       )
@@ -2782,18 +3915,23 @@ function App() {
                       )
                   )}
                 </strong>
+
               </div>
 
+
               <div className="report-card">
+
                 <small>
                   Card Sales
                 </small>
 
                 <strong>
                   {money(
-                    salesHistory
+                    completedSales
                       .filter(
-                        (sale) =>
+                        (
+                          sale
+                        ) =>
                           sale.payment_method ===
                           "card"
                       )
@@ -2811,13 +3949,42 @@ function App() {
                       )
                   )}
                 </strong>
+
+              </div>
+
+
+              <div className="report-card">
+
+                <small>
+                  Voided Transactions
+                </small>
+
+                <strong>
+                  {
+                    salesHistory.filter(
+                      (
+                        sale
+                      ) =>
+                        String(
+                          sale.status ||
+                            ""
+                        ).toLowerCase() ===
+                        "voided"
+                    ).length
+                  }
+                </strong>
+
               </div>
 
             </div>
 
+
+            {/* DOWNLOAD */}
+
             <div className="report-download-panel">
 
               <div>
+
                 <h3>
                   📥 Download Reports
                 </h3>
@@ -2825,7 +3992,9 @@ function App() {
                 <p>
                   Export your POS data to Excel.
                 </p>
+
               </div>
+
 
               <div className="download-buttons">
 
@@ -2838,6 +4007,7 @@ function App() {
                   📊 Transactions Excel
                 </button>
 
+
                 <button
                   className="excel-btn"
                   onClick={
@@ -2846,6 +4016,7 @@ function App() {
                 >
                   🧾 Sales Items Excel
                 </button>
+
 
                 <button
                   className="excel-btn"
@@ -2860,6 +4031,7 @@ function App() {
 
             </div>
 
+
             <div className="info-box">
 
               <h3>
@@ -2869,18 +4041,33 @@ function App() {
               <p>
                 Your current sales history contains{" "}
                 <b>
-                  {salesHistory.length}
+                  {
+                    salesHistory.length
+                  }
                 </b>{" "}
                 transaction(s).
               </p>
 
+
               <p>
-                Total recorded sales:
-                {" "}
+                Completed transactions:{" "}
+                <b>
+                  {
+                    completedSales.length
+                  }
+                </b>
+              </p>
+
+
+              <p>
+                Total recorded sales:{" "}
                 <b>
                   {money(
-                    salesHistory.reduce(
-                      (sum, sale) =>
+                    completedSales.reduce(
+                      (
+                        sum,
+                        sale
+                      ) =>
                         sum +
                         Number(
                           sale.total ||
@@ -2892,14 +4079,35 @@ function App() {
                 </b>
               </p>
 
+
+              <p>
+                Voided transactions:{" "}
+                <b>
+                  {
+                    salesHistory.filter(
+                      (
+                        sale
+                      ) =>
+                        String(
+                          sale.status ||
+                            ""
+                        ).toLowerCase() ===
+                        "voided"
+                    ).length
+                  }
+                </b>
+              </p>
+
             </div>
 
           </section>
+
         )}
 
-        {/* =========================
+
+        {/* =================================================
             PRODUCTS
-        ========================= */}
+        ================================================= */}
 
         {activePage ===
           "products" && (
@@ -2909,6 +4117,7 @@ function App() {
             <div className="page-header">
 
               <div>
+
                 <h2>
                   📦 Products
                 </h2>
@@ -2916,13 +4125,22 @@ function App() {
                 <p>
                   Product master file and inventory.
                 </p>
+
               </div>
 
-              <div style={{
-                display: "flex",
-                gap: "8px",
-                flexWrap: "wrap"
-              }}>
+
+              <div
+                style={{
+                  display:
+                    "flex",
+
+                  gap:
+                    "8px",
+
+                  flexWrap:
+                    "wrap",
+                }}
+              >
 
                 <button
                   className="excel-btn"
@@ -2932,6 +4150,7 @@ function App() {
                 >
                   📥 Excel
                 </button>
+
 
                 <button
                   className="primary"
@@ -2948,10 +4167,14 @@ function App() {
 
             </div>
 
+
             <div className="master-products">
 
               {products.map(
-                (product) => (
+                (
+                  product
+                ) => (
+
                   <div
                     className="master-product"
                     key={
@@ -2978,6 +4201,7 @@ function App() {
 
                     </div>
 
+
                     <div>
 
                       <h3>
@@ -3003,6 +4227,7 @@ function App() {
 
                     </div>
 
+
                     <strong>
                       {money(
                         product.price
@@ -3010,19 +4235,22 @@ function App() {
                     </strong>
 
                   </div>
+
                 )
               )}
 
             </div>
 
           </section>
+
         )}
 
       </div>
 
-      {/* =========================
+
+      {/* =================================================
           PAYMENT MODAL
-      ========================= */}
+      ================================================= */}
 
       {paymentOpen && (
 
@@ -3048,6 +4276,7 @@ function App() {
 
             </div>
 
+
             <div className="payment-total">
 
               <span>
@@ -3055,14 +4284,18 @@ function App() {
               </span>
 
               <b>
-                {money(total)}
+                {money(
+                  total
+                )}
               </b>
 
             </div>
 
+
             <label>
               Payment Method
             </label>
+
 
             <div className="payment-methods">
 
@@ -3074,14 +4307,18 @@ function App() {
                     : ""
                 }
                 onClick={() => {
+
                   setPaymentMethod(
                     "cash"
                   );
+
                   setCash("");
+
                 }}
               >
                 💵 Cash
               </button>
+
 
               <button
                 className={
@@ -3091,14 +4328,18 @@ function App() {
                     : ""
                 }
                 onClick={() => {
+
                   setPaymentMethod(
                     "gcash"
                   );
+
                   setCash("");
+
                 }}
               >
                 📱 GCash
               </button>
+
 
               <button
                 className={
@@ -3108,10 +4349,13 @@ function App() {
                     : ""
                 }
                 onClick={() => {
+
                   setPaymentMethod(
                     "card"
                   );
+
                   setCash("");
+
                 }}
               >
                 💳 Card
@@ -3119,12 +4363,16 @@ function App() {
 
             </div>
 
+
             {paymentMethod ===
               "cash" && (
+
               <>
+
                 <label>
                   Cash Received
                 </label>
+
 
                 <input
                   type="number"
@@ -3139,10 +4387,13 @@ function App() {
                   placeholder="Enter cash amount"
                 />
 
+
                 {cash &&
                   Number(cash) >=
                     total && (
+
                     <div className="change-box">
+
                       <span>
                         Change
                       </span>
@@ -3152,24 +4403,33 @@ function App() {
                           change
                         )}
                       </b>
+
                     </div>
+
                   )}
+
 
                 {cash &&
                   Number(cash) <
                     total && (
+
                     <p className="error">
                       Insufficient cash.
                     </p>
+
                   )}
+
               </>
+
             )}
+
 
             {err && (
               <p className="error">
                 {err}
               </p>
             )}
+
 
             <div className="modal-buttons">
 
@@ -3183,15 +4443,22 @@ function App() {
                 Cancel
               </button>
 
+
               <button
                 className="primary"
                 disabled={
                   savingPayment ||
-                  (paymentMethod ===
-                    "cash" &&
-                    (!cash ||
-                      Number(cash) <
-                        total))
+                  (
+                    paymentMethod ===
+                      "cash" &&
+                    (
+                      !cash ||
+                      Number(
+                        cash
+                      ) <
+                        total
+                    )
+                  )
                 }
                 onClick={
                   completePayment
@@ -3207,11 +4474,13 @@ function App() {
           </div>
 
         </div>
+
       )}
 
-      {/* =========================
+
+      {/* =================================================
           PAYMENT COMPLETE
-      ========================= */}
+      ================================================= */}
 
       {paymentDone && (
 
@@ -3223,26 +4492,34 @@ function App() {
               ✓
             </div>
 
+
             <h2>
               Payment Complete
             </h2>
+
 
             <div className="receipt-summary">
 
               <p>
                 Invoice:{" "}
                 <b>
-                  {receiptNo}
+                  {
+                    receiptNo
+                  }
                 </b>
               </p>
+
 
               <p>
                 Cashier:{" "}
                 <b>
-                  {profile?.full_name ||
-                    "Cashier"}
+                  {
+                    profile?.full_name ||
+                    "Cashier"
+                  }
                 </b>
               </p>
+
 
               <p>
                 Payment:{" "}
@@ -3253,33 +4530,47 @@ function App() {
                 </b>
               </p>
 
+
               <p>
                 Total:{" "}
                 <b>
-                  {money(total)}
+                  {money(
+                    total
+                  )}
                 </b>
               </p>
 
+
               {paymentMethod ===
                 "cash" && (
+
                 <>
+
                   <p>
                     Cash:{" "}
                     <b>
-                      {money(cash)}
+                      {money(
+                        cash
+                      )}
                     </b>
                   </p>
+
 
                   <p>
                     Change:{" "}
                     <b>
-                      {money(change)}
+                      {money(
+                        change
+                      )}
                     </b>
                   </p>
+
                 </>
+
               )}
 
             </div>
+
 
             <div className="modal-buttons">
 
@@ -3290,6 +4581,7 @@ function App() {
               >
                 🖨️ Print Receipt
               </button>
+
 
               <button
                 className="primary"
@@ -3305,11 +4597,13 @@ function App() {
           </div>
 
         </div>
+
       )}
 
-      {/* =========================
+
+      {/* =================================================
           SALE DETAILS
-      ========================= */}
+      ================================================= */}
 
       {saleDetailsOpen &&
         selectedSale && (
@@ -3336,6 +4630,7 @@ function App() {
 
             </div>
 
+
             {saleDetailsLoading ? (
 
               <div className="empty-page">
@@ -3349,18 +4644,24 @@ function App() {
                 <div className="sale-info">
 
                   <p>
+
                     <b>
                       Invoice:
                     </b>{" "}
+
                     {
                       selectedSale.invoice_no
                     }
+
                   </p>
 
+
                   <p>
+
                     <b>
                       Date:
                     </b>{" "}
+
                     {selectedSale.created_at
                       ? new Date(
                           selectedSale.created_at
@@ -3368,34 +4669,102 @@ function App() {
                           "en-PH"
                         )
                       : "-"}
+
                   </p>
 
+
                   <p>
+
                     <b>
                       Payment:
                     </b>{" "}
+
                     {paymentLabel(
                       selectedSale.payment_method
                     )}
+
                   </p>
 
+
                   <p>
+
                     <b>
                       Status:
                     </b>{" "}
-                    {
-                      selectedSale.status
-                    }
+
+                    <span
+                      className={
+                        String(
+                          selectedSale.status ||
+                            ""
+                        ).toLowerCase() ===
+                        "voided"
+                          ? "status-badge voided"
+                          : "status-badge"
+                      }
+                    >
+                      {String(
+                        selectedSale.status ||
+                          ""
+                      ).toUpperCase()}
+                    </span>
+
                   </p>
 
+
+                  {String(
+                    selectedSale.status ||
+                      ""
+                  ).toLowerCase() ===
+                    "voided" && (
+
+                    <>
+
+                      <p>
+
+                        <b>
+                          Void Reason:
+                        </b>{" "}
+
+                        {
+                          selectedSale.void_reason ||
+                          "No reason provided"
+                        }
+
+                      </p>
+
+
+                      <p>
+
+                        <b>
+                          Voided At:
+                        </b>{" "}
+
+                        {selectedSale.voided_at
+                          ? new Date(
+                              selectedSale.voided_at
+                            ).toLocaleString(
+                              "en-PH"
+                            )
+                          : "-"}
+
+                      </p>
+
+                    </>
+
+                  )}
+
                 </div>
+
 
                 <div className="table-wrapper">
 
                   <table>
 
                     <thead>
+
                       <tr>
+
                         <th>
                           Product
                         </th>
@@ -3411,13 +4780,19 @@ function App() {
                         <th>
                           Total
                         </th>
+
                       </tr>
+
                     </thead>
+
 
                     <tbody>
 
                       {selectedSaleItems.map(
-                        (item) => (
+                        (
+                          item
+                        ) => (
+
                           <tr
                             key={
                               item.id
@@ -3449,6 +4824,7 @@ function App() {
                             </td>
 
                           </tr>
+
                         )
                       )}
 
@@ -3458,9 +4834,11 @@ function App() {
 
                 </div>
 
+
                 <div className="sale-total">
 
                   <div>
+
                     <span>
                       Subtotal
                     </span>
@@ -3470,9 +4848,12 @@ function App() {
                         selectedSale.subtotal
                       )}
                     </b>
+
                   </div>
 
+
                   <div>
+
                     <span>
                       Discount
                     </span>
@@ -3482,7 +4863,9 @@ function App() {
                         selectedSale.discount
                       )}
                     </b>
+
                   </div>
+
 
                   <div className="grand-total">
 
@@ -3500,7 +4883,28 @@ function App() {
 
                 </div>
 
+
                 <div className="modal-buttons">
+
+                  {String(
+                    selectedSale.status ||
+                      ""
+                  ).toLowerCase() ===
+                    "completed" && (
+
+                    <button
+                      className="danger-btn"
+                      onClick={() =>
+                        openVoidModal(
+                          selectedSale
+                        )
+                      }
+                    >
+                      🚫 Void Transaction
+                    </button>
+
+                  )}
+
 
                   <button
                     onClick={() =>
@@ -3515,19 +4919,211 @@ function App() {
                 </div>
 
               </>
+
             )}
 
           </div>
 
         </div>
+
+      )}
+
+
+      {/* =================================================
+          VOID MODAL
+      ================================================= */}
+
+      {voidOpen &&
+        voidingSale && (
+
+        <div className="modal-backdrop">
+
+          <div className="modal">
+
+            <div className="modal-header">
+
+              <h2>
+                🚫 Void Transaction
+              </h2>
+
+              <button
+                disabled={
+                  voiding
+                }
+                onClick={() => {
+
+                  if (
+                    !voiding
+                  ) {
+                    setVoidOpen(
+                      false
+                    );
+
+                    setVoidingSale(
+                      null
+                    );
+
+                    setVoidReason(
+                      ""
+                    );
+                  }
+
+                }}
+              >
+                ✕
+              </button>
+
+            </div>
+
+
+            <div className="warning-box">
+
+              <strong>
+                Are you sure you want to void this transaction?
+              </strong>
+
+              <p>
+                The transaction will remain in
+                the history, but the inventory
+                quantity will be restored.
+              </p>
+
+            </div>
+
+
+            <div className="sale-info">
+
+              <p>
+
+                <b>
+                  Invoice:
+                </b>{" "}
+
+                {
+                  voidingSale.invoice_no
+                }
+
+              </p>
+
+
+              <p>
+
+                <b>
+                  Total:
+                </b>{" "}
+
+                {money(
+                  voidingSale.total
+                )}
+
+              </p>
+
+
+              <p>
+
+                <b>
+                  Payment:
+                </b>{" "}
+
+                {paymentLabel(
+                  voidingSale.payment_method
+                )}
+
+              </p>
+
+            </div>
+
+
+            <label>
+              Void Reason
+            </label>
+
+
+            <textarea
+              value={
+                voidReason
+              }
+              onChange={(e) =>
+                setVoidReason(
+                  e.target.value
+                )
+              }
+              placeholder="Enter reason for void..."
+              rows={4}
+              disabled={
+                voiding
+              }
+            />
+
+
+            {err && (
+              <p className="error">
+                {err}
+              </p>
+            )}
+
+
+            <div className="modal-buttons">
+
+              <button
+                disabled={
+                  voiding
+                }
+                onClick={() => {
+
+                  setVoidOpen(
+                    false
+                  );
+
+                  setVoidingSale(
+                    null
+                  );
+
+                  setVoidReason(
+                    ""
+                  );
+
+                }}
+              >
+                Cancel
+              </button>
+
+
+              <button
+                className="danger-btn"
+                disabled={
+                  voiding
+                }
+                onClick={
+                  confirmVoidSale
+                }
+              >
+                {voiding
+                  ? "Voiding..."
+                  : "🚫 Confirm Void"}
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
       )}
 
     </div>
   );
 }
 
+
+/* =========================================================
+   ROOT
+========================================================= */
+
 createRoot(
-  document.getElementById("root")
+  document.getElementById(
+    "root"
+  )
 ).render(
   <ErrorBoundary>
     <App />
