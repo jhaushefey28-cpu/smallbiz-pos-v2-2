@@ -10,7 +10,7 @@ class ErrorBoundary extends React.Component {
   static getDerivedStateFromError(error){ return {error}; }
   render(){
     if(this.state.error) return <div className="auth"><div className="card error-card">
-      <h1>SmallBiz POS V2.3</h1><h2>App error</h2><pre>{String(this.state.error?.stack||this.state.error)}</pre>
+      <h1>SmallBiz POS V2.4</h1><h2>App error</h2><pre>{String(this.state.error?.stack||this.state.error)}</pre>
     </div></div>;
     return this.props.children;
   }
@@ -46,7 +46,7 @@ function App(){
   const [recentScanned,setRecentScanned]=useState([]);
   const [productModal,setProductModal]=useState(false),[editingProduct,setEditingProduct]=useState(null);
   const [productForm,setProductForm]=useState({name:"",barcode:"",price:"",stock:"",image_url:""});
-  const [savingProduct,setSavingProduct]=useState(false);
+  const [savingProduct,setSavingProduct]=useState(false),[productSearch,setProductSearch]=useState("");
   const [restockProduct,setRestockProduct]=useState(null),[restockQty,setRestockQty]=useState(""),[restockReason,setRestockReason]=useState("Restock");
   const [movements,setMovements]=useState([]),[movementLoading,setMovementLoading]=useState(false);
   const [voidSale,setVoidSale]=useState(null),[voidReason,setVoidReason]=useState(""),[voiding,setVoiding]=useState(false);
@@ -281,6 +281,14 @@ function App(){
   },[salesHistory,historySearch,historyPaymentFilter,historyDateFilter,historyStatusFilter]);
 
   const lowStock=products.filter(p=>p.stock<=5&&p.stock>0),outStock=products.filter(p=>p.stock<=0);
+  const filteredMasterProducts=useMemo(()=>{
+    const q=productSearch.toLowerCase().trim();
+    if(!q)return products;
+    return products.filter(p=>
+      String(p.name||"").toLowerCase().includes(q) ||
+      String(p.barcode||"").toLowerCase().includes(q)
+    );
+  },[products,productSearch]);
   const transactionTotal=filteredSales.reduce((s,x)=>s+Number(x.total||0),0);
 
   function downloadExcel(data,fileName,sheetName="Sheet1"){
@@ -306,16 +314,16 @@ function App(){
     <table><thead><tr><th style="text-align:left">Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="line"></div>
     <div class="row"><span>Subtotal</span><span>${money(subtotal)}</span></div><div class="row"><span>Discount</span><span>${money(discount)}</span></div><div class="row total"><span>TOTAL</span><span>${money(total)}</span></div><div class="line"></div>
     <div class="row"><span>Payment</span><span>${paymentLabel(paymentMethod)}</span></div><div class="row"><span>Amount Paid</span><span>${money(paymentMethod==="cash"?cash:total)}</span></div>
-    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.3</div>
+    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.4</div>
     <script>window.onload=()=>window.print()</script></body></html>`);win.document.close();
   }
 
-  if(configError)return <div className="auth"><div className="card"><h1>SmallBiz POS V2.3</h1><h2>Configuration missing</h2><p>Missing VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY</p></div></div>;
+  if(configError)return <div className="auth"><div className="card"><h1>SmallBiz POS V2.4</h1><h2>Configuration missing</h2><p>Missing VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY</p></div></div>;
   if(!session)return <div className="auth"><form className="login-card" onSubmit={login}><div className="login-logo">🛒</div><h1>SmallBiz POS</h1><p>Sign in to your business account</p><input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="primary">Login</button>{err&&<p className="error">{err}</p>}</form></div>;
 
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="brand"><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.3</span></div></div>
+      <div className="brand"><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.4</span></div></div>
       <div className="profile-box"><div className="profile-avatar">👤</div><div><b>{profile?.full_name||"Business Owner"}</b><small>{profile?.role||"owner"}</small><small className="online">● Online</small></div></div>
       <nav className="sidebar-nav">
         {[["pos","🛒","POS"],["transactions","📋","Transactions"],["reports","📊","Reports"],["products","📦","Products"],["movements","🔄","Stock History"]].map(([key,icon,label])=>
@@ -363,9 +371,83 @@ function App(){
         <div className="report-download-panel"><div><h3>📥 Download Reports</h3><p>Export your POS data to Excel.</p></div><div className="download-buttons"><button className="excel-btn" onClick={exportTransactions}>📊 Transactions</button><button className="excel-btn" onClick={exportProducts}>📦 Inventory</button><button className="excel-btn" onClick={exportMovements}>🔄 Stock Movements</button></div></div>
       </section>}
 
-      {activePage==="products"&&<section className="page-card"><div className="page-header"><div><h2>📦 Inventory Management</h2><p>Add, edit, restock and manage products.</p></div><div><button className="excel-btn" onClick={exportProducts}>📥 Excel</button> <button className="primary" onClick={()=>openProduct()}>+ Add Product</button></div></div>
-        {(lowStock.length||outStock.length)&&<div className="info-box"><b>⚠ Inventory Alert:</b> {lowStock.length} low-stock and {outStock.length} out-of-stock product(s).</div>}
-        <div className="table-wrapper"><table><thead><tr><th>Product</th><th>Barcode</th><th>Price</th><th>Stock</th><th>Action</th></tr></thead><tbody>{products.map(p=><tr key={p.id}><td><b>{p.name}</b></td><td>{p.barcode||"N/A"}</td><td>{money(p.price)}</td><td><b>{p.stock}</b></td><td><button onClick={()=>openProduct(p)}>✏ Edit</button><button onClick={()=>{setRestockProduct(p);setRestockQty("");setRestockReason("Restock")}} style={{marginLeft:5}}>➕ Stock In</button><button onClick={()=>deleteProduct(p)} style={{marginLeft:5}}>🗑 Delete</button></td></tr>)}</tbody></table></div>
+      {activePage==="products"&&<section className="page-card">
+        <div className="page-header">
+          <div>
+            <h2>📦 Product Management</h2>
+            <p>Add, edit, restock, search and manage your inventory.</p>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button className="excel-btn" onClick={exportProducts}>📥 Excel</button>
+            <button className="primary" onClick={()=>openProduct()}>➕ Add Product</button>
+          </div>
+        </div>
+
+        <div className="summary-grid">
+          <div><small>Total Products</small><strong>{products.length}</strong></div>
+          <div><small>Low Stock</small><strong>{lowStock.length}</strong></div>
+          <div><small>Out of Stock</small><strong>{outStock.length}</strong></div>
+          <div><small>Inventory Units</small><strong>{products.reduce((a,p)=>a+Number(p.stock||0),0)}</strong></div>
+        </div>
+
+        {(lowStock.length||outStock.length)&&
+          <div className="info-box">
+            <b>⚠ Inventory Alert:</b>{" "}
+            {lowStock.length} low-stock and {outStock.length} out-of-stock product(s).
+          </div>
+        }
+
+        <div className="filters" style={{marginTop:16}}>
+          <input
+            placeholder="🔍 Search product name or barcode..."
+            value={productSearch}
+            onChange={e=>setProductSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Barcode</th>
+                <th>Price</th>
+                <th>Stock</th>
+                <th>Stock Value</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredMasterProducts.length ? filteredMasterProducts.map(p=>
+                <tr key={p.id}>
+                  <td>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:42,height:42,borderRadius:8,overflow:"hidden",background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "📦"}
+                      </div>
+                      <b>{p.name}</b>
+                    </div>
+                  </td>
+                  <td>{p.barcode||"N/A"}</td>
+                  <td>{money(p.price)}</td>
+                  <td>
+                    <b>{p.stock}</b>{" "}
+                    {p.stock<=0 ? <span className="status-badge">OUT</span> :
+                     p.stock<=5 ? <span className="status-badge">LOW</span> : null}
+                  </td>
+                  <td>{money(Number(p.price||0)*Number(p.stock||0))}</td>
+                  <td>
+                    <button onClick={()=>openProduct(p)}>✏ Edit</button>
+                    <button onClick={()=>{setRestockProduct(p);setRestockQty("");setRestockReason("Restock")}} style={{marginLeft:5}}>➕ Stock In</button>
+                    <button onClick={()=>deleteProduct(p)} style={{marginLeft:5}}>🗑 Delete</button>
+                  </td>
+                </tr>
+              ) : (
+                <tr><td colSpan="6" style={{textAlign:"center",padding:30}}>No products found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>}
 
       {activePage==="movements"&&<section className="page-card"><div className="page-header"><div><h2>🔄 Stock Movement History</h2><p>Track sales, stock-in and adjustments.</p></div><div><button className="refresh-btn" onClick={()=>loadMovements(profile.business_id)}>🔄 Refresh</button><button className="excel-btn" onClick={exportMovements}>📊 Excel</button></div></div>
@@ -377,7 +459,83 @@ function App(){
 
     {paymentDone&&<div className="modal-backdrop"><div className="modal"><div className="success-icon">✓</div><h2>Payment Complete</h2><div className="receipt-summary"><p>Invoice: <b>{receiptNo}</b></p><p>Payment: <b>{paymentLabel(paymentMethod)}</b></p><p>Total: <b>{money(total)}</b></p>{paymentMethod==="cash"&&<><p>Cash: <b>{money(cash)}</b></p><p>Change: <b>{money(change)}</b></p></>}</div><div className="modal-buttons"><button onClick={()=>printReceipt({})}>🖨️ Print Receipt</button><button className="primary" onClick={newSale}>New Sale</button></div></div></div>}
 
-    {productModal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>{editingProduct?"✏ Edit Product":"➕ Add Product"}</h2><button onClick={()=>setProductModal(false)}>✕</button></div><form onSubmit={saveProduct}><label>Product Name</label><input value={productForm.name} onChange={e=>setProductForm({...productForm,name:e.target.value})} required/><label>Barcode</label><input value={productForm.barcode} onChange={e=>setProductForm({...productForm,barcode:e.target.value})}/><label>Selling Price</label><input type="number" min="0" step=".01" value={productForm.price} onChange={e=>setProductForm({...productForm,price:e.target.value})} required/><label>Stock</label><input type="number" min="0" step="1" value={productForm.stock} onChange={e=>setProductForm({...productForm,stock:e.target.value})} required/><label>Image URL</label><input value={productForm.image_url} onChange={e=>setProductForm({...productForm,image_url:e.target.value})} placeholder="https://..."/><div className="modal-buttons"><button type="button" onClick={()=>setProductModal(false)}>Cancel</button><button className="primary" disabled={savingProduct}>{savingProduct?"Saving...":"Save Product"}</button></div></form></div></div>}
+    {productModal&&<div className="modal-backdrop">
+        <div className="modal">
+          <div className="modal-header">
+            <h2>{editingProduct?"✏ Edit Product":"➕ Add Product"}</h2>
+            <button onClick={()=>setProductModal(false)}>✕</button>
+          </div>
+
+          <form onSubmit={saveProduct}>
+            <label>Product Name</label>
+            <input
+              value={productForm.name}
+              onChange={e=>setProductForm({...productForm,name:e.target.value})}
+              placeholder="e.g. Coca-Cola 1.5L"
+              required
+            />
+
+            <label>Barcode / SKU</label>
+            <input
+              value={productForm.barcode}
+              onChange={e=>setProductForm({...productForm,barcode:e.target.value})}
+              placeholder="Scan or type barcode"
+            />
+
+            <label>Selling Price</label>
+            <input
+              type="number"
+              min="0"
+              step=".01"
+              value={productForm.price}
+              onChange={e=>setProductForm({...productForm,price:e.target.value})}
+              placeholder="0.00"
+              required
+            />
+
+            <label>Current Stock</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={productForm.stock}
+              onChange={e=>setProductForm({...productForm,stock:e.target.value})}
+              required
+            />
+
+            <label>Image URL</label>
+            <input
+              value={productForm.image_url}
+              onChange={e=>setProductForm({...productForm,image_url:e.target.value})}
+              placeholder="https://..."
+            />
+
+            {productForm.image_url&&
+              <div style={{margin:"10px 0",textAlign:"center"}}>
+                <img
+                  src={productForm.image_url}
+                  alt="Preview"
+                  onError={e=>e.currentTarget.style.display="none"}
+                  style={{width:90,height:90,objectFit:"cover",borderRadius:10,border:"1px solid #ddd"}}
+                />
+              </div>
+            }
+
+            {editingProduct&&
+              <div className="info-box" style={{marginTop:10}}>
+                Editing this product's stock will automatically create a stock adjustment history record.
+              </div>
+            }
+
+            <div className="modal-buttons">
+              <button type="button" onClick={()=>setProductModal(false)}>Cancel</button>
+              <button className="primary" disabled={savingProduct}>
+                {savingProduct?"Saving...":"Save Product"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>}
 
     {restockProduct&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>➕ Stock In</h2><button onClick={()=>setRestockProduct(null)}>✕</button></div><p><b>{restockProduct.name}</b><br/>Current stock: {restockProduct.stock}</p><form onSubmit={doRestock}><label>Quantity to Add</label><input type="number" min="1" step="1" value={restockQty} onChange={e=>setRestockQty(e.target.value)} required/><label>Reason</label><input value={restockReason} onChange={e=>setRestockReason(e.target.value)}/><div className="modal-buttons"><button type="button" onClick={()=>setRestockProduct(null)}>Cancel</button><button className="primary" disabled={savingProduct}>{savingProduct?"Saving...":"Add Stock"}</button></div></form></div></div>}
 
