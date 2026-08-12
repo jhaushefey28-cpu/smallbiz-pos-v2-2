@@ -22,6 +22,25 @@ const configError=!SUPABASE_URL||!SUPABASE_KEY;
 const supabase=configError?null:createClient(SUPABASE_URL,SUPABASE_KEY);
 
 const money=v=>new Intl.NumberFormat("en-PH",{style:"currency",currency:"PHP"}).format(Number(v||0));
+
+const SAMPLE_PRODUCT_IMAGES={
+  "lucky-me pancit canton":"/product-images/lucky-me-pancit-canton.png",
+  "selecta ice cream 1.5l":"/product-images/selecta-ice-cream-1-5l.png",
+  "nescafe 3-in-1":"/product-images/nescafe-3-in-1.png",
+  "century tuna 180g":"/product-images/century-tuna-180g.png",
+  "bear brand 33g":"/product-images/bear-brand-33g.png",
+  "coca-cola 1.5l":"/product-images/coca-cola-1-5l.png",
+  "piattos 85g":"/product-images/piattos-85g.png",
+  "argentina corned beef 175g":"/product-images/argentina-corned-beef-175g.png",
+  "safeguard 90g":"/product-images/safeguard-90g.png",
+  "surf powder 40g":"/product-images/surf-powder-40g.png"
+};
+const productImage=p=>{
+  const direct=String(p?.imageUrl||p?.image_url||"").trim();
+  if(direct)return direct;
+  const key=String(p?.name||"").trim().toLowerCase();
+  return SAMPLE_PRODUCT_IMAGES[key]||"";
+};
 const norm=p=>({...p,
   name:p.name??p.product_name??p.productName??p.title??"Unnamed Product",
   barcode:p.barcode??p.bar_code??p.barcode_number??p.sku??"",
@@ -441,17 +460,17 @@ function App(){
         <section className="products-panel"><div className="panel-title"><div><h2>Products</h2><p>Search or scan a product.</p></div><button className={scan?"scan-btn scanning":"scan-btn"} onClick={()=>{setScan(!scan);setStatus("")}}>📷 {scan?"Close Scanner":"Scan Barcode"}</button></div>
         {scan&&<div className="scanner-box"><div id="reader"></div><small>Allow camera access and point at the barcode.</small></div>}
         <div className="search-row"><span>🔍</span><input className="product-search" placeholder="Search product or barcode..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-        <div className="products-grid">{filtered.length?filtered.map(p=><div className="product-card" key={p.id}>
-          <div className="product-image">{p.imageUrl?<img src={p.imageUrl} alt={p.name}/>:<div className="image-placeholder">📦</div>}</div>
+        <div className="products-grid">{filtered.length?filtered.map(p=><div className="product-card" key={p.id} style={{overflow:"hidden"}}>
+          <div className="product-image" style={{height:170,background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>{productImage(p)?<img src={productImage(p)} alt={p.name} style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>:<div className="image-placeholder" style={{fontSize:42}}>📦</div>}</div>
           <div className="product-info"><h3>{p.name}</h3><small>Barcode: {p.barcode||"N/A"}</small><small>Stock: {p.stock}</small></div>
           <div className="product-bottom"><strong>{money(p.price)}</strong><button className="add-cart-btn" disabled={p.stock<=0} onClick={()=>add(p)}>{p.stock>0?"Add to Cart":"Out of Stock"}</button></div>
         </div>):<div className="empty-products">No product found.</div>}</div></section>
         <aside className="right-panel">
           <section className="cart-panel"><div className="right-panel-header"><h2>Cart</h2><span>{cart.reduce((n,i)=>n+i.qty,0)} item(s)</span></div>
-            <div className="cart-body">{cart.length?cart.map(i=><div className="cart-item" key={i.id}><div className="cart-item-image">{i.imageUrl?<img src={i.imageUrl} alt={i.name}/>:<span>📦</span>}</div><div className="cart-item-info"><b>{i.name}</b><small>{money(i.price)}</small><div className="qty-controls"><button onClick={()=>qty(i.id,-1)}>−</button><span>{i.qty}</span><button onClick={()=>qty(i.id,1)}>+</button></div></div><strong>{money(i.price*i.qty)}</strong></div>):<div className="cart-empty"><div className="cart-empty-icon">🛒</div><p>Cart is empty.</p></div>}</div>
+            <div className="cart-body">{cart.length?cart.map(i=><div className="cart-item" key={i.id}><div className="cart-item-image">{productImage(i)?<img src={productImage(i)} alt={i.name} style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>:<span>📦</span>}</div><div className="cart-item-info"><b>{i.name}</b><small>{money(i.price)}</small><div className="qty-controls"><button onClick={()=>qty(i.id,-1)}>−</button><span>{i.qty}</span><button onClick={()=>qty(i.id,1)}>+</button></div></div><strong>{money(i.price*i.qty)}</strong></div>):<div className="cart-empty"><div className="cart-empty-icon">🛒</div><p>Cart is empty.</p></div>}</div>
             <div className="cart-summary"><div><span>Subtotal</span><b>{money(subtotal)}</b></div><div><span>Discount</span><b>{money(discount)}</b></div><div className="grand-total"><span>TOTAL</span><b>{money(total)}</b></div><button className="payment-btn" disabled={!cart.length} onClick={()=>{setCash("");setPaymentMethod("cash");setErr("");setPaymentOpen(true)}}>💳 Payment</button></div>
           </section>
-          <section className="recent-panel"><div className="right-panel-header"><h2>🕘 Recent Scanned</h2></div>{recentScanned.length?<div className="recent-list">{recentScanned.map(i=><div className="recent-item" key={i.id}><div className="recent-image">{i.imageUrl?<img src={i.imageUrl} alt={i.name}/>:<span>📦</span>}</div><div><b>{i.name}</b><small>{i.barcode||"No barcode"}</small></div><button onClick={()=>add(i)}>+</button></div>)}</div>:<div className="recent-empty"><div className="barcode-icon">▥</div><p>No scanned items yet.</p></div>}</section>
+          <section className="recent-panel"><div className="right-panel-header"><h2>🕘 Recent Scanned</h2></div>{recentScanned.length?<div className="recent-list">{recentScanned.map(i=><div className="recent-item" key={i.id}><div className="recent-image">{productImage(i)?<img src={productImage(i)} alt={i.name} style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>:<span>📦</span>}</div><div><b>{i.name}</b><small>{i.barcode||"No barcode"}</small></div><button onClick={()=>add(i)}>+</button></div>)}</div>:<div className="recent-empty"><div className="barcode-icon">▥</div><p>No scanned items yet.</p></div>}</section>
         </aside>
       </div></>}
 
@@ -517,7 +536,7 @@ function App(){
                   <td>
                     <div style={{display:"flex",alignItems:"center",gap:10}}>
                       <div style={{width:42,height:42,borderRadius:8,overflow:"hidden",background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        {p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "📦"}
+                        {productImage(p) ? <img src={productImage(p)} alt={p.name} style={{width:"100%",height:"100%",objectFit:"contain"}}/> : "📦"}
                       </div>
                       <b>{p.name}</b>
                     </div>
