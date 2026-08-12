@@ -10,7 +10,7 @@ class ErrorBoundary extends React.Component {
   static getDerivedStateFromError(error){ return {error}; }
   render(){
     if(this.state.error) return <div className="auth"><div className="card error-card">
-      <h1>SmallBiz POS V2.4</h1><h2>App error</h2><pre>{String(this.state.error?.stack||this.state.error)}</pre>
+      <h1>SmallBiz POS V2.5</h1><h2>App error</h2><pre>{String(this.state.error?.stack||this.state.error)}</pre>
     </div></div>;
     return this.props.children;
   }
@@ -50,6 +50,16 @@ function App(){
   const [restockProduct,setRestockProduct]=useState(null),[restockQty,setRestockQty]=useState(""),[restockReason,setRestockReason]=useState("Restock");
   const [movements,setMovements]=useState([]),[movementLoading,setMovementLoading]=useState(false);
   const [voidSale,setVoidSale]=useState(null),[voidReason,setVoidReason]=useState(""),[voiding,setVoiding]=useState(false);
+  const [suppliers,setSuppliers]=useState([]),[supplierLoading,setSupplierLoading]=useState(false);
+  const [supplierModal,setSupplierModal]=useState(false),[editingSupplier,setEditingSupplier]=useState(null);
+  const [supplierForm,setSupplierForm]=useState({name:"",contact_person:"",phone:"",email:"",address:"",tin:""});
+  const [savingSupplier,setSavingSupplier]=useState(false),[supplierSearch,setSupplierSearch]=useState("");
+  const [purchaseHistory,setPurchaseHistory]=useState([]),[purchaseLoading,setPurchaseLoading]=useState(false);
+  const [purchaseSearch,setPurchaseSearch]=useState(""),[purchaseStatusFilter,setPurchaseStatusFilter]=useState("all");
+  const [purchaseModal,setPurchaseModal]=useState(false),[receivingPurchase,setReceivingPurchase]=useState(false);
+  const [purchaseForm,setPurchaseForm]=useState({supplier_id:"",reference_no:"",purchase_date:new Date().toISOString().slice(0,10),notes:""});
+  const [purchaseItems,setPurchaseItems]=useState([{product_id:"",quantity:"",unit_cost:""}]);
+  const [selectedPurchase,setSelectedPurchase]=useState(null),[selectedPurchaseItems,setSelectedPurchaseItems]=useState([]),[purchaseDetailsOpen,setPurchaseDetailsOpen]=useState(false),[purchaseDetailsLoading,setPurchaseDetailsLoading]=useState(false);
 
   useEffect(()=>{
     if(!supabase)return;
@@ -70,7 +80,7 @@ function App(){
     const {data,error}=await supabase.from("products").select("*").eq("business_id",p.business_id).order("created_at",{ascending:false});
     if(error){setErr("Products error: "+error.message);return}
     setProducts((data||[]).map(norm));
-    await Promise.all([loadSalesHistory(p.business_id),loadMovements(p.business_id)]);
+    await Promise.all([loadSalesHistory(p.business_id),loadMovements(p.business_id),loadSuppliers(p.business_id),loadPurchaseHistory(p.business_id)]);
   }
 
   async function loadSalesHistory(businessId){
@@ -93,13 +103,29 @@ function App(){
     setMovementLoading(false);
   }
 
+  async function loadSuppliers(businessId){
+    if(!businessId)return;
+    setSupplierLoading(true);
+    const {data,error}=await supabase.from("suppliers").select("id,business_id,name,contact_person,phone,email,address,tin,active,created_at,updated_at").eq("business_id",businessId).order("name",{ascending:true});
+    if(error)setErr("Supplier error: "+error.message);else setSuppliers(data||[]);
+    setSupplierLoading(false);
+  }
+
+  async function loadPurchaseHistory(businessId){
+    if(!businessId)return;
+    setPurchaseLoading(true);
+    const {data,error}=await supabase.from("purchases").select("id,business_id,supplier_id,reference_no,purchase_date,subtotal,notes,status,received_by,created_at,updated_at,suppliers(name)").eq("business_id",businessId).order("created_at",{ascending:false}).limit(500);
+    if(error)setErr("Purchase History error: "+error.message);else setPurchaseHistory(data||[]);
+    setPurchaseLoading(false);
+  }
+
   async function login(e){
     e.preventDefault(); if(!supabase)return; setErr("");
     const {error}=await supabase.auth.signInWithPassword({email,password});
     if(error)setErr(error.message);
   }
   async function logout(){
-    await supabase?.auth.signOut(); setSession(null); setProfile(null); setCart([]); setSalesHistory([]); setMovements([]);
+    await supabase?.auth.signOut(); setSession(null); setProfile(null); setCart([]); setSalesHistory([]); setMovements([]); setSuppliers([]); setPurchaseHistory([]);
     setPaymentOpen(false);setPaymentDone(false);setCash("");setReceiptNo("");setRecentScanned([]);setSelectedSale(null);setSaleDetailsOpen(false);
   }
 
@@ -271,6 +297,74 @@ function App(){
     }catch(e){setErr("Restock failed: "+e.message)}finally{setSavingProduct(false)}
   }
 
+  function openSupplier(s=null){
+    setEditingSupplier(s);
+    setSupplierForm(s?{name:s.name||"",contact_person:s.contact_person||"",phone:s.phone||"",email:s.email||"",address:s.address||"",tin:s.tin||""}:{name:"",contact_person:"",phone:"",email:"",address:"",tin:""});
+    setSupplierModal(true);setErr("");
+  }
+
+  async function saveSupplier(e){
+    e.preventDefault();if(!profile?.business_id)return;
+    setSavingSupplier(true);setErr("");
+    try{
+      const payload={business_id:profile.business_id,name:supplierForm.name.trim(),contact_person:supplierForm.contact_person.trim()||null,phone:supplierForm.phone.trim()||null,email:supplierForm.email.trim()||null,address:supplierForm.address.trim()||null,tin:supplierForm.tin.trim()||null,updated_at:new Date().toISOString()};
+      if(!payload.name)throw new Error("Supplier name is required.");
+      if(editingSupplier){
+        const {error}=await supabase.from("suppliers").update(payload).eq("id",editingSupplier.id).eq("business_id",profile.business_id);
+        if(error)throw new Error(error.message);
+        setStatus("Supplier updated successfully.");
+      }else{
+        const {error}=await supabase.from("suppliers").insert(payload);
+        if(error)throw new Error(error.message);
+        setStatus("Supplier added successfully.");
+      }
+      setSupplierModal(false);await loadSuppliers(profile.business_id);
+    }catch(e){setErr("Supplier save failed: "+e.message)}finally{setSavingSupplier(false)}
+  }
+
+  async function deleteSupplier(s){
+    if(!confirm(`Deactivate supplier "${s.name}"?`))return;
+    const {error}=await supabase.from("suppliers").update({active:false,updated_at:new Date().toISOString()}).eq("id",s.id).eq("business_id",profile.business_id);
+    if(error){setErr("Supplier update failed: "+error.message);return}
+    setStatus("Supplier deactivated.");await loadSuppliers(profile.business_id);
+  }
+
+  function openPurchase(){
+    setPurchaseForm({supplier_id:suppliers.find(s=>s.active!==false)?.id||"",reference_no:"",purchase_date:new Date().toISOString().slice(0,10),notes:""});
+    setPurchaseItems([{product_id:products[0]?.id||"",quantity:"",unit_cost:""}]);
+    setPurchaseModal(true);setErr("");
+  }
+
+  function updatePurchaseItem(index,key,value){setPurchaseItems(items=>items.map((item,i)=>i===index?{...item,[key]:value}:item));}
+  function addPurchaseItem(){setPurchaseItems(items=>[...items,{product_id:products[0]?.id||"",quantity:"",unit_cost:""}])}
+  function removePurchaseItem(index){setPurchaseItems(items=>items.length<=1?items:items.filter((_,i)=>i!==index))}
+  const purchaseSubtotal=purchaseItems.reduce((sum,item)=>sum+(Number(item.quantity||0)*Number(item.unit_cost||0)),0);
+
+  async function receivePurchase(e){
+    e.preventDefault();if(!profile?.business_id||!profile?.id)return;
+    if(!purchaseForm.supplier_id){setErr("Please select a supplier.");return}
+    const validItems=purchaseItems.filter(i=>i.product_id&&Number(i.quantity)>0&&Number(i.unit_cost)>=0);
+    if(!validItems.length){setErr("Add at least one valid purchase item.");return}
+    setReceivingPurchase(true);setErr("");setStatus("Receiving purchase...");
+    try{
+      const {data,error}=await supabase.rpc("receive_purchase",{p_business_id:profile.business_id,p_supplier_id:purchaseForm.supplier_id,p_reference_no:purchaseForm.reference_no.trim()||null,p_purchase_date:purchaseForm.purchase_date,p_notes:purchaseForm.notes.trim()||null,p_received_by:profile.id,p_items:validItems.map(i=>({product_id:i.product_id,quantity:Number(i.quantity),unit_cost:Number(Number(i.unit_cost).toFixed(2))}))});
+      if(error)throw new Error(error.message);
+      setPurchaseModal(false);setPurchaseForm({supplier_id:"",reference_no:"",purchase_date:new Date().toISOString().slice(0,10),notes:""});setPurchaseItems([{product_id:"",quantity:"",unit_cost:""}]);
+      setStatus(`Purchase received successfully. Reference: ${purchaseForm.reference_no||data}`);await load(session.user.id);
+    }catch(e){setErr("Receiving failed: "+e.message);setStatus("")}finally{setReceivingPurchase(false)}
+  }
+
+  const filteredSuppliers=useMemo(()=>{const q=supplierSearch.toLowerCase().trim();return suppliers.filter(s=>!q||String(s.name||"").toLowerCase().includes(q)||String(s.contact_person||"").toLowerCase().includes(q)||String(s.phone||"").toLowerCase().includes(q))},[suppliers,supplierSearch]);
+  const filteredPurchases=useMemo(()=>{const q=purchaseSearch.toLowerCase().trim();return purchaseHistory.filter(p=>{const ref=String(p.reference_no||"").toLowerCase(),supplier=String(p.suppliers?.name||"").toLowerCase(),status=String(p.status||"").toLowerCase();return(!q||ref.includes(q)||supplier.includes(q))&&(purchaseStatusFilter==="all"||status===purchaseStatusFilter)})},[purchaseHistory,purchaseSearch,purchaseStatusFilter]);
+
+  async function openPurchaseDetails(purchase){
+    setSelectedPurchase(purchase);setSelectedPurchaseItems([]);setPurchaseDetailsOpen(true);setPurchaseDetailsLoading(true);setErr("");
+    const {data,error}=await supabase.from("purchase_items").select("id,purchase_id,product_id,product_name,barcode,quantity,unit_cost,line_total").eq("purchase_id",purchase.id).order("id",{ascending:true});
+    if(error)setErr("Unable to load purchase items: "+error.message);else setSelectedPurchaseItems(data||[]);setPurchaseDetailsLoading(false);
+  }
+
+  function exportPurchases(){downloadExcel(filteredPurchases.map(p=>({Reference:p.reference_no||"",Date:p.purchase_date||"",Supplier:p.suppliers?.name||"",Subtotal:Number(p.subtotal||0),Status:p.status||"",Notes:p.notes||""})),`SmallBiz_POS_Purchases_${new Date().toISOString().slice(0,10)}`,"Purchases")}
+
   const filteredSales=useMemo(()=>{
     const q=historySearch.toLowerCase().trim();
     return salesHistory.filter(s=>{
@@ -314,19 +408,19 @@ function App(){
     <table><thead><tr><th style="text-align:left">Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="line"></div>
     <div class="row"><span>Subtotal</span><span>${money(subtotal)}</span></div><div class="row"><span>Discount</span><span>${money(discount)}</span></div><div class="row total"><span>TOTAL</span><span>${money(total)}</span></div><div class="line"></div>
     <div class="row"><span>Payment</span><span>${paymentLabel(paymentMethod)}</span></div><div class="row"><span>Amount Paid</span><span>${money(paymentMethod==="cash"?cash:total)}</span></div>
-    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.4</div>
+    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.5</div>
     <script>window.onload=()=>window.print()</script></body></html>`);win.document.close();
   }
 
-  if(configError)return <div className="auth"><div className="card"><h1>SmallBiz POS V2.4</h1><h2>Configuration missing</h2><p>Missing VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY</p></div></div>;
+  if(configError)return <div className="auth"><div className="card"><h1>SmallBiz POS V2.5</h1><h2>Configuration missing</h2><p>Missing VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY</p></div></div>;
   if(!session)return <div className="auth"><form className="login-card" onSubmit={login}><div className="login-logo">🛒</div><h1>SmallBiz POS</h1><p>Sign in to your business account</p><input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="primary">Login</button>{err&&<p className="error">{err}</p>}</form></div>;
 
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="brand"><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.4</span></div></div>
+      <div className="brand"><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.5</span></div></div>
       <div className="profile-box"><div className="profile-avatar">👤</div><div><b>{profile?.full_name||"Business Owner"}</b><small>{profile?.role||"owner"}</small><small className="online">● Online</small></div></div>
       <nav className="sidebar-nav">
-        {[["pos","🛒","POS"],["transactions","📋","Transactions"],["reports","📊","Reports"],["products","📦","Products"],["movements","🔄","Stock History"]].map(([key,icon,label])=>
+        {[["pos","🛒","POS"],["transactions","📋","Transactions"],["reports","📊","Reports"],["products","📦","Products"],["purchases","🚚","Purchasing"],["suppliers","🏢","Suppliers"],["movements","🔄","Stock History"]].map(([key,icon,label])=>
           <button key={key} className={activePage===key?"nav-item active":"nav-item"} onClick={()=>setActivePage(key)}><span>{icon}</span><b>{label}</b></button>)}
       </nav>
       <div className="sidebar-bottom">
@@ -367,8 +461,8 @@ function App(){
         {historyLoading?<div className="empty-page">Loading transactions...</div>:<div className="table-wrapper"><table><thead><tr><th>Invoice</th><th>Date</th><th>Payment</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredSales.map(s=><tr key={s.id}><td><b>{s.invoice_no}</b></td><td>{s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"-"}</td><td>{paymentLabel(s.payment_method)}</td><td><b>{money(s.total)}</b></td><td><span className="status-badge">{s.status}</span></td><td><button onClick={()=>openSaleDetails(s)}>🧾 View</button>{s.status==="completed"&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td></tr>)}</tbody></table></div>}</section>}
 
       {activePage==="reports"&&<section className="page-card"><div className="page-header"><div><h2>📊 Reports</h2><p>Sales and inventory performance.</p></div><button className="refresh-btn" onClick={()=>load(session.user.id)}>🔄 Refresh</button></div>
-        <div className="report-grid"><div className="report-card"><small>Total Transactions</small><strong>{salesHistory.length}</strong></div><div className="report-card"><small>Total Sales</small><strong>{money(salesHistory.reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div className="report-card"><small>Products</small><strong>{products.length}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div>
-        <div className="report-download-panel"><div><h3>📥 Download Reports</h3><p>Export your POS data to Excel.</p></div><div className="download-buttons"><button className="excel-btn" onClick={exportTransactions}>📊 Transactions</button><button className="excel-btn" onClick={exportProducts}>📦 Inventory</button><button className="excel-btn" onClick={exportMovements}>🔄 Stock Movements</button></div></div>
+        <div className="report-grid"><div className="report-card"><small>Total Transactions</small><strong>{salesHistory.length}</strong></div><div className="report-card"><small>Total Sales</small><strong>{money(salesHistory.reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div className="report-card"><small>Total Purchases</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div className="report-card"><small>Products</small><strong>{products.length}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div>
+        <div className="report-download-panel"><div><h3>📥 Download Reports</h3><p>Export your POS data to Excel.</p></div><div className="download-buttons"><button className="excel-btn" onClick={exportTransactions}>📊 Transactions</button><button className="excel-btn" onClick={exportProducts}>📦 Inventory</button><button className="excel-btn" onClick={exportMovements}>🔄 Stock Movements</button><button className="excel-btn" onClick={exportPurchases}>🚚 Purchases</button></div></div>
       </section>}
 
       {activePage==="products"&&<section className="page-card">
@@ -449,6 +543,10 @@ function App(){
           </table>
         </div>
       </section>}
+
+      {activePage==="purchases"&&<section className="page-card"><div className="page-header"><div><h2>🚚 Purchasing / Receiving</h2><p>Receive new inventory from suppliers and keep a purchase history.</p></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button className="excel-btn" onClick={exportPurchases}>📊 Excel</button><button className="refresh-btn" onClick={()=>loadPurchaseHistory(profile.business_id)}>🔄 Refresh</button><button className="primary" onClick={openPurchase}>➕ Receive Purchase</button></div></div><div className="summary-grid"><div><small>Total Purchases</small><strong>{purchaseHistory.length}</strong></div><div><small>Received</small><strong>{purchaseHistory.filter(p=>p.status==="received").length}</strong></div><div><small>Purchase Value</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div><small>Active Suppliers</small><strong>{suppliers.filter(s=>s.active!==false).length}</strong></div></div><div className="filters" style={{marginTop:16}}><input placeholder="🔍 Search reference or supplier..." value={purchaseSearch} onChange={e=>setPurchaseSearch(e.target.value)}/><select value={purchaseStatusFilter} onChange={e=>setPurchaseStatusFilter(e.target.value)}><option value="all">All Status</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select></div>{purchaseLoading?<div className="empty-page">Loading purchases...</div>:<div className="table-wrapper"><table><thead><tr><th>Date</th><th>Reference</th><th>Supplier</th><th>Subtotal</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredPurchases.length?filteredPurchases.map(p=><tr key={p.id}><td>{p.purchase_date||"-"}</td><td><b>{p.reference_no||p.id.slice(0,8)}</b></td><td>{p.suppliers?.name||"-"}</td><td><b>{money(p.subtotal)}</b></td><td><span className="status-badge">{p.status}</span></td><td><button onClick={()=>openPurchaseDetails(p)}>🧾 View</button></td></tr>):<tr><td colSpan="6" style={{textAlign:"center",padding:30}}>No purchases found.</td></tr>}</tbody></table></div>}</section>}
+
+      {activePage==="suppliers"&&<section className="page-card"><div className="page-header"><div><h2>🏢 Suppliers</h2><p>Manage your supplier master list.</p></div><button className="primary" onClick={()=>openSupplier()}>➕ Add Supplier</button></div><div className="filters"><input placeholder="🔍 Search supplier, contact or phone..." value={supplierSearch} onChange={e=>setSupplierSearch(e.target.value)}/></div>{supplierLoading?<div className="empty-page">Loading suppliers...</div>:<div className="table-wrapper"><table><thead><tr><th>Supplier</th><th>Contact</th><th>Phone</th><th>Email</th><th>Address</th><th>Action</th></tr></thead><tbody>{filteredSuppliers.length?filteredSuppliers.map(s=><tr key={s.id}><td><b>{s.name}</b>{s.active===false&&<span className="status-badge" style={{marginLeft:6}}>INACTIVE</span>}</td><td>{s.contact_person||"-"}</td><td>{s.phone||"-"}</td><td>{s.email||"-"}</td><td>{s.address||"-"}</td><td><button onClick={()=>openSupplier(s)}>✏ Edit</button>{s.active!==false&&<button onClick={()=>deleteSupplier(s)} style={{marginLeft:6}}>⛔ Deactivate</button>}</td></tr>):<tr><td colSpan="6" style={{textAlign:"center",padding:30}}>No suppliers found.</td></tr>}</tbody></table></div>}</section>}
 
       {activePage==="movements"&&<section className="page-card"><div className="page-header"><div><h2>🔄 Stock Movement History</h2><p>Track sales, stock-in and adjustments.</p></div><div><button className="refresh-btn" onClick={()=>loadMovements(profile.business_id)}>🔄 Refresh</button><button className="excel-btn" onClick={exportMovements}>📊 Excel</button></div></div>
         {movementLoading?<div className="empty-page">Loading...</div>:<div className="table-wrapper"><table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>Before</th><th>After</th><th>Reason</th></tr></thead><tbody>{movements.map(m=><tr key={m.id}><td>{new Date(m.created_at).toLocaleString("en-PH")}</td><td>{m.product_name}</td><td>{m.movement_type}</td><td>{m.quantity}</td><td>{m.stock_before}</td><td>{m.stock_after}</td><td>{m.reason||"-"}</td></tr>)}</tbody></table></div>}
@@ -540,6 +638,12 @@ function App(){
     {restockProduct&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>➕ Stock In</h2><button onClick={()=>setRestockProduct(null)}>✕</button></div><p><b>{restockProduct.name}</b><br/>Current stock: {restockProduct.stock}</p><form onSubmit={doRestock}><label>Quantity to Add</label><input type="number" min="1" step="1" value={restockQty} onChange={e=>setRestockQty(e.target.value)} required/><label>Reason</label><input value={restockReason} onChange={e=>setRestockReason(e.target.value)}/><div className="modal-buttons"><button type="button" onClick={()=>setRestockProduct(null)}>Cancel</button><button className="primary" disabled={savingProduct}>{savingProduct?"Saving...":"Add Stock"}</button></div></form></div></div>}
 
     {voidSale&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>↩ Void Transaction</h2><button onClick={()=>setVoidSale(null)}>✕</button></div><p>Void invoice <b>{voidSale.invoice_no}</b>?</p><p>This will execute the existing <b>void_sale</b> RPC and restore inventory.</p><label>Void Reason</label><textarea value={voidReason} onChange={e=>setVoidReason(e.target.value)} placeholder="Enter reason..." rows="4"/>{err&&<p className="error">{err}</p>}<div className="modal-buttons"><button onClick={()=>setVoidSale(null)}>Cancel</button><button className="primary" disabled={voiding||!voidReason.trim()} onClick={performVoid}>{voiding?"Voiding...":"Confirm Void"}</button></div></div></div>}
+
+    {supplierModal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>{editingSupplier?"✏ Edit Supplier":"➕ Add Supplier"}</h2><button onClick={()=>setSupplierModal(false)}>✕</button></div><form onSubmit={saveSupplier}><label>Supplier Name</label><input value={supplierForm.name} onChange={e=>setSupplierForm({...supplierForm,name:e.target.value})} placeholder="e.g. ABC Trading" required/><label>Contact Person</label><input value={supplierForm.contact_person} onChange={e=>setSupplierForm({...supplierForm,contact_person:e.target.value})}/><label>Phone</label><input value={supplierForm.phone} onChange={e=>setSupplierForm({...supplierForm,phone:e.target.value})}/><label>Email</label><input type="email" value={supplierForm.email} onChange={e=>setSupplierForm({...supplierForm,email:e.target.value})}/><label>Address</label><textarea rows="2" value={supplierForm.address} onChange={e=>setSupplierForm({...supplierForm,address:e.target.value})}/><label>TIN</label><input value={supplierForm.tin} onChange={e=>setSupplierForm({...supplierForm,tin:e.target.value})}/><div className="modal-buttons"><button type="button" onClick={()=>setSupplierModal(false)}>Cancel</button><button className="primary" disabled={savingSupplier}>{savingSupplier?"Saving...":"Save Supplier"}</button></div></form></div></div>}
+
+    {purchaseModal&&<div className="modal-backdrop"><div className="modal" style={{maxWidth:850}}><div className="modal-header"><h2>🚚 Receive Purchase</h2><button onClick={()=>setPurchaseModal(false)}>✕</button></div><form onSubmit={receivePurchase}><div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}><div><label>Supplier</label><select value={purchaseForm.supplier_id} onChange={e=>setPurchaseForm({...purchaseForm,supplier_id:e.target.value})} required><option value="">Select supplier</option>{suppliers.filter(s=>s.active!==false).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div><div><label>Purchase Date</label><input type="date" value={purchaseForm.purchase_date} onChange={e=>setPurchaseForm({...purchaseForm,purchase_date:e.target.value})} required/></div><div><label>Reference / Invoice No.</label><input value={purchaseForm.reference_no} onChange={e=>setPurchaseForm({...purchaseForm,reference_no:e.target.value})} placeholder="Supplier invoice no."/></div><div><label>Notes</label><input value={purchaseForm.notes} onChange={e=>setPurchaseForm({...purchaseForm,notes:e.target.value})} placeholder="Optional notes"/></div></div><div className="table-wrapper" style={{marginTop:14}}><table><thead><tr><th style={{minWidth:220}}>Product</th><th>Qty</th><th>Unit Cost</th><th>Line Total</th><th></th></tr></thead><tbody>{purchaseItems.map((item,index)=><tr key={index}><td><select value={item.product_id} onChange={e=>updatePurchaseItem(index,"product_id",e.target.value)} required><option value="">Select product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}{p.barcode?` (${p.barcode})`:""}</option>)}</select></td><td><input type="number" min="1" step="1" value={item.quantity} onChange={e=>updatePurchaseItem(index,"quantity",e.target.value)} required/></td><td><input type="number" min="0" step="0.01" value={item.unit_cost} onChange={e=>updatePurchaseItem(index,"unit_cost",e.target.value)} required/></td><td><b>{money(Number(item.quantity||0)*Number(item.unit_cost||0))}</b></td><td><button type="button" onClick={()=>removePurchaseItem(index)}>🗑</button></td></tr>)}</tbody></table></div><button type="button" onClick={addPurchaseItem} style={{marginTop:10}}>➕ Add Item</button><div className="sale-total" style={{marginTop:14}}><div className="grand-total"><span>TOTAL PURCHASE</span><b>{money(purchaseSubtotal)}</b></div></div>{err&&<p className="error">{err}</p>}<div className="modal-buttons"><button type="button" onClick={()=>setPurchaseModal(false)}>Cancel</button><button className="primary" disabled={receivingPurchase||!purchaseItems.length}>{receivingPurchase?"Receiving...":"Receive & Add Stock"}</button></div></form></div></div>}
+
+    {purchaseDetailsOpen&&selectedPurchase&&<div className="modal-backdrop"><div className="modal sale-details-modal"><div className="modal-header"><h2>🧾 Purchase Details</h2><button onClick={()=>setPurchaseDetailsOpen(false)}>✕</button></div>{purchaseDetailsLoading?<div>Loading...</div>:<><p><b>Reference:</b> {selectedPurchase.reference_no||selectedPurchase.id}</p><p><b>Date:</b> {selectedPurchase.purchase_date||"-"}</p><p><b>Supplier:</b> {selectedPurchase.suppliers?.name||"-"}</p><p><b>Status:</b> {selectedPurchase.status}</p><div className="table-wrapper"><table><thead><tr><th>Product</th><th>Qty</th><th>Unit Cost</th><th>Total</th></tr></thead><tbody>{selectedPurchaseItems.map(i=><tr key={i.id}><td>{i.product_name}</td><td>{i.quantity}</td><td>{money(i.unit_cost)}</td><td>{money(i.line_total)}</td></tr>)}</tbody></table></div><div className="sale-total"><div className="grand-total"><span>TOTAL PURCHASE</span><b>{money(selectedPurchase.subtotal)}</b></div></div></>}</div></div>}
 
     {saleDetailsOpen&&selectedSale&&<div className="modal-backdrop"><div className="modal sale-details-modal"><div className="modal-header"><h2>🧾 Sale Details</h2><button onClick={()=>setSaleDetailsOpen(false)}>✕</button></div>{saleDetailsLoading?<div>Loading...</div>:<><p>Invoice: <b>{selectedSale.invoice_no}</b></p><p>Status: <b>{selectedSale.status}</b></p><div className="table-wrapper"><table><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>{selectedSaleItems.map(i=><tr key={i.id}><td>{i.product_name}</td><td>{i.quantity}</td><td>{money(i.unit_price)}</td><td>{money(i.line_total)}</td></tr>)}</tbody></table></div><div className="sale-total"><div><span>Subtotal</span><b>{money(selectedSale.subtotal)}</b></div><div className="grand-total"><span>TOTAL</span><b>{money(selectedSale.total)}</b></div></div></>}</div></div>}
   </div>
