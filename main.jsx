@@ -47,8 +47,8 @@ const productImage=p=>{
   ).trim();
 
   if(direct){
-    if(/^https?:\\/\\//i.test(direct) || direct.startsWith("/")) return direct;
-    return "/" + direct.replace(/^\\/+/, "");
+    if(/^https?:\/\//i.test(direct) || direct.startsWith("/")) return direct;
+return "/" + direct.replace(/^\/+/, "");
   }
 
   const key=String(p?.name||"").trim().toLowerCase();
