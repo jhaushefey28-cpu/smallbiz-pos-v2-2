@@ -64,7 +64,7 @@ function App(){
   const [saleDetailsOpen,setSaleDetailsOpen]=useState(false),[saleDetailsLoading,setSaleDetailsLoading]=useState(false);
   const [recentScanned,setRecentScanned]=useState([]);
   const [productModal,setProductModal]=useState(false),[editingProduct,setEditingProduct]=useState(null);
-  const [productForm,setProductForm]=useState({name:"",barcode:"",price:"",stock:"",image_url:""});
+  const [productForm,setProductForm]=useState({name:"",barcode:"",price:"",stock:"",image_url:"",image_preview_url:""});
   const [savingProduct,setSavingProduct]=useState(false),[productSearch,setProductSearch]=useState("");
   const [uploadingProductImage,setUploadingProductImage]=useState(false);
   const [restockProduct,setRestockProduct]=useState(null),[restockQty,setRestockQty]=useState(""),[restockReason,setRestockReason]=useState("Restock");
@@ -99,7 +99,24 @@ function App(){
     setProfile(p);
     const {data,error}=await supabase.from("products").select("*").eq("business_id",p.business_id).order("created_at",{ascending:false});
     if(error){setErr("Products error: "+error.message);return}
-    setProducts((data||[]).map(norm));
+    const normalized=(data||[]).map(norm);
+    const resolved=await Promise.all(normalized.map(async product=>{
+      const raw=String(product.image_url||product.imageUrl||"").trim();
+      if(!raw.startsWith("storage://"))return product;
+      const path=raw.slice("storage://product-images/".length);
+      if(!path||path===raw)return product;
+      const {data:signed,error:signedError}=await supabase.storage
+        .from("product-images")
+        .createSignedUrl(path,60*60*24*7);
+      if(!signedError&&signed?.signedUrl)return {...product,imageUrl:signed.signedUrl};
+
+      const {data:publicData}=supabase.storage
+        .from("product-images")
+        .getPublicUrl(path);
+      if(publicData?.publicUrl)return {...product,imageUrl:publicData.publicUrl};
+      return product;
+    }));
+    setProducts(resolved);
     await Promise.all([loadSalesHistory(p.business_id),loadMovements(p.business_id),loadSuppliers(p.business_id),loadPurchaseHistory(p.business_id)]);
   }
 
@@ -267,86 +284,89 @@ function App(){
 
   function openProduct(p=null){
     setEditingProduct(p);
-    setProductForm(p?{name:p.name,barcode:p.barcode||"",price:String(p.price),stock:String(p.stock),image_url:p.imageUrl||""}:{name:"",barcode:"",price:"",stock:"",image_url:""});
+    setProductForm(p?{
+      name:p.name,
+      barcode:p.barcode||"",
+      price:String(p.price),
+      stock:String(p.stock),
+      image_url:String(p.image_url||""),
+      image_preview_url:String(p.imageUrl||"")
+    }:{name:"",barcode:"",price:"",stock:"",image_url:"",image_preview_url:""});
     setProductModal(true);setErr("");
   }
 
   async function uploadProductImage(file){
-  if(!file||!profile?.business_id||!supabase)return;
+    if(!file||!profile?.business_id||!supabase)return;
 
-  setErr("");
+    setErr("");
 
-  if(!file.type.startsWith("image/")){
-    setErr("Please select an image file.");
-    return;
-  }
-
-  if(file.size>5*1024*1024){
-    setErr("Image is too large. Maximum size is 5MB.");
-    return;
-  }
-
-  setUploadingProductImage(true);
-
-  try{
-    // Show the selected image immediately
-    const localPreview=URL.createObjectURL(file);
-    setProductForm(prev=>({
-      ...prev,
-      image_url:localPreview
-    }));
-
-    const ext=(file.name.split(".").pop()||"jpg")
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g,"")||"jpg";
-
-    const safeName=file.name
-      .replace(/\.[^/.]+$/,"")
-      .replace(/[^a-zA-Z0-9-_]/g,"-")
-      .toLowerCase()
-      .slice(0,60)||"product";
-
-    const filePath=`${profile.business_id}/${Date.now()}-${safeName}.${ext}`;
-
-    const {error:uploadError}=await supabase.storage
-      .from("product-images")
-      .upload(filePath,file,{
-        cacheControl:"3600",
-        upsert:false,
-        contentType:file.type
-      });
-
-    if(uploadError)throw new Error(uploadError.message);
-
-    const {data:urlData}=supabase.storage
-      .from("product-images")
-      .getPublicUrl(filePath);
-
-    if(!urlData?.publicUrl){
-      throw new Error("Unable to generate image URL.");
+    if(!file.type.startsWith("image/")){
+      setErr("Please select an image file.");
+      return;
     }
 
-    // Replace temporary preview with permanent URL
-    setProductForm(prev=>({
-      ...prev,
-      image_url:urlData.publicUrl
-    }));
+    if(file.size>5*1024*1024){
+      setErr("Image is too large. Maximum size is 5MB.");
+      return;
+    }
 
-    URL.revokeObjectURL(localPreview);
+    setUploadingProductImage(true);
 
-    setStatus("Product image uploaded successfully.");
-  }catch(e){
-    setProductForm(prev=>({
-      ...prev,
-      image_url:""
-    }));
+    try{
+      // Keep a temporary browser preview only for the current form.
+      const localPreview=URL.createObjectURL(file);
+      setProductForm(prev=>({...prev,image_preview_url:localPreview}));
 
-    setErr("Image upload failed: "+e.message);
-  }finally{
-    setUploadingProductImage(false);
+      const ext=(file.name.split(".").pop()||"jpg")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g,"")||"jpg";
+
+      const safeName=file.name
+        .replace(/\.[^/.]+$/,"" )
+        .replace(/[^a-zA-Z0-9-_]/g,"-")
+        .toLowerCase()
+        .slice(0,60)||"product";
+
+      const filePath=`${profile.business_id}/${Date.now()}-${safeName}.${ext}`;
+
+      const {error:uploadError}=await supabase.storage
+        .from("product-images")
+        .upload(filePath,file,{
+          cacheControl:"31536000",
+          upsert:false,
+          contentType:file.type
+        });
+
+      if(uploadError)throw new Error(uploadError.message);
+
+      // Do not save a temporary blob URL or an expiring signed URL in the database.
+      // Save the permanent Storage object path instead.
+      const storageValue=`storage://product-images/${filePath}`;
+      const {data:signed,error:signedError}=await supabase.storage
+        .from("product-images")
+        .createSignedUrl(filePath,60*60);
+
+      let previewUrl=signed?.signedUrl||"";
+      if(!previewUrl){
+        const {data:publicData}=supabase.storage
+          .from("product-images")
+          .getPublicUrl(filePath);
+        previewUrl=publicData?.publicUrl||"";
+      }
+      if(!previewUrl){
+        throw new Error(signedError?.message||"Image uploaded but a preview URL could not be generated.");
+      }
+
+      setProductForm(prev=>({...prev,image_url:storageValue,image_preview_url:previewUrl}));
+      URL.revokeObjectURL(localPreview);
+      setStatus("Product image uploaded successfully.");
+    }catch(e){
+      setProductForm(prev=>({...prev,image_url:"",image_preview_url:""}));
+      setErr("Image upload failed: "+e.message);
+    }finally{
+      setUploadingProductImage(false);
+    }
   }
-}
-
   async function saveProduct(e){
     e.preventDefault();if(!profile?.business_id)return;
     setSavingProduct(true);setErr("");
@@ -719,10 +739,10 @@ function App(){
               }
             </div>
 
-            {productForm.image_url&&
+            {productForm.image_preview_url&&
               <div style={{margin:"12px 0",textAlign:"center"}}>
                 <img
-                  src={productForm.image_url}
+                  src={productForm.image_preview_url}
                   alt="Product Preview"
                   onError={e=>e.currentTarget.style.display="none"}
                   style={{width:120,height:120,objectFit:"contain",borderRadius:12,border:"1px solid #ddd",background:"#fff"}}
