@@ -67,6 +67,8 @@ function App(){
   const [productForm,setProductForm]=useState({name:"",barcode:"",price:"",stock:"",image_url:""});
   const [savingProduct,setSavingProduct]=useState(false),[productSearch,setProductSearch]=useState("");
   const [uploadingProductImage,setUploadingProductImage]=useState(false);
+  const [productImageFile,setProductImageFile]=useState(null);
+  const [productImagePreview,setProductImagePreview]=useState("");
   const [restockProduct,setRestockProduct]=useState(null),[restockQty,setRestockQty]=useState(""),[restockReason,setRestockReason]=useState("Restock");
   const [movements,setMovements]=useState([]),[movementLoading,setMovementLoading]=useState(false);
   const [voidSale,setVoidSale]=useState(null),[voidReason,setVoidReason]=useState(""),[voiding,setVoiding]=useState(false);
@@ -268,7 +270,19 @@ function App(){
   function openProduct(p=null){
     setEditingProduct(p);
     setProductForm(p?{name:p.name,barcode:p.barcode||"",price:String(p.price),stock:String(p.stock),image_url:p.imageUrl||""}:{name:"",barcode:"",price:"",stock:"",image_url:""});
+    setProductImageFile(null);
+    setProductImagePreview(p?.imageUrl||"");
     setProductModal(true);setErr("");
+  }
+
+  function selectProductImage(file){
+    if(!file)return;
+    setErr("");
+    if(!file.type.startsWith("image/")){setErr("Please select an image file.");return;}
+    if(file.size>5*1024*1024){setErr("Image is too large. Maximum size is 5MB.");return;}
+    setProductImageFile(file);
+    const preview=URL.createObjectURL(file);
+    setProductImagePreview(preview);
   }
 
   async function uploadProductImage(file){
@@ -342,12 +356,36 @@ function App(){
   }
 
   async function saveProduct(e){
-    e.preventDefault();if(!profile?.business_id)return;
+    e.preventDefault();if(!profile?.business_id||!supabase)return;
     setSavingProduct(true);setErr("");
     try{
+      let imageUrl=productForm.image_url.trim()||null;
+
+      // Upload only when the user clicks Save Product. This prevents the image
+      // from disappearing while the modal is still being edited.
+      if(productImageFile){
+        setUploadingProductImage(true);
+        const file=productImageFile;
+        const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";
+        const safeName=file.name.replace(/\.[^/\.]+$/,"").replace(/[^a-zA-Z0-9-_]/g,"-").toLowerCase().slice(0,60)||"product";
+        const filePath=`${profile.business_id}/${Date.now()}-${safeName}.${ext}`;
+
+        const {error:uploadError}=await supabase.storage.from("product-images").upload(filePath,file,{
+          cacheControl:"3600",upsert:false,contentType:file.type
+        });
+        if(uploadError)throw new Error("Image upload failed: "+uploadError.message);
+
+        const {data:signedData,error:signedError}=await supabase.storage.from("product-images").createSignedUrl(filePath,60*60*24*365);
+        if(signedError||!signedData?.signedUrl){
+          throw new Error("Image URL failed: "+(signedError?.message||"Unable to generate image URL."));
+        }
+        imageUrl=signedData.signedUrl;
+      }
+
       const payload={business_id:profile.business_id,name:productForm.name.trim(),barcode:productForm.barcode.trim(),
-        price:Number(productForm.price||0),stock:Number(productForm.stock||0),image_url:productForm.image_url.trim()||null,updated_at:new Date().toISOString()};
+        price:Number(productForm.price||0),stock:Number(productForm.stock||0),image_url:imageUrl,updated_at:new Date().toISOString()};
       if(!payload.name)throw new Error("Product name is required.");
+
       if(editingProduct){
         const before=Number(editingProduct.stock||0),after=payload.stock;
         const {error}=await supabase.from("products").update(payload).eq("id",editingProduct.id).eq("business_id",profile.business_id);
@@ -360,10 +398,14 @@ function App(){
         if(payload.stock>0)await recordMovement({product:{...data,name:payload.name,id:data.id},quantity:payload.stock,before:0,after:payload.stock,type:"STOCK_IN",reason:"Initial stock"});
         setStatus("Product added successfully.");
       }
+      if(productImagePreview.startsWith("blob:"))URL.revokeObjectURL(productImagePreview);
+      setProductImageFile(null);setProductImagePreview("");
       setProductModal(false);await load(session.user.id);
-    }catch(e){setErr("Product save failed: "+e.message)}finally{setSavingProduct(false)}
+    }catch(e){
+      console.error("Product save failed:",e);
+      setErr(e?.message||"Product save failed.");
+    }finally{setUploadingProductImage(false);setSavingProduct(false)}
   }
-
   async function deleteProduct(p){
     if(!confirm(`Delete "${p.name}"? This should only be used for products with no dependent records.`))return;
     setErr("");
@@ -696,15 +738,15 @@ function App(){
               <input
                 type="file"
                 accept="image/*"
-                disabled={uploadingProductImage}
+                disabled={uploadingProductImage||savingProduct}
                 onChange={e=>{
                   const file=e.target.files?.[0];
-                  if(file)uploadProductImage(file);
+                  if(file)selectProductImage(file);
                   e.target.value="";
                 }}
               />
               <small style={{display:"block",marginTop:7,color:"#7b8794"}}>
-                Upload a product image from your device. Maximum 5MB.
+                Select a product image from your device. Maximum 5MB. The image will upload when you click Save Product.
               </small>
               {uploadingProductImage&&
                 <div style={{marginTop:10,color:"#1769e0",fontWeight:700}}>
@@ -713,15 +755,14 @@ function App(){
               }
             </div>
 
-            {productForm.image_url&&
+            {(productImagePreview||productForm.image_url)&&
               <div style={{margin:"12px 0",textAlign:"center"}}>
                 <img
-                  src={productForm.image_url}
+                  src={productImagePreview||productForm.image_url}
                   alt="Product Preview"
-                  onError={e=>e.currentTarget.style.display="none"}
                   style={{width:120,height:120,objectFit:"contain",borderRadius:12,border:"1px solid #ddd",background:"#fff"}}
                 />
-                <small style={{display:"block",marginTop:6,color:"#14733d"}}>✓ Image ready</small>
+                <small style={{display:"block",marginTop:6,color:"#14733d"}}>✓ Image selected</small>
               </div>
             }
 
@@ -734,7 +775,7 @@ function App(){
             <div className="modal-buttons">
               <button type="button" onClick={()=>setProductModal(false)}>Cancel</button>
               <button className="primary" disabled={savingProduct||uploadingProductImage}>
-                {savingProduct?"Saving...":uploadingProductImage?"Uploading image...":"Save Product"}
+                {uploadingProductImage?"Uploading image...":savingProduct?"Saving...":"Save Product"}
               </button>
             </div>
           </form>
