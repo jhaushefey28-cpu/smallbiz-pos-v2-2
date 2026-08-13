@@ -46,7 +46,7 @@ const norm=p=>({...p,
   barcode:p.barcode??p.bar_code??p.barcode_number??p.sku??"",
   price:Number(p.price??p.selling_price??p.sale_price??0),
   stock:Number(p.stock??p.quantity??p.current_stock??0),
-  imageUrl:p.image_url??p.imageUrl??p.image??p.product_image??p.product_image_url??p.photo_url??""
+  imageUrl:p.image_url??p.imageUrl??p.image??p.product_image??p.product_image_url??p.photo_url??"",cost_price:Number(p.cost_price??p.cost??p.unit_cost??0),category_id:p.category_id??null
 });
 
 function App(){
@@ -64,7 +64,7 @@ function App(){
   const [saleDetailsOpen,setSaleDetailsOpen]=useState(false),[saleDetailsLoading,setSaleDetailsLoading]=useState(false);
   const [recentScanned,setRecentScanned]=useState([]);
   const [productModal,setProductModal]=useState(false),[editingProduct,setEditingProduct]=useState(null);
-  const [productForm,setProductForm]=useState({name:"",barcode:"",price:"",stock:"",image_url:""});
+  const [productForm,setProductForm]=useState({name:"",barcode:"",price:"",stock:"",cost_price:"",category_id:"",image_url:""});
   const [savingProduct,setSavingProduct]=useState(false),[productSearch,setProductSearch]=useState("");
   const [uploadingProductImage,setUploadingProductImage]=useState(false);
   const [productImageFile,setProductImageFile]=useState(null);
@@ -82,6 +82,10 @@ function App(){
   const [purchaseForm,setPurchaseForm]=useState({supplier_id:"",reference_no:"",purchase_date:new Date().toISOString().slice(0,10),notes:""});
   const [purchaseItems,setPurchaseItems]=useState([{product_id:"",quantity:"",unit_cost:""}]);
   const [selectedPurchase,setSelectedPurchase]=useState(null),[selectedPurchaseItems,setSelectedPurchaseItems]=useState([]),[purchaseDetailsOpen,setPurchaseDetailsOpen]=useState(false),[purchaseDetailsLoading,setPurchaseDetailsLoading]=useState(false);
+  const [categories,setCategories]=useState([]),[categoryModal,setCategoryModal]=useState(false),[categoryForm,setCategoryForm]=useState({name:"",description:""}),[savingCategory,setSavingCategory]=useState(false);
+  const [customers,setCustomers]=useState([]),[customerModal,setCustomerModal]=useState(false),[editingCustomer,setEditingCustomer]=useState(null),[customerForm,setCustomerForm]=useState({name:"",phone:"",email:"",address:"",tin:""}),[savingCustomer,setSavingCustomer]=useState(false),[customerSearch,setCustomerSearch]=useState("");
+  const [selectedCustomerId,setSelectedCustomerId]=useState(""),[paymentReference,setPaymentReference]=useState(""),[discountAmount,setDiscountAmount]=useState(""),[discountReason,setDiscountReason]=useState("");
+  const [dashboardRange,setDashboardRange]=useState("today"),[saleItemsHistory,setSaleItemsHistory]=useState([]);
 
   useEffect(()=>{
     if(!supabase)return;
@@ -92,6 +96,7 @@ function App(){
   },[]);
 
   useEffect(()=>{if(session?.user)load(session.user.id)},[session]);
+  useEffect(()=>{if(profile?.business_id)loadSaleItemsHistory()},[salesHistory,profile?.business_id]);
 
   async function load(uid){
     if(!supabase)return;
@@ -102,18 +107,29 @@ function App(){
     const {data,error}=await supabase.from("products").select("*").eq("business_id",p.business_id).order("created_at",{ascending:false});
     if(error){setErr("Products error: "+error.message);return}
     setProducts((data||[]).map(norm));
-    await Promise.all([loadSalesHistory(p.business_id),loadMovements(p.business_id),loadSuppliers(p.business_id),loadPurchaseHistory(p.business_id)]);
+    await Promise.all([loadSalesHistory(p.business_id),loadMovements(p.business_id),loadSuppliers(p.business_id),loadPurchaseHistory(p.business_id),loadCategories(p.business_id),loadCustomers(p.business_id)]);
   }
 
   async function loadSalesHistory(businessId){
     if(!businessId)return;
     setHistoryLoading(true);
     const {data,error}=await supabase.from("sales")
-      .select("id,business_id,invoice_no,cashier_id,subtotal,discount,total,payment_method,amount_tendered,change_amount,status,created_at")
+      .select("id,business_id,invoice_no,cashier_id,customer_id,subtotal,discount,discount_reason,total,payment_method,payment_reference,amount_tendered,change_amount,status,created_at")
       .eq("business_id",businessId).order("created_at",{ascending:false}).limit(500);
     if(error)setErr("Sales History error: "+error.message); else setSalesHistory(data||[]);
     setHistoryLoading(false);
   }
+
+  async function loadSaleItemsHistory(){
+    const ids=salesHistory.map(s=>s.id);
+    if(!ids.length){setSaleItemsHistory([]);return}
+    const {data,error}=await supabase.from("sale_items").select("id,sale_id,product_id,product_name,quantity,unit_price,line_total,cost_price,line_cost,gross_profit").in("sale_id",ids);
+    if(!error)setSaleItemsHistory(data||[]);
+    else {const fallback=await supabase.from("sale_items").select("id,sale_id,product_id,product_name,quantity,unit_price,line_total").in("sale_id",ids);setSaleItemsHistory(fallback.data||[])}
+  }
+
+  async function loadCategories(businessId){const {data,error}=await supabase.from("product_categories").select("id,business_id,name,description,active,created_at,updated_at").eq("business_id",businessId).order("name");if(!error)setCategories(data||[]);}
+  async function loadCustomers(businessId){const {data,error}=await supabase.from("customers").select("id,business_id,name,phone,email,address,tin,active,created_at,updated_at").eq("business_id",businessId).order("name");if(!error)setCustomers(data||[]);}
 
   async function loadMovements(businessId){
     if(!businessId)return;
@@ -195,8 +211,16 @@ function App(){
   },[scan,products]);
 
   const subtotal=cart.reduce((s,i)=>s+Number(i.price)*Number(i.qty),0);
-  const discount=0,total=subtotal-discount;
+  const discount=Math.max(0,Math.min(subtotal,Number(discountAmount||0)));
+  const total=Math.max(0,subtotal-discount);
   const change=Number(cash||0)-total;
+  const role=String(profile?.role||"owner").toLowerCase();
+  const isOwner=role==="owner"||role==="admin";
+  const canSell=isOwner||role==="manager"||role==="cashier";
+  const canViewReports=isOwner||role==="manager";
+  const canManageInventory=isOwner||role==="manager";
+  const canManagePurchasing=isOwner||role==="manager";
+  const canManageMasters=isOwner||role==="manager";
 
   function paymentLabel(m){return m==="gcash"?"GCash":m==="card"?"Card":"Cash"}
 
@@ -211,6 +235,7 @@ function App(){
 
   async function completePayment(){
     if(savingPayment||!cart.length||!profile?.id||!profile?.business_id)return;
+    if(!canSell){setErr("Your role is not allowed to process sales.");return}
     if(paymentMethod==="cash"&&(!cash||Number(cash)<total))return;
     let w=null;
     if(autoPrintReceipt)w=window.open("","_blank","width=420,height=700");
@@ -218,13 +243,13 @@ function App(){
     const invoiceNumber="INV-"+Date.now();
     try{
       const {data:sale,error:se}=await supabase.from("sales").insert({
-        business_id:profile.business_id,invoice_no:invoiceNumber,cashier_id:profile.id,
-        subtotal:Number(subtotal.toFixed(2)),discount:Number(discount.toFixed(2)),total:Number(total.toFixed(2)),
-        payment_method:paymentMethod,amount_tendered:paymentMethod==="cash"?Number(Number(cash).toFixed(2)):Number(total.toFixed(2)),
+        business_id:profile.business_id,invoice_no:invoiceNumber,cashier_id:profile.id,customer_id:selectedCustomerId||null,
+        subtotal:Number(subtotal.toFixed(2)),discount:Number(discount.toFixed(2)),discount_reason:discountReason.trim()||null,total:Number(total.toFixed(2)),
+        payment_method:paymentMethod,payment_reference:paymentReference.trim()||null,amount_tendered:paymentMethod==="cash"?Number(Number(cash).toFixed(2)):Number(total.toFixed(2)),
         change_amount:paymentMethod==="cash"?Number(change.toFixed(2)):0,status:"completed"
       }).select().single();
       if(se)throw new Error("Unable to save sale: "+se.message);
-      const items=cart.map(i=>({sale_id:sale.id,product_id:i.id,product_name:i.name,barcode:i.barcode||"",quantity:Number(i.qty),unit_price:Number(i.price),line_total:Number((i.price*i.qty).toFixed(2))}));
+      const items=cart.map(i=>{const cost=Number(i.cost_price||0),line=Number((i.price*i.qty).toFixed(2)),lineCost=Number((cost*i.qty).toFixed(2));return {sale_id:sale.id,product_id:i.id,product_name:i.name,barcode:i.barcode||"",quantity:Number(i.qty),unit_price:Number(i.price),line_total:line,cost_price:cost,line_cost:lineCost,gross_profit:Number((line-lineCost).toFixed(2))}});
       const {error:ie}=await supabase.from("sale_items").insert(items);
       if(ie)throw new Error("Unable to save sale items: "+ie.message);
 
@@ -245,7 +270,7 @@ function App(){
   }
 
   function newSale(){
-    setCart([]);setCash("");setPaymentMethod("cash");setReceiptNo("");setPaymentDone(false);setPaymentOpen(false);setRecentScanned([]);setErr("");setStatus("Ready for new sale.");
+    setCart([]);setCash("");setPaymentMethod("cash");setPaymentReference("");setSelectedCustomerId("");setDiscountAmount("");setDiscountReason("");setReceiptNo("");setPaymentDone(false);setPaymentOpen(false);setRecentScanned([]);setErr("");setStatus("Ready for new sale.");
   }
 
   async function openSaleDetails(sale){
@@ -256,7 +281,7 @@ function App(){
   }
 
   async function performVoid(){
-    if(!voidSale||!profile?.id)return;
+    if(!voidSale||!profile?.id)return;if(!isOwner){setErr("Only an owner/admin can void a transaction.");return}
     if(!voidReason.trim()){setErr("Please enter a void reason.");return}
     setVoiding(true);setErr("");
     try{
@@ -269,7 +294,7 @@ function App(){
 
   function openProduct(p=null){
     setEditingProduct(p);
-    setProductForm(p?{name:p.name,barcode:p.barcode||"",price:String(p.price),stock:String(p.stock),image_url:p.imageUrl||""}:{name:"",barcode:"",price:"",stock:"",image_url:""});
+    setProductForm(p?{name:p.name,barcode:p.barcode||"",price:String(p.price),stock:String(p.stock),cost_price:String(p.cost_price||0),category_id:p.category_id||"",image_url:p.imageUrl||""}:{name:"",barcode:"",price:"",stock:"",cost_price:"",category_id:"",image_url:""});
     setProductImageFile(null);
     setProductImagePreview(p?.imageUrl||"");
     setProductModal(true);setErr("");
@@ -357,6 +382,7 @@ function App(){
 
   async function saveProduct(e){
     e.preventDefault();if(!profile?.business_id||!supabase)return;
+    if(!canManageInventory){setErr("Your role is not allowed to manage products.");return}
     setSavingProduct(true);setErr("");
     try{
       let imageUrl=productForm.image_url.trim()||null;
@@ -383,7 +409,7 @@ function App(){
       }
 
       const payload={business_id:profile.business_id,name:productForm.name.trim(),barcode:productForm.barcode.trim(),
-        price:Number(productForm.price||0),stock:Number(productForm.stock||0),image_url:imageUrl,updated_at:new Date().toISOString()};
+        price:Number(productForm.price||0),cost_price:Number(productForm.cost_price||0),category_id:productForm.category_id||null,stock:Number(productForm.stock||0),image_url:imageUrl,updated_at:new Date().toISOString()};
       if(!payload.name)throw new Error("Product name is required.");
 
       if(editingProduct){
@@ -407,6 +433,7 @@ function App(){
     }finally{setUploadingProductImage(false);setSavingProduct(false)}
   }
   async function deleteProduct(p){
+    if(!canManageInventory){setErr("Your role is not allowed to delete products.");return}
     if(!confirm(`Delete "${p.name}"? This should only be used for products with no dependent records.`))return;
     setErr("");
     const {error}=await supabase.from("products").delete().eq("id",p.id).eq("business_id",profile.business_id);
@@ -415,7 +442,7 @@ function App(){
   }
 
   async function doRestock(e){
-    e.preventDefault();if(!restockProduct)return;
+    e.preventDefault();if(!canManageInventory){setErr("Your role is not allowed to restock products.");return}if(!restockProduct)return;
     const n=Number(restockQty);
     if(!Number.isFinite(n)||n<=0){setErr("Enter a valid quantity.");return}
     setSavingProduct(true);setErr("");
@@ -429,6 +456,13 @@ function App(){
     }catch(e){setErr("Restock failed: "+e.message)}finally{setSavingProduct(false)}
   }
 
+  function openCustomer(c=null){setEditingCustomer(c);setCustomerForm(c?{name:c.name||"",phone:c.phone||"",email:c.email||"",address:c.address||"",tin:c.tin||""}:{name:"",phone:"",email:"",address:"",tin:""});setCustomerModal(true);setErr("");}
+  async function saveCustomer(e){e.preventDefault();if(!canManageMasters){setErr("Your role is not allowed to manage customers.");return}setSavingCustomer(true);setErr("");try{const payload={business_id:profile.business_id,name:customerForm.name.trim(),phone:customerForm.phone.trim()||null,email:customerForm.email.trim()||null,address:customerForm.address.trim()||null,tin:customerForm.tin.trim()||null,updated_at:new Date().toISOString()};if(!payload.name)throw new Error("Customer name is required.");if(editingCustomer){const {error}=await supabase.from("customers").update(payload).eq("id",editingCustomer.id).eq("business_id",profile.business_id);if(error)throw new Error(error.message)}else{const {error}=await supabase.from("customers").insert(payload);if(error)throw new Error(error.message)}setCustomerModal(false);setStatus("Customer saved successfully.");await loadCustomers(profile.business_id)}catch(e){setErr(e.message)}finally{setSavingCustomer(false)}}
+  async function deactivateCustomer(c){if(!canManageMasters){setErr("Your role is not allowed to deactivate customers.");return}if(!confirm(`Deactivate customer "${c.name}"?`))return;const {error}=await supabase.from("customers").update({active:false,updated_at:new Date().toISOString()}).eq("id",c.id).eq("business_id",profile.business_id);if(error){setErr(error.message);return}await loadCustomers(profile.business_id);setStatus("Customer deactivated.")}
+  async function saveCategory(e){e.preventDefault();if(!canManageMasters){setErr("Your role is not allowed to manage categories.");return}setSavingCategory(true);try{const name=categoryForm.name.trim();if(!name)throw new Error("Category name is required.");const {error}=await supabase.from("product_categories").insert({business_id:profile.business_id,name,description:categoryForm.description.trim()||null});if(error)throw new Error(error.message);setCategoryModal(false);setCategoryForm({name:"",description:""});await loadCategories(profile.business_id);setStatus("Category added successfully.")}catch(e){setErr(e.message)}finally{setSavingCategory(false)}}
+  const activeCategories=categories.filter(c=>c.active!==false);
+  const filteredCustomers=useMemo(()=>{const q=customerSearch.toLowerCase().trim();return customers.filter(c=>!q||[c.name,c.phone,c.email].some(v=>String(v||"").toLowerCase().includes(q)))},[customers,customerSearch]);
+
   function openSupplier(s=null){
     setEditingSupplier(s);
     setSupplierForm(s?{name:s.name||"",contact_person:s.contact_person||"",phone:s.phone||"",email:s.email||"",address:s.address||"",tin:s.tin||""}:{name:"",contact_person:"",phone:"",email:"",address:"",tin:""});
@@ -436,7 +470,7 @@ function App(){
   }
 
   async function saveSupplier(e){
-    e.preventDefault();if(!profile?.business_id)return;
+    e.preventDefault();if(!canManageMasters){setErr("Your role is not allowed to manage suppliers.");return}if(!profile?.business_id)return;
     setSavingSupplier(true);setErr("");
     try{
       const payload={business_id:profile.business_id,name:supplierForm.name.trim(),contact_person:supplierForm.contact_person.trim()||null,phone:supplierForm.phone.trim()||null,email:supplierForm.email.trim()||null,address:supplierForm.address.trim()||null,tin:supplierForm.tin.trim()||null,updated_at:new Date().toISOString()};
@@ -455,6 +489,7 @@ function App(){
   }
 
   async function deleteSupplier(s){
+    if(!canManageMasters){setErr("Your role is not allowed to deactivate suppliers.");return}
     if(!confirm(`Deactivate supplier "${s.name}"?`))return;
     const {error}=await supabase.from("suppliers").update({active:false,updated_at:new Date().toISOString()}).eq("id",s.id).eq("business_id",profile.business_id);
     if(error){setErr("Supplier update failed: "+error.message);return}
@@ -473,7 +508,7 @@ function App(){
   const purchaseSubtotal=purchaseItems.reduce((sum,item)=>sum+(Number(item.quantity||0)*Number(item.unit_cost||0)),0);
 
   async function receivePurchase(e){
-    e.preventDefault();if(!profile?.business_id||!profile?.id)return;
+    e.preventDefault();if(!canManagePurchasing){setErr("Your role is not allowed to receive purchases.");return}if(!profile?.business_id||!profile?.id)return;
     if(!purchaseForm.supplier_id){setErr("Please select a supplier.");return}
     const validItems=purchaseItems.filter(i=>i.product_id&&Number(i.quantity)>0&&Number(i.unit_cost)>=0);
     if(!validItems.length){setErr("Add at least one valid purchase item.");return}
@@ -507,6 +542,15 @@ function App(){
   },[salesHistory,historySearch,historyPaymentFilter,historyDateFilter,historyStatusFilter]);
 
   const lowStock=products.filter(p=>p.stock<=5&&p.stock>0),outStock=products.filter(p=>p.stock<=0);
+  const dashboardSales=useMemo(()=>{const now=new Date();return salesHistory.filter(s=>{if(s.status!=="completed")return false;const d=new Date(s.created_at);if(dashboardRange==="today")return d.toDateString()===now.toDateString();if(dashboardRange==="week"){const st=new Date(now);st.setDate(now.getDate()-6);st.setHours(0,0,0,0);return d>=st}if(dashboardRange==="month")return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();return true})},[salesHistory,dashboardRange]);
+  const dashboardIds=new Set(dashboardSales.map(s=>s.id));
+  const dashboardItems=saleItemsHistory.filter(i=>dashboardIds.has(i.sale_id));
+  const dashboardSalesTotal=dashboardSales.reduce((a,s)=>a+Number(s.total||0),0);
+  const dashboardCOGS=dashboardItems.reduce((a,i)=>a+Number(i.line_cost||0),0);
+  const dashboardProfit=dashboardSalesTotal-dashboardCOGS;
+  const inventoryCostValue=products.reduce((a,p)=>a+Number(p.stock||0)*Number(p.cost_price||0),0);
+  const inventoryRetailValue=products.reduce((a,p)=>a+Number(p.stock||0)*Number(p.price||0),0);
+  const topProducts=useMemo(()=>{const m={};dashboardItems.forEach(i=>m[i.product_name]=(m[i.product_name]||0)+Number(i.quantity||0));return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,8)},[dashboardItems]);
   const filteredMasterProducts=useMemo(()=>{
     const q=productSearch.toLowerCase().trim();
     if(!q)return products;
@@ -524,8 +568,8 @@ function App(){
     setStatus(`Downloaded: ${fileName}.xlsx`);
   }
 
-  function exportProducts(){downloadExcel(products.map(p=>({Product:p.name,Barcode:p.barcode,Price:p.price,Stock:p.stock,Image:p.imageUrl||""})),`SmallBiz_POS_Inventory_${new Date().toISOString().slice(0,10)}`,"Inventory")}
-  function exportTransactions(){downloadExcel(filteredSales.map(s=>({Invoice:s.invoice_no,Date:s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"",Payment:paymentLabel(s.payment_method),Subtotal:Number(s.subtotal||0),Discount:Number(s.discount||0),Total:Number(s.total||0),AmountTendered:Number(s.amount_tendered||0),Change:Number(s.change_amount||0),Status:s.status})),`SmallBiz_POS_Transactions_${new Date().toISOString().slice(0,10)}`,"Transactions")}
+  function exportProducts(){downloadExcel(products.map(p=>({Product:p.name,Category:categories.find(c=>c.id===p.category_id)?.name||"Uncategorized",Barcode:p.barcode,CostPrice:Number(p.cost_price||0),SellingPrice:Number(p.price||0),Stock:p.stock,InventoryCost:Number(p.stock||0)*Number(p.cost_price||0),InventoryRetail:Number(p.stock||0)*Number(p.price||0),Image:p.imageUrl||""})),`SmallBiz_POS_Inventory_${new Date().toISOString().slice(0,10)}`,"Inventory")}
+  function exportTransactions(){downloadExcel(filteredSales.map(s=>({Invoice:s.invoice_no,Date:s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"",Payment:paymentLabel(s.payment_method),Reference:s.payment_reference||"",Customer:customers.find(c=>c.id===s.customer_id)?.name||"Walk-in",Subtotal:Number(s.subtotal||0),Discount:Number(s.discount||0),Total:Number(s.total||0),AmountTendered:Number(s.amount_tendered||0),Change:Number(s.change_amount||0),Status:s.status})),`SmallBiz_POS_Transactions_${new Date().toISOString().slice(0,10)}`,"Transactions")}
   function exportMovements(){downloadExcel(movements.map(m=>({Date:new Date(m.created_at).toLocaleString("en-PH"),Product:m.product_name,Type:m.movement_type,Quantity:Number(m.quantity),StockBefore:Number(m.stock_before),StockAfter:Number(m.stock_after),Reason:m.reason||"",Reference:m.reference_type||""})),`SmallBiz_POS_Stock_Movements_${new Date().toISOString().slice(0,10)}`,"Stock Movements")}
 
   function printReceipt({receiptNo:rn=receiptNo,printWindow=null}={}){
@@ -552,7 +596,7 @@ function App(){
       <div className="brand"><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.5</span></div></div>
       <div className="profile-box"><div className="profile-avatar">👤</div><div><b>{profile?.full_name||"Business Owner"}</b><small>{profile?.role||"owner"}</small><small className="online">● Online</small></div></div>
       <nav className="sidebar-nav">
-        {[["pos","🛒","POS"],["transactions","📋","Transactions"],["reports","📊","Reports"],["products","📦","Products"],["purchases","🚚","Purchasing"],["suppliers","🏢","Suppliers"],["movements","🔄","Stock History"]].map(([key,icon,label])=>
+        {[["pos","🛒","POS",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["products","📦","Products",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>
           <button key={key} className={activePage===key?"nav-item active":"nav-item"} onClick={()=>setActivePage(key)}><span>{icon}</span><b>{label}</b></button>)}
       </nav>
       <div className="sidebar-bottom">
@@ -587,13 +631,15 @@ function App(){
         </aside>
       </div></>}
 
+      {activePage==="dashboard"&&<section className="page-card"><div className="page-header"><div><h2>📈 Business Dashboard</h2><p>Sales, profit and inventory overview.</p></div><div style={{display:"flex",gap:8}}><select value={dashboardRange} onChange={e=>setDashboardRange(e.target.value)}><option value="today">Today</option><option value="week">Last 7 Days</option><option value="month">This Month</option><option value="all">All Time</option></select><button className="refresh-btn" onClick={()=>load(session.user.id)}>🔄 Refresh</button></div></div><div className="report-grid"><div className="report-card"><small>Sales</small><strong>{money(dashboardSalesTotal)}</strong></div><div className="report-card"><small>Gross Profit</small><strong>{money(dashboardProfit)}</strong></div><div className="report-card"><small>COGS</small><strong>{money(dashboardCOGS)}</strong></div><div className="report-card"><small>Transactions</small><strong>{dashboardSales.length}</strong></div><div className="report-card"><small>Inventory Cost</small><strong>{money(inventoryCostValue)}</strong></div><div className="report-card"><small>Inventory Retail</small><strong>{money(inventoryRetailValue)}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div><div className="info-box" style={{marginTop:18}}><h3>🔥 Top Selling Products</h3>{topProducts.length?topProducts.map(([n,q],i)=><div className="row" key={n}><span>{i+1}. {n}</span><b>{q} pcs</b></div>):<p>No sales data.</p>}</div></section>}
+
       {activePage==="transactions"&&<section className="page-card"><div className="page-header"><div><h2>📋 Transactions</h2><p>Sales History / Transactions</p></div><div><button className="refresh-btn" onClick={()=>loadSalesHistory(profile.business_id)}>🔄 Refresh</button> <button className="excel-btn" onClick={exportTransactions}>📊 Excel</button></div></div>
         <div className="filters"><input placeholder="Search invoice..." value={historySearch} onChange={e=>setHistorySearch(e.target.value)}/><select value={historyPaymentFilter} onChange={e=>setHistoryPaymentFilter(e.target.value)}><option value="all">All Payments</option><option value="cash">Cash</option><option value="gcash">GCash</option><option value="card">Card</option></select><input type="date" value={historyDateFilter} onChange={e=>setHistoryDateFilter(e.target.value)}/><select value={historyStatusFilter} onChange={e=>setHistoryStatusFilter(e.target.value)}><option value="all">All Status</option><option value="completed">Completed</option><option value="voided">Voided</option><option value="cancelled">Cancelled</option></select></div>
         <div className="summary-grid"><div><small>Transactions</small><strong>{filteredSales.length}</strong></div><div><small>Total Sales</small><strong>{money(transactionTotal)}</strong></div><div><small>Cash</small><strong>{money(filteredSales.filter(s=>s.payment_method==="cash").reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div><small>GCash</small><strong>{money(filteredSales.filter(s=>s.payment_method==="gcash").reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div><small>Card</small><strong>{money(filteredSales.filter(s=>s.payment_method==="card").reduce((a,s)=>a+Number(s.total||0),0))}</strong></div></div>
-        {historyLoading?<div className="empty-page">Loading transactions...</div>:<div className="table-wrapper"><table><thead><tr><th>Invoice</th><th>Date</th><th>Payment</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredSales.map(s=><tr key={s.id}><td><b>{s.invoice_no}</b></td><td>{s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"-"}</td><td>{paymentLabel(s.payment_method)}</td><td><b>{money(s.total)}</b></td><td><span className="status-badge">{s.status}</span></td><td><button onClick={()=>openSaleDetails(s)}>🧾 View</button>{s.status==="completed"&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td></tr>)}</tbody></table></div>}</section>}
+        {historyLoading?<div className="empty-page">Loading transactions...</div>:<div className="table-wrapper"><table><thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Payment</th><th>Reference</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredSales.map(s=><tr key={s.id}><td><b>{s.invoice_no}</b></td><td>{s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"-"}</td><td>{customers.find(c=>c.id===s.customer_id)?.name||"Walk-in"}</td><td>{paymentLabel(s.payment_method)}</td><td>{s.payment_reference||"-"}</td><td><b>{money(s.total)}</b></td><td><span className="status-badge">{s.status}</span></td><td><button onClick={()=>openSaleDetails(s)}>🧾 View</button>{s.status==="completed"&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td></tr>)}</tbody></table></div>}</section>}
 
       {activePage==="reports"&&<section className="page-card"><div className="page-header"><div><h2>📊 Reports</h2><p>Sales and inventory performance.</p></div><button className="refresh-btn" onClick={()=>load(session.user.id)}>🔄 Refresh</button></div>
-        <div className="report-grid"><div className="report-card"><small>Total Transactions</small><strong>{salesHistory.length}</strong></div><div className="report-card"><small>Total Sales</small><strong>{money(salesHistory.reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div className="report-card"><small>Total Purchases</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div className="report-card"><small>Products</small><strong>{products.length}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div>
+        <div className="report-grid"><div className="report-card"><small>Total Transactions</small><strong>{salesHistory.length}</strong></div><div className="report-card"><small>Total Sales</small><strong>{money(salesHistory.reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div className="report-card"><small>Total Purchases</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div className="report-card"><small>Gross Profit</small><strong>{money(saleItemsHistory.reduce((a,i)=>a+Number(i.gross_profit||0),0))}</strong></div><div className="report-card"><small>Products</small><strong>{products.length}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div>
         <div className="report-download-panel"><div><h3>📥 Download Reports</h3><p>Export your POS data to Excel.</p></div><div className="download-buttons"><button className="excel-btn" onClick={exportTransactions}>📊 Transactions</button><button className="excel-btn" onClick={exportProducts}>📦 Inventory</button><button className="excel-btn" onClick={exportMovements}>🔄 Stock Movements</button><button className="excel-btn" onClick={exportPurchases}>🚚 Purchases</button></div></div>
       </section>}
 
@@ -676,6 +722,10 @@ function App(){
         </div>
       </section>}
 
+      {activePage==="categories"&&<section className="page-card"><div className="page-header"><div><h2>🏷️ Product Categories</h2><p>Organize your products.</p></div><button className="primary" onClick={()=>{setCategoryForm({name:"",description:""});setCategoryModal(true)}}>➕ Add Category</button></div><div className="table-wrapper"><table><thead><tr><th>Category</th><th>Description</th></tr></thead><tbody>{activeCategories.length?activeCategories.map(c=><tr key={c.id}><td><b>{c.name}</b></td><td>{c.description||"-"}</td></tr>):<tr><td colSpan="2" style={{textAlign:"center",padding:30}}>No categories yet.</td></tr>}</tbody></table></div></section>}
+
+      {activePage==="customers"&&<section className="page-card"><div className="page-header"><div><h2>👥 Customers</h2><p>Customer master list.</p></div><button className="primary" onClick={()=>openCustomer()}>➕ Add Customer</button></div><div className="filters"><input placeholder="🔍 Search customer..." value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)}/></div><div className="table-wrapper"><table><thead><tr><th>Customer</th><th>Phone</th><th>Email</th><th>Action</th></tr></thead><tbody>{filteredCustomers.length?filteredCustomers.map(c=><tr key={c.id}><td><b>{c.name}</b></td><td>{c.phone||"-"}</td><td>{c.email||"-"}</td><td><button onClick={()=>openCustomer(c)}>✏ Edit</button></td></tr>):<tr><td colSpan="4" style={{textAlign:"center",padding:30}}>No customers found.</td></tr>}</tbody></table></div></section>}
+
       {activePage==="purchases"&&<section className="page-card"><div className="page-header"><div><h2>🚚 Purchasing / Receiving</h2><p>Receive new inventory from suppliers and keep a purchase history.</p></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button className="excel-btn" onClick={exportPurchases}>📊 Excel</button><button className="refresh-btn" onClick={()=>loadPurchaseHistory(profile.business_id)}>🔄 Refresh</button><button className="primary" onClick={openPurchase}>➕ Receive Purchase</button></div></div><div className="summary-grid"><div><small>Total Purchases</small><strong>{purchaseHistory.length}</strong></div><div><small>Received</small><strong>{purchaseHistory.filter(p=>p.status==="received").length}</strong></div><div><small>Purchase Value</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div><small>Active Suppliers</small><strong>{suppliers.filter(s=>s.active!==false).length}</strong></div></div><div className="filters" style={{marginTop:16}}><input placeholder="🔍 Search reference or supplier..." value={purchaseSearch} onChange={e=>setPurchaseSearch(e.target.value)}/><select value={purchaseStatusFilter} onChange={e=>setPurchaseStatusFilter(e.target.value)}><option value="all">All Status</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select></div>{purchaseLoading?<div className="empty-page">Loading purchases...</div>:<div className="table-wrapper"><table><thead><tr><th>Date</th><th>Reference</th><th>Supplier</th><th>Subtotal</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredPurchases.length?filteredPurchases.map(p=><tr key={p.id}><td>{p.purchase_date||"-"}</td><td><b>{p.reference_no||p.id.slice(0,8)}</b></td><td>{p.suppliers?.name||"-"}</td><td><b>{money(p.subtotal)}</b></td><td><span className="status-badge">{p.status}</span></td><td><button onClick={()=>openPurchaseDetails(p)}>🧾 View</button></td></tr>):<tr><td colSpan="6" style={{textAlign:"center",padding:30}}>No purchases found.</td></tr>}</tbody></table></div>}</section>}
 
       {activePage==="suppliers"&&<section className="page-card"><div className="page-header"><div><h2>🏢 Suppliers</h2><p>Manage your supplier master list.</p></div><button className="primary" onClick={()=>openSupplier()}>➕ Add Supplier</button></div><div className="filters"><input placeholder="🔍 Search supplier, contact or phone..." value={supplierSearch} onChange={e=>setSupplierSearch(e.target.value)}/></div>{supplierLoading?<div className="empty-page">Loading suppliers...</div>:<div className="table-wrapper"><table><thead><tr><th>Supplier</th><th>Contact</th><th>Phone</th><th>Email</th><th>Address</th><th>Action</th></tr></thead><tbody>{filteredSuppliers.length?filteredSuppliers.map(s=><tr key={s.id}><td><b>{s.name}</b>{s.active===false&&<span className="status-badge" style={{marginLeft:6}}>INACTIVE</span>}</td><td>{s.contact_person||"-"}</td><td>{s.phone||"-"}</td><td>{s.email||"-"}</td><td>{s.address||"-"}</td><td><button onClick={()=>openSupplier(s)}>✏ Edit</button>{s.active!==false&&<button onClick={()=>deleteSupplier(s)} style={{marginLeft:6}}>⛔ Deactivate</button>}</td></tr>):<tr><td colSpan="6" style={{textAlign:"center",padding:30}}>No suppliers found.</td></tr>}</tbody></table></div>}</section>}
@@ -685,7 +735,7 @@ function App(){
       </section>}
     </div>
 
-    {paymentOpen&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>Payment</h2><button onClick={()=>setPaymentOpen(false)}>✕</button></div><div className="payment-total"><span>Total</span><b>{money(total)}</b></div><label>Payment Method</label><div className="payment-methods"><button className={paymentMethod==="cash"?"primary":""} onClick={()=>{setPaymentMethod("cash");setCash("")}}>💵 Cash</button><button className={paymentMethod==="gcash"?"primary":""} onClick={()=>{setPaymentMethod("gcash");setCash("")}}>📱 GCash</button><button className={paymentMethod==="card"?"primary":""} onClick={()=>{setPaymentMethod("card");setCash("")}}>💳 Card</button></div>{paymentMethod==="cash"&&<><label>Cash Received</label><input type="number" min="0" step=".01" value={cash} onChange={e=>setCash(e.target.value)} placeholder="Enter cash amount"/>{cash&&Number(cash)>=total&&<div className="change-box"><span>Change</span><b>{money(change)}</b></div>}</>}{err&&<p className="error">{err}</p>}<div className="modal-buttons"><button onClick={()=>setPaymentOpen(false)}>Cancel</button><button className="primary" disabled={savingPayment||(paymentMethod==="cash"&&(!cash||Number(cash)<total))} onClick={completePayment}>{savingPayment?"Saving...":"Complete Payment"}</button></div></div></div>}
+    {paymentOpen&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>Payment</h2><button onClick={()=>setPaymentOpen(false)}>✕</button></div><div className="payment-total"><span>Total</span><b>{money(total)}</b></div><label>Payment Method</label><div className="payment-methods"><button className={paymentMethod==="cash"?"primary":""} onClick={()=>{setPaymentMethod("cash");setCash("")}}>💵 Cash</button><button className={paymentMethod==="gcash"?"primary":""} onClick={()=>{setPaymentMethod("gcash");setCash("")}}>📱 GCash</button><button className={paymentMethod==="card"?"primary":""} onClick={()=>{setPaymentMethod("card");setCash("")}}>💳 Card</button></div><label>Customer</label><select value={selectedCustomerId} onChange={e=>setSelectedCustomerId(e.target.value)}><option value="">Walk-in Customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><label>Discount</label><input type="number" min="0" max={subtotal} step=".01" value={discountAmount} onChange={e=>setDiscountAmount(e.target.value)} placeholder="0.00"/>{discount>0&&<><label>Discount Reason</label><input value={discountReason} onChange={e=>setDiscountReason(e.target.value)} placeholder="Promo / Senior / Manager approval"/></>}{paymentMethod!=="cash"&&<><label>Payment Reference</label><input value={paymentReference} onChange={e=>setPaymentReference(e.target.value)} placeholder="GCash reference / card approval no."/></>}{paymentMethod==="cash"&&<><label>Cash Received</label><input type="number" min="0" step=".01" value={cash} onChange={e=>setCash(e.target.value)} placeholder="Enter cash amount"/>{cash&&Number(cash)>=total&&<div className="change-box"><span>Change</span><b>{money(change)}</b></div>}</>}{err&&<p className="error">{err}</p>}<div className="modal-buttons"><button onClick={()=>setPaymentOpen(false)}>Cancel</button><button className="primary" disabled={savingPayment||(paymentMethod==="cash"&&(!cash||Number(cash)<total))} onClick={completePayment}>{savingPayment?"Saving...":"Complete Payment"}</button></div></div></div>}
 
     {paymentDone&&<div className="modal-backdrop"><div className="modal"><div className="success-icon">✓</div><h2>Payment Complete</h2><div className="receipt-summary"><p>Invoice: <b>{receiptNo}</b></p><p>Payment: <b>{paymentLabel(paymentMethod)}</b></p><p>Total: <b>{money(total)}</b></p>{paymentMethod==="cash"&&<><p>Cash: <b>{money(cash)}</b></p><p>Change: <b>{money(change)}</b></p></>}</div><div className="modal-buttons"><button onClick={()=>printReceipt({})}>🖨️ Print Receipt</button><button className="primary" onClick={newSale}>New Sale</button></div></div></div>}
 
@@ -712,6 +762,8 @@ function App(){
               placeholder="Scan or type barcode"
             />
 
+            <label>Cost Price</label><input type="number" min="0" step=".01" value={productForm.cost_price} onChange={e=>setProductForm({...productForm,cost_price:e.target.value})} placeholder="Purchase cost / unit" />
+            <label>Category</label><select value={productForm.category_id} onChange={e=>setProductForm({...productForm,category_id:e.target.value})}><option value="">Uncategorized</option>{activeCategories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
             <label>Selling Price</label>
             <input
               type="number"
@@ -788,6 +840,8 @@ function App(){
 
     {supplierModal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>{editingSupplier?"✏ Edit Supplier":"➕ Add Supplier"}</h2><button onClick={()=>setSupplierModal(false)}>✕</button></div><form onSubmit={saveSupplier}><label>Supplier Name</label><input value={supplierForm.name} onChange={e=>setSupplierForm({...supplierForm,name:e.target.value})} placeholder="e.g. ABC Trading" required/><label>Contact Person</label><input value={supplierForm.contact_person} onChange={e=>setSupplierForm({...supplierForm,contact_person:e.target.value})}/><label>Phone</label><input value={supplierForm.phone} onChange={e=>setSupplierForm({...supplierForm,phone:e.target.value})}/><label>Email</label><input type="email" value={supplierForm.email} onChange={e=>setSupplierForm({...supplierForm,email:e.target.value})}/><label>Address</label><textarea rows="2" value={supplierForm.address} onChange={e=>setSupplierForm({...supplierForm,address:e.target.value})}/><label>TIN</label><input value={supplierForm.tin} onChange={e=>setSupplierForm({...supplierForm,tin:e.target.value})}/><div className="modal-buttons"><button type="button" onClick={()=>setSupplierModal(false)}>Cancel</button><button className="primary" disabled={savingSupplier}>{savingSupplier?"Saving...":"Save Supplier"}</button></div></form></div></div>}
 
+    {customerModal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>{editingCustomer?"✏ Edit Customer":"➕ Add Customer"}</h2><button onClick={()=>setCustomerModal(false)}>✕</button></div><form onSubmit={saveCustomer}><label>Name</label><input value={customerForm.name} onChange={e=>setCustomerForm({...customerForm,name:e.target.value})} required/><label>Phone</label><input value={customerForm.phone} onChange={e=>setCustomerForm({...customerForm,phone:e.target.value})}/><label>Email</label><input type="email" value={customerForm.email} onChange={e=>setCustomerForm({...customerForm,email:e.target.value})}/><label>Address</label><textarea rows="2" value={customerForm.address} onChange={e=>setCustomerForm({...customerForm,address:e.target.value})}/><div className="modal-buttons"><button type="button" onClick={()=>setCustomerModal(false)}>Cancel</button><button className="primary" disabled={savingCustomer}>{savingCustomer?"Saving...":"Save Customer"}</button></div></form></div></div>}
+    {categoryModal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>🏷️ Add Category</h2><button onClick={()=>setCategoryModal(false)}>✕</button></div><form onSubmit={saveCategory}><label>Category Name</label><input value={categoryForm.name} onChange={e=>setCategoryForm({...categoryForm,name:e.target.value})} required/><label>Description</label><textarea rows="3" value={categoryForm.description} onChange={e=>setCategoryForm({...categoryForm,description:e.target.value})}/><div className="modal-buttons"><button type="button" onClick={()=>setCategoryModal(false)}>Cancel</button><button className="primary" disabled={savingCategory}>{savingCategory?"Saving...":"Save Category"}</button></div></form></div></div>}
     {purchaseModal&&<div className="modal-backdrop"><div className="modal" style={{maxWidth:850}}><div className="modal-header"><h2>🚚 Receive Purchase</h2><button onClick={()=>setPurchaseModal(false)}>✕</button></div><form onSubmit={receivePurchase}><div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}><div><label>Supplier</label><select value={purchaseForm.supplier_id} onChange={e=>setPurchaseForm({...purchaseForm,supplier_id:e.target.value})} required><option value="">Select supplier</option>{suppliers.filter(s=>s.active!==false).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div><div><label>Purchase Date</label><input type="date" value={purchaseForm.purchase_date} onChange={e=>setPurchaseForm({...purchaseForm,purchase_date:e.target.value})} required/></div><div><label>Reference / Invoice No.</label><input value={purchaseForm.reference_no} onChange={e=>setPurchaseForm({...purchaseForm,reference_no:e.target.value})} placeholder="Supplier invoice no."/></div><div><label>Notes</label><input value={purchaseForm.notes} onChange={e=>setPurchaseForm({...purchaseForm,notes:e.target.value})} placeholder="Optional notes"/></div></div><div className="table-wrapper" style={{marginTop:14}}><table><thead><tr><th style={{minWidth:220}}>Product</th><th>Qty</th><th>Unit Cost</th><th>Line Total</th><th></th></tr></thead><tbody>{purchaseItems.map((item,index)=><tr key={index}><td><select value={item.product_id} onChange={e=>updatePurchaseItem(index,"product_id",e.target.value)} required><option value="">Select product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}{p.barcode?` (${p.barcode})`:""}</option>)}</select></td><td><input type="number" min="1" step="1" value={item.quantity} onChange={e=>updatePurchaseItem(index,"quantity",e.target.value)} required/></td><td><input type="number" min="0" step="0.01" value={item.unit_cost} onChange={e=>updatePurchaseItem(index,"unit_cost",e.target.value)} required/></td><td><b>{money(Number(item.quantity||0)*Number(item.unit_cost||0))}</b></td><td><button type="button" onClick={()=>removePurchaseItem(index)}>🗑</button></td></tr>)}</tbody></table></div><button type="button" onClick={addPurchaseItem} style={{marginTop:10}}>➕ Add Item</button><div className="sale-total" style={{marginTop:14}}><div className="grand-total"><span>TOTAL PURCHASE</span><b>{money(purchaseSubtotal)}</b></div></div>{err&&<p className="error">{err}</p>}<div className="modal-buttons"><button type="button" onClick={()=>setPurchaseModal(false)}>Cancel</button><button className="primary" disabled={receivingPurchase||!purchaseItems.length}>{receivingPurchase?"Receiving...":"Receive & Add Stock"}</button></div></form></div></div>}
 
     {purchaseDetailsOpen&&selectedPurchase&&<div className="modal-backdrop"><div className="modal sale-details-modal"><div className="modal-header"><h2>🧾 Purchase Details</h2><button onClick={()=>setPurchaseDetailsOpen(false)}>✕</button></div>{purchaseDetailsLoading?<div>Loading...</div>:<><p><b>Reference:</b> {selectedPurchase.reference_no||selectedPurchase.id}</p><p><b>Date:</b> {selectedPurchase.purchase_date||"-"}</p><p><b>Supplier:</b> {selectedPurchase.suppliers?.name||"-"}</p><p><b>Status:</b> {selectedPurchase.status}</p><div className="table-wrapper"><table><thead><tr><th>Product</th><th>Qty</th><th>Unit Cost</th><th>Total</th></tr></thead><tbody>{selectedPurchaseItems.map(i=><tr key={i.id}><td>{i.product_name}</td><td>{i.quantity}</td><td>{money(i.unit_cost)}</td><td>{money(i.line_total)}</td></tr>)}</tbody></table></div><div className="sale-total"><div className="grand-total"><span>TOTAL PURCHASE</span><b>{money(selectedPurchase.subtotal)}</b></div></div></>}</div></div>}
