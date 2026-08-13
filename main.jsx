@@ -272,24 +272,80 @@ function App(){
   }
 
   async function uploadProductImage(file){
-    if(!file||!profile?.business_id||!supabase)return;
-    setErr("");
-    if(!file.type.startsWith("image/")){setErr("Please select an image file.");return;}
-    if(file.size>5*1024*1024){setErr("Image is too large. Maximum size is 5MB.");return;}
-    setUploadingProductImage(true);
-    try{
-      const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";
-      const safeName=file.name.replace(/\.[^/.]+$/,"" ).replace(/[^a-zA-Z0-9-_]/g,"-").toLowerCase().slice(0,60)||"product";
-      const filePath=`${profile.business_id}/${Date.now()}-${safeName}.${ext}`;
-      const {error:uploadError}=await supabase.storage.from("product-images").upload(filePath,file,{cacheControl:"3600",upsert:false,contentType:file.type});
-      if(uploadError)throw new Error(uploadError.message);
-      const {data:urlData}=supabase.storage.from("product-images").getPublicUrl(filePath);
-      if(!urlData?.publicUrl)throw new Error("Unable to generate image URL.");
-      setProductForm(prev=>({...prev,image_url:urlData.publicUrl}));
-      setStatus("Product image uploaded successfully.");
-    }catch(e){
-      setErr("Image upload failed: "+e.message);
-    }finally{setUploadingProductImage(false);}
+  if(!file||!profile?.business_id||!supabase)return;
+
+  setErr("");
+
+  if(!file.type.startsWith("image/")){
+    setErr("Please select an image file.");
+    return;
+  }
+
+  if(file.size>5*1024*1024){
+    setErr("Image is too large. Maximum size is 5MB.");
+    return;
+  }
+
+  setUploadingProductImage(true);
+
+  try{
+    // Show the selected image immediately
+    const localPreview=URL.createObjectURL(file);
+    setProductForm(prev=>({
+      ...prev,
+      image_url:localPreview
+    }));
+
+    const ext=(file.name.split(".").pop()||"jpg")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g,"")||"jpg";
+
+    const safeName=file.name
+      .replace(/\.[^/.]+$/,"")
+      .replace(/[^a-zA-Z0-9-_]/g,"-")
+      .toLowerCase()
+      .slice(0,60)||"product";
+
+    const filePath=`${profile.business_id}/${Date.now()}-${safeName}.${ext}`;
+
+    const {error:uploadError}=await supabase.storage
+      .from("product-images")
+      .upload(filePath,file,{
+        cacheControl:"3600",
+        upsert:false,
+        contentType:file.type
+      });
+
+    if(uploadError)throw new Error(uploadError.message);
+
+    const {data:urlData}=supabase.storage
+      .from("product-images")
+      .getPublicUrl(filePath);
+
+    if(!urlData?.publicUrl){
+      throw new Error("Unable to generate image URL.");
+    }
+
+    // Replace temporary preview with permanent URL
+    setProductForm(prev=>({
+      ...prev,
+      image_url:urlData.publicUrl
+    }));
+
+    URL.revokeObjectURL(localPreview);
+
+    setStatus("Product image uploaded successfully.");
+  }catch(e){
+    setProductForm(prev=>({
+      ...prev,
+      image_url:""
+    }));
+
+    setErr("Image upload failed: "+e.message);
+  }finally{
+    setUploadingProductImage(false);
+  }
+}
   }
 
   async function saveProduct(e){
