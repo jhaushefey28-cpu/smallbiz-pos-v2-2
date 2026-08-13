@@ -36,21 +36,8 @@ const SAMPLE_PRODUCT_IMAGES={
   "surf powder 40g":"/product-images/surf-powder-40g.png"
 };
 const productImage=p=>{
-  const direct=String(
-    p?.imageUrl||
-    p?.image_url||
-    p?.image||
-    p?.product_image||
-    p?.product_image_url||
-    p?.photo_url||
-    ""
-  ).trim();
-
-  if(direct){
-    if(/^https?:\\/\\//i.test(direct) || direct.startsWith("/")) return direct;
-    return "/" + direct.replace(/^\\/+/, "");
-  }
-
+  const direct=String(p?.imageUrl||p?.image_url||"").trim();
+  if(direct)return direct;
   const key=String(p?.name||"").trim().toLowerCase();
   return SAMPLE_PRODUCT_IMAGES[key]||"";
 };
@@ -61,37 +48,6 @@ const norm=p=>({...p,
   stock:Number(p.stock??p.quantity??p.current_stock??0),
   imageUrl:p.image_url??p.imageUrl??p.image??p.product_image??p.product_image_url??p.photo_url??""
 });
-
-function ProductImage({product,className="",style={},alt="",fallback="📦"}){
-  const src=productImage(product);
-  const [failed,setFailed]=useState(false);
-
-  useEffect(()=>setFailed(false),[src]);
-
-  if(!src || failed){
-    return <div className={className} style={{
-      ...style,
-      display:"grid",
-      placeItems:"center",
-      background:"#f3f6f9",
-      color:"#8a96a3"
-    }}>{fallback}</div>;
-  }
-
-  return <img
-    className={className}
-    src={src}
-    alt={alt||product?.name||"Product"}
-    onError={()=>setFailed(true)}
-    style={{
-      width:"100%",
-      height:"100%",
-      objectFit:"contain",
-      display:"block",
-      ...style
-    }}
-  />;
-}
 
 function App(){
   const [session,setSession]=useState(null),[email,setEmail]=useState(""),[password,setPassword]=useState("");
@@ -110,6 +66,7 @@ function App(){
   const [productModal,setProductModal]=useState(false),[editingProduct,setEditingProduct]=useState(null);
   const [productForm,setProductForm]=useState({name:"",barcode:"",price:"",stock:"",image_url:""});
   const [savingProduct,setSavingProduct]=useState(false),[productSearch,setProductSearch]=useState("");
+  const [uploadingProductImage,setUploadingProductImage]=useState(false);
   const [restockProduct,setRestockProduct]=useState(null),[restockQty,setRestockQty]=useState(""),[restockReason,setRestockReason]=useState("Restock");
   const [movements,setMovements]=useState([]),[movementLoading,setMovementLoading]=useState(false);
   const [voidSale,setVoidSale]=useState(null),[voidReason,setVoidReason]=useState(""),[voiding,setVoiding]=useState(false);
@@ -314,6 +271,76 @@ function App(){
     setProductModal(true);setErr("");
   }
 
+  async function uploadProductImage(file){
+    if(!file||!profile?.business_id||!supabase)return;
+
+    setErr("");
+
+    if(!file.type.startsWith("image/")){
+      setErr("Please select an image file.");
+      return;
+    }
+
+    if(file.size>5*1024*1024){
+      setErr("Image is too large. Maximum size is 5MB.");
+      return;
+    }
+
+    setUploadingProductImage(true);
+    const localPreview=URL.createObjectURL(file);
+
+    try{
+      // Keep the selected image visible while the upload is running.
+      setProductForm(prev=>({...prev,image_url:localPreview}));
+
+      const ext=(file.name.split(".").pop()||"jpg")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g,"")||"jpg";
+
+      const safeName=file.name
+        .replace(/\.[^/\.]+$/,"")
+        .replace(/[^a-zA-Z0-9-_]/g,"-")
+        .toLowerCase()
+        .slice(0,60)||"product";
+
+      const filePath=`${profile.business_id}/${Date.now()}-${safeName}.${ext}`;
+
+      const {error:uploadError}=await supabase.storage
+        .from("product-images")
+        .upload(filePath,file,{
+          cacheControl:"3600",
+          upsert:false,
+          contentType:file.type
+        });
+
+      if(uploadError)throw new Error(uploadError.message);
+
+      // Use a signed URL so the upload also works with a PRIVATE bucket.
+      const {data:signedData,error:signedError}=await supabase.storage
+        .from("product-images")
+        .createSignedUrl(filePath,60*60*24*365);
+
+      if(signedError||!signedData?.signedUrl){
+        throw new Error(signedError?.message||"Unable to generate image URL.");
+      }
+
+      // Replace the temporary preview with the Supabase URL.
+      setProductForm(prev=>({
+        ...prev,
+        image_url:signedData.signedUrl
+      }));
+
+      setStatus("Product image uploaded successfully.");
+    }catch(e){
+      console.error("Product image upload failed:",e);
+      setProductForm(prev=>({...prev,image_url:""}));
+      setErr("Image upload failed: "+(e?.message||"Unknown error"));
+    }finally{
+      URL.revokeObjectURL(localPreview);
+      setUploadingProductImage(false);
+    }
+  }
+
   async function saveProduct(e){
     e.preventDefault();if(!profile?.business_id)return;
     setSavingProduct(true);setErr("");
@@ -505,22 +532,16 @@ function App(){
         {scan&&<div className="scanner-box"><div id="reader"></div><small>Allow camera access and point at the barcode.</small></div>}
         <div className="search-row"><span>🔍</span><input className="product-search" placeholder="Search product or barcode..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
         <div className="products-grid">{filtered.length?filtered.map(p=><div className="product-card" key={p.id} style={{overflow:"hidden"}}>
-          <div className="product-image" style={{height:170,background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-            <ProductImage product={p} alt={p.name}/>
-          </div>
+          <div className="product-image" style={{height:170,background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>{productImage(p)?<img src={productImage(p)} alt={p.name} style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>:<div className="image-placeholder" style={{fontSize:42}}>📦</div>}</div>
           <div className="product-info"><h3>{p.name}</h3><small>Barcode: {p.barcode||"N/A"}</small><small>Stock: {p.stock}</small></div>
           <div className="product-bottom"><strong>{money(p.price)}</strong><button className="add-cart-btn" disabled={p.stock<=0} onClick={()=>add(p)}>{p.stock>0?"Add to Cart":"Out of Stock"}</button></div>
         </div>):<div className="empty-products">No product found.</div>}</div></section>
         <aside className="right-panel">
           <section className="cart-panel"><div className="right-panel-header"><h2>Cart</h2><span>{cart.reduce((n,i)=>n+i.qty,0)} item(s)</span></div>
-            <div className="cart-body">{cart.length?cart.map(i=><div className="cart-item" key={i.id}><div className="cart-item-image">
-                <ProductImage product={i} alt={i.name}/>
-              </div><div className="cart-item-info"><b>{i.name}</b><small>{money(i.price)}</small><div className="qty-controls"><button onClick={()=>qty(i.id,-1)}>−</button><span>{i.qty}</span><button onClick={()=>qty(i.id,1)}>+</button></div></div><strong>{money(i.price*i.qty)}</strong></div>):<div className="cart-empty"><div className="cart-empty-icon">🛒</div><p>Cart is empty.</p></div>}</div>
+            <div className="cart-body">{cart.length?cart.map(i=><div className="cart-item" key={i.id}><div className="cart-item-image">{productImage(i)?<img src={productImage(i)} alt={i.name} style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>:<span>📦</span>}</div><div className="cart-item-info"><b>{i.name}</b><small>{money(i.price)}</small><div className="qty-controls"><button onClick={()=>qty(i.id,-1)}>−</button><span>{i.qty}</span><button onClick={()=>qty(i.id,1)}>+</button></div></div><strong>{money(i.price*i.qty)}</strong></div>):<div className="cart-empty"><div className="cart-empty-icon">🛒</div><p>Cart is empty.</p></div>}</div>
             <div className="cart-summary"><div><span>Subtotal</span><b>{money(subtotal)}</b></div><div><span>Discount</span><b>{money(discount)}</b></div><div className="grand-total"><span>TOTAL</span><b>{money(total)}</b></div><button className="payment-btn" disabled={!cart.length} onClick={()=>{setCash("");setPaymentMethod("cash");setErr("");setPaymentOpen(true)}}>💳 Payment</button></div>
           </section>
-          <section className="recent-panel"><div className="right-panel-header"><h2>🕘 Recent Scanned</h2></div>{recentScanned.length?<div className="recent-list">{recentScanned.map(i=><div className="recent-item" key={i.id}><div className="recent-image">
-                    <ProductImage product={i} alt={i.name}/>
-                  </div><div><b>{i.name}</b><small>{i.barcode||"No barcode"}</small></div><button onClick={()=>add(i)}>+</button></div>)}</div>:<div className="recent-empty"><div className="barcode-icon">▥</div><p>No scanned items yet.</p></div>}</section>
+          <section className="recent-panel"><div className="right-panel-header"><h2>🕘 Recent Scanned</h2></div>{recentScanned.length?<div className="recent-list">{recentScanned.map(i=><div className="recent-item" key={i.id}><div className="recent-image">{productImage(i)?<img src={productImage(i)} alt={i.name} style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>:<span>📦</span>}</div><div><b>{i.name}</b><small>{i.barcode||"No barcode"}</small></div><button onClick={()=>add(i)}>+</button></div>)}</div>:<div className="recent-empty"><div className="barcode-icon">▥</div><p>No scanned items yet.</p></div>}</section>
         </aside>
       </div></>}
 
@@ -586,7 +607,7 @@ function App(){
                   <td>
                     <div style={{display:"flex",alignItems:"center",gap:10}}>
                       <div style={{width:42,height:42,borderRadius:8,overflow:"hidden",background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        <ProductImage product={p} alt={p.name}/>
+                        {productImage(p) ? <img src={productImage(p)} alt={p.name} style={{width:"100%",height:"100%",objectFit:"contain"}}/> : "📦"}
                       </div>
                       <b>{p.name}</b>
                     </div>
@@ -670,21 +691,37 @@ function App(){
               required
             />
 
-            <label>Image URL</label><small style={{display:"block",color:"#7b8794",marginBottom:6}}>Use /product-images/filename.png for images in public/product-images, or paste an https:// image URL.</small>
-            <input
-              value={productForm.image_url}
-              onChange={e=>setProductForm({...productForm,image_url:e.target.value})}
-              placeholder="https://..."
-            />
+            <label>Product Image</label>
+            <div style={{border:"1px dashed #cbd5e1",borderRadius:12,padding:14,background:"#f8fafc"}}>
+              <input
+                type="file"
+                accept="image/*"
+                disabled={uploadingProductImage}
+                onChange={e=>{
+                  const file=e.target.files?.[0];
+                  if(file)uploadProductImage(file);
+                  e.target.value="";
+                }}
+              />
+              <small style={{display:"block",marginTop:7,color:"#7b8794"}}>
+                Upload a product image from your device. Maximum 5MB.
+              </small>
+              {uploadingProductImage&&
+                <div style={{marginTop:10,color:"#1769e0",fontWeight:700}}>
+                  ⏳ Uploading image...
+                </div>
+              }
+            </div>
 
             {productForm.image_url&&
-              <div style={{margin:"10px 0",textAlign:"center"}}>
+              <div style={{margin:"12px 0",textAlign:"center"}}>
                 <img
                   src={productForm.image_url}
-                  alt="Preview"
+                  alt="Product Preview"
                   onError={e=>e.currentTarget.style.display="none"}
-                  style={{width:90,height:90,objectFit:"cover",borderRadius:10,border:"1px solid #ddd"}}
+                  style={{width:120,height:120,objectFit:"contain",borderRadius:12,border:"1px solid #ddd",background:"#fff"}}
                 />
+                <small style={{display:"block",marginTop:6,color:"#14733d"}}>✓ Image ready</small>
               </div>
             }
 
@@ -696,8 +733,8 @@ function App(){
 
             <div className="modal-buttons">
               <button type="button" onClick={()=>setProductModal(false)}>Cancel</button>
-              <button className="primary" disabled={savingProduct}>
-                {savingProduct?"Saving...":"Save Product"}
+              <button className="primary" disabled={savingProduct||uploadingProductImage}>
+                {savingProduct?"Saving...":uploadingProductImage?"Uploading image...":"Save Product"}
               </button>
             </div>
           </form>
