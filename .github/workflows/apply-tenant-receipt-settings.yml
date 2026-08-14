@@ -1,0 +1,98 @@
+name: Apply tenant receipt settings
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch main.jsx
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("main.jsx")
+          s = p.read_text(encoding="utf-8")
+
+          def replace_once(old, new):
+              global s
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f"Patch target mismatch: expected 1 occurrence, found {n}: {old[:120]!r}")
+              s = s.replace(old, new, 1)
+
+          replace_once(
+              '  const [dashboardRange,setDashboardRange]=useState("today"),[saleItemsHistory,setSaleItemsHistory]=useState([]);\n',
+              '''  const [dashboardRange,setDashboardRange]=useState("today"),[saleItemsHistory,setSaleItemsHistory]=useState([]);\n  const [receiptSettings,setReceiptSettings]=useState({businessName:"",tin:"",address:"",phone:""});\n  const [receiptSettingsOpen,setReceiptSettingsOpen]=useState(false);\n  const [receiptForm,setReceiptForm]=useState({businessName:"",tin:"",address:"",phone:""});\n  const [savingReceiptSettings,setSavingReceiptSettings]=useState(false);\n'''
+          )
+
+          replace_once(
+              '''    setProfile(p);\n    const {data,error}=await supabase.from("products").select("*").eq("business_id",p.business_id).order("created_at",{ascending:false});''',
+              '''    setProfile(p);\n\n    const [{data:businessData,error:businessError},{data:settingsData,error:settingsError}]=await Promise.all([\n      supabase.from("businesses").select("id,name").eq("id",p.business_id).maybeSingle(),\n      supabase.from("business_settings").select("business_id,business_name,tin,address,phone").eq("business_id",p.business_id).maybeSingle()\n    ]);\n    if(businessError){setErr("Business error: "+businessError.message);return}\n    if(settingsError){setErr("Business settings error: "+settingsError.message);return}\n    const nextReceiptSettings={\n      businessName:String(settingsData?.business_name||businessData?.name||"SmallBiz POS").trim()||"SmallBiz POS",\n      tin:String(settingsData?.tin||"").trim(),\n      address:String(settingsData?.address||"").trim(),\n      phone:String(settingsData?.phone||"").trim()\n    };\n    setReceiptSettings(nextReceiptSettings);\n    setReceiptForm(nextReceiptSettings);\n\n    const {data,error}=await supabase.from("products").select("*").eq("business_id",p.business_id).order("created_at",{ascending:false});'''
+          )
+
+          replace_once(
+              '''  async function loadCustomers(businessId){const {data,error}=await supabase.from("customers").select("id,business_id,name,phone,email,address,tin,active,created_at,updated_at").eq("business_id",businessId).order("name");if(!error)setCustomers(data||[]);}\n''',
+              '''  async function loadCustomers(businessId){const {data,error}=await supabase.from("customers").select("id,business_id,name,phone,email,address,tin,active,created_at,updated_at").eq("business_id",businessId).order("name");if(!error)setCustomers(data||[]);}\n\n  async function saveReceiptSettings(e){\n    e.preventDefault();\n    if(!profile?.business_id||!isOwner){setErr("Only the business owner/admin can change receipt business information.");return}\n    const businessName=String(receiptForm.businessName||"").trim();\n    if(!businessName){setErr("Business Name is required.");return}\n    setSavingReceiptSettings(true);setErr("");\n    try{\n      const payload={\n        business_id:profile.business_id,\n        business_name:businessName,\n        tin:String(receiptForm.tin||"").trim()||null,\n        address:String(receiptForm.address||"").trim()||null,\n        phone:String(receiptForm.phone||"").trim()||null,\n        updated_at:new Date().toISOString()\n      };\n      const {error}=await supabase.from("business_settings").upsert(payload,{onConflict:"business_id"});\n      if(error)throw new Error(error.message);\n      const next={businessName,tin:payload.tin||"",address:payload.address||"",phone:payload.phone||""};\n      setReceiptSettings(next);\n      setReceiptForm(next);\n      setReceiptSettingsOpen(false);\n      setStatus("Receipt business information saved for this business.");\n    }catch(e){setErr("Receipt settings save failed: "+(e?.message||"Unknown error"))}\n    finally{setSavingReceiptSettings(false)}\n  }\n'''
+          )
+
+          replace_once(
+              '  const isOwner=role==="owner"||role==="admin";\n',
+              '  const isOwner=role==="super_admin"||role==="owner"||role==="admin";\n'
+          )
+
+          replace_once(
+              '''  function printReceipt({receiptNo:rn=receiptNo,printWindow=null}={}){\n    const win=printWindow||window.open("","_blank","width=420,height=700");\n    if(!win){setErr("Please allow pop-ups to print.");return}\n    const cashier=profile?.full_name||"Cashier";\n    const rows=cart.map(i=>`<tr><td>${i.name}</td><td>${i.qty}</td><td style="text-align:right">${money(i.price)}</td><td style="text-align:right">${money(i.price*i.qty)}</td></tr>`).join("");''',
+              '''  function printReceipt({receiptNo:rn=receiptNo,printWindow=null}={}){\n    const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\\"/g,"&quot;").replace(/'/g,"&#39;");\n    const win=printWindow||window.open("","_blank","width=420,height=700");\n    if(!win){setErr("Please allow pop-ups to print.");return}\n    const cashier=profile?.full_name||"Cashier";\n    const businessName=esc(String(receiptSettings.businessName||"SmallBiz POS").trim()||"SmallBiz POS");\n    const businessTin=esc(String(receiptSettings.tin||"").trim());\n    const businessAddress=esc(String(receiptSettings.address||"").trim());\n    const businessPhone=esc(String(receiptSettings.phone||"").trim());\n    const cashierEsc=esc(cashier);\n    const rnEsc=esc(rn);\n    const rows=cart.map(i=>`<tr><td>${esc(i.name)}</td><td>${esc(i.qty)}</td><td style="text-align:right">${money(i.price)}</td><td style="text-align:right">${money(i.price*i.qty)}</td></tr>`).join("");'''
+          )
+
+          replace_once(
+              '''    </style></head><body><h1>SmallBiz POS</h1><div class="center">Sales Receipt<br>${rn}<br>${new Date().toLocaleString("en-PH")}<br>Cashier: ${cashier}</div><div class="line"></div>''',
+              '''    </style></head><body><h1>${businessName}</h1><div class="center">${businessAddress?`${businessAddress}<br>`:""}${businessPhone?`Tel: ${businessPhone}<br>`:""}${businessTin?`TIN: ${businessTin}<br>`:""}Sales Receipt<br>${rnEsc}<br>${esc(new Date().toLocaleString("en-PH"))}<br>Cashier: ${cashierEsc}</div><div class="line"></div>'''
+          )
+
+          replace_once(
+              '''    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.5</div>''',
+              '''    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>${businessName}</div>'''
+          )
+
+          replace_once(
+              '''        <button className="logout-btn" onClick={logout}>↪ Logout</button>''',
+              '''        {isOwner&&<button className="logout-btn" onClick={()=>{setReceiptForm({...receiptSettings});setReceiptSettingsOpen(true)}}>🧾 Receipt Settings</button>}\n        <button className="logout-btn" onClick={logout}>↪ Logout</button>'''
+          )
+
+          replace_once(
+              '''    {categoryModal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>🏷️ Add Category</h2><button onClick={()=>setCategoryModal(false)}>✕</button></div><form onSubmit={saveCategory}><label>Category Name</label><input value={categoryForm.name} onChange={e=>setCategoryForm({...categoryForm,name:e.target.value})} required/><label>Description</label><textarea rows="3" value={categoryForm.description} onChange={e=>setCategoryForm({...categoryForm,description:e.target.value})}/><div className="modal-buttons"><button type="button" onClick={()=>setCategoryModal(false)}>Cancel</button><button className="primary" disabled={savingCategory}>{savingCategory?"Saving...":"Save Category"}</button></div></form></div></div>}\n''',
+              '''    {categoryModal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>🏷️ Add Category</h2><button onClick={()=>setCategoryModal(false)}>✕</button></div><form onSubmit={saveCategory}><label>Category Name</label><input value={categoryForm.name} onChange={e=>setCategoryForm({...categoryForm,name:e.target.value})} required/><label>Description</label><textarea rows="3" value={categoryForm.description} onChange={e=>setCategoryForm({...categoryForm,description:e.target.value})}/><div className="modal-buttons"><button type="button" onClick={()=>setCategoryModal(false)}>Cancel</button><button className="primary" disabled={savingCategory}>{savingCategory?"Saving...":"Save Category"}</button></div></form></div></div>}\n    {receiptSettingsOpen&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>🧾 Receipt / Business Information</h2><button onClick={()=>setReceiptSettingsOpen(false)}>✕</button></div><p>These details are stored per business in Supabase and will appear on printed receipts for every cashier under this business.</p><form onSubmit={saveReceiptSettings}><label>Business Name</label><input value={receiptForm.businessName||""} onChange={e=>setReceiptForm({...receiptForm,businessName:e.target.value})} placeholder="Your registered business name" required/><label>TIN</label><input value={receiptForm.tin||""} onChange={e=>setReceiptForm({...receiptForm,tin:e.target.value})} placeholder="000-000-000-000"/><label>Business Address</label><textarea rows="2" value={receiptForm.address||""} onChange={e=>setReceiptForm({...receiptForm,address:e.target.value})} placeholder="Complete business address"/><label>Contact Number</label><input value={receiptForm.phone||""} onChange={e=>setReceiptForm({...receiptForm,phone:e.target.value})} placeholder="09xx xxx xxxx"/><div className="modal-buttons"><button type="button" onClick={()=>setReceiptSettingsOpen(false)}>Cancel</button><button className="primary" disabled={savingReceiptSettings}>{savingReceiptSettings?"Saving...":"Save Receipt Settings"}</button></div></form></div></div>}\n'''
+          )
+
+          p.write_text(s, encoding="utf-8")
+          print("main.jsx patched")
+          PY
+
+      - name: Validate and build
+        shell: bash
+        run: |
+          npm install --no-package-lock
+          npm run build
+
+      - name: Commit patch and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add main.jsx .github/workflows/apply-tenant-receipt-settings.yml
+          git rm .github/workflows/apply-tenant-receipt-settings.yml
+          git commit -m "Add per-business receipt name and TIN settings"
+          git push origin HEAD:main
