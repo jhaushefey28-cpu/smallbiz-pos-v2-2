@@ -51,7 +51,7 @@ const norm=p=>({...p,
 
 function App(){
   const [session,setSession]=useState(null),[email,setEmail]=useState(""),[password,setPassword]=useState("");
-  const [products,setProducts]=useState([]),[search,setSearch]=useState(""),[cart,setCart]=useState([]);
+  const [products,setProducts]=useState([]),[search,setSearch]=useState(""),[posCategoryFilter,setPosCategoryFilter]=useState("all"),[cart,setCart]=useState([]);
   const [scan,setScan]=useState(false),[status,setStatus]=useState(""),[err,setErr]=useState("");
   const [profile,setProfile]=useState(null),[activePage,setActivePage]=useState("pos");
   const [autoPrintReceipt,setAutoPrintReceipt]=useState(()=>localStorage.getItem("smallbiz_auto_print_receipt")==="true");
@@ -169,8 +169,12 @@ function App(){
 
   const filtered=useMemo(()=>{
     const q=search.toLowerCase().trim();
-    return !q?products:products.filter(p=>String(p.name).toLowerCase().includes(q)||String(p.barcode).toLowerCase().includes(q));
-  },[products,search]);
+    return products.filter(p=>{
+      const matchesSearch=!q||String(p.name||"").toLowerCase().includes(q)||String(p.barcode||"").toLowerCase().includes(q);
+      const matchesCategory=posCategoryFilter==="all"||String(p.category_id||"")===String(posCategoryFilter);
+      return matchesSearch&&matchesCategory;
+    });
+  },[products,search,posCategoryFilter]);
 
   function add(product){
     if(product.stock<=0){setStatus("Out of stock: "+product.name);return}
@@ -583,7 +587,9 @@ function App(){
     </style></head><body><h1>SmallBiz POS</h1><div class="center">Sales Receipt<br>${rn}<br>${new Date().toLocaleString("en-PH")}<br>Cashier: ${cashier}</div><div class="line"></div>
     <table><thead><tr><th style="text-align:left">Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="line"></div>
     <div class="row"><span>Subtotal</span><span>${money(subtotal)}</span></div><div class="row"><span>Discount</span><span>${money(discount)}</span></div><div class="row total"><span>TOTAL</span><span>${money(total)}</span></div><div class="line"></div>
-    <div class="row"><span>Payment</span><span>${paymentLabel(paymentMethod)}</span></div><div class="row"><span>Amount Paid</span><span>${money(paymentMethod==="cash"?cash:total)}</span></div>
+    <div class="row"><span>Payment</span><span>${paymentLabel(paymentMethod)}</span></div>
+    ${paymentMethod!=="cash"&&paymentReference.trim()?`<div class="row"><span>${paymentMethod==="gcash"?"GCash Reference":"Card Approval No."}</span><span>${paymentReference.trim()}</span></div>`:""}
+    <div class="row"><span>Amount Paid</span><span>${money(paymentMethod==="cash"?cash:total)}</span></div>
     ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.5</div>
     <script>window.onload=()=>window.print()</script></body></html>`);win.document.close();
   }
@@ -616,10 +622,17 @@ function App(){
       <div className="pos-layout">
         <section className="products-panel"><div className="panel-title"><div><h2>Products</h2><p>Search or scan a product.</p></div><button className={scan?"scan-btn scanning":"scan-btn"} onClick={()=>{setScan(!scan);setStatus("")}}>📷 {scan?"Close Scanner":"Scan Barcode"}</button></div>
         {scan&&<div className="scanner-box"><div id="reader"></div><small>Allow camera access and point at the barcode.</small></div>}
-        <div className="search-row"><span>🔍</span><input className="product-search" placeholder="Search product or barcode..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+        <div className="search-row">
+          <span>🔍</span>
+          <input className="product-search" placeholder="Search product or barcode..." value={search} onChange={e=>setSearch(e.target.value)}/>
+          <select value={posCategoryFilter} onChange={e=>setPosCategoryFilter(e.target.value)} aria-label="Filter products by category">
+            <option value="all">All Categories</option>
+            {activeCategories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
         <div className="products-grid">{filtered.length?filtered.map(p=><div className="product-card" key={p.id} style={{overflow:"hidden"}}>
           <div className="product-image" style={{height:170,background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>{productImage(p)?<img src={productImage(p)} alt={p.name} style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>:<div className="image-placeholder" style={{fontSize:42}}>📦</div>}</div>
-          <div className="product-info"><h3>{p.name}</h3><small>Barcode: {p.barcode||"N/A"}</small><small>Stock: {p.stock}</small></div>
+          <div className="product-info"><h3>{p.name}</h3><small>Category: {activeCategories.find(c=>c.id===p.category_id)?.name||"Uncategorized"}</small><small>Barcode: {p.barcode||"N/A"}</small><small>Stock: {p.stock}</small></div>
           <div className="product-bottom"><strong>{money(p.price)}</strong><button className="add-cart-btn" disabled={p.stock<=0} onClick={()=>add(p)}>{p.stock>0?"Add to Cart":"Out of Stock"}</button></div>
         </div>):<div className="empty-products">No product found.</div>}</div></section>
         <aside className="right-panel">
@@ -737,7 +750,7 @@ function App(){
 
     {paymentOpen&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>Payment</h2><button onClick={()=>setPaymentOpen(false)}>✕</button></div><div className="payment-total"><span>Total</span><b>{money(total)}</b></div><label>Payment Method</label><div className="payment-methods"><button className={paymentMethod==="cash"?"primary":""} onClick={()=>{setPaymentMethod("cash");setCash("")}}>💵 Cash</button><button className={paymentMethod==="gcash"?"primary":""} onClick={()=>{setPaymentMethod("gcash");setCash("")}}>📱 GCash</button><button className={paymentMethod==="card"?"primary":""} onClick={()=>{setPaymentMethod("card");setCash("")}}>💳 Card</button></div><label>Customer</label><select value={selectedCustomerId} onChange={e=>setSelectedCustomerId(e.target.value)}><option value="">Walk-in Customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><label>Discount</label><input type="number" min="0" max={subtotal} step=".01" value={discountAmount} onChange={e=>setDiscountAmount(e.target.value)} placeholder="0.00"/>{discount>0&&<><label>Discount Reason</label><input value={discountReason} onChange={e=>setDiscountReason(e.target.value)} placeholder="Promo / Senior / Manager approval"/></>}{paymentMethod!=="cash"&&<><label>Payment Reference</label><input value={paymentReference} onChange={e=>setPaymentReference(e.target.value)} placeholder="GCash reference / card approval no."/></>}{paymentMethod==="cash"&&<><label>Cash Received</label><input type="number" min="0" step=".01" value={cash} onChange={e=>setCash(e.target.value)} placeholder="Enter cash amount"/>{cash&&Number(cash)>=total&&<div className="change-box"><span>Change</span><b>{money(change)}</b></div>}</>}{err&&<p className="error">{err}</p>}<div className="modal-buttons"><button onClick={()=>setPaymentOpen(false)}>Cancel</button><button className="primary" disabled={savingPayment||(paymentMethod==="cash"&&(!cash||Number(cash)<total))} onClick={completePayment}>{savingPayment?"Saving...":"Complete Payment"}</button></div></div></div>}
 
-    {paymentDone&&<div className="modal-backdrop"><div className="modal"><div className="success-icon">✓</div><h2>Payment Complete</h2><div className="receipt-summary"><p>Invoice: <b>{receiptNo}</b></p><p>Payment: <b>{paymentLabel(paymentMethod)}</b></p><p>Total: <b>{money(total)}</b></p>{paymentMethod==="cash"&&<><p>Cash: <b>{money(cash)}</b></p><p>Change: <b>{money(change)}</b></p></>}</div><div className="modal-buttons"><button onClick={()=>printReceipt({})}>🖨️ Print Receipt</button><button className="primary" onClick={newSale}>New Sale</button></div></div></div>}
+    {paymentDone&&<div className="modal-backdrop"><div className="modal"><div className="success-icon">✓</div><h2>Payment Complete</h2><div className="receipt-summary"><p>Invoice: <b>{receiptNo}</b></p><p>Payment: <b>{paymentLabel(paymentMethod)}</b></p>{paymentMethod!=="cash"&&paymentReference.trim()&&<p>{paymentMethod==="gcash"?"GCash Reference":"Card Approval No."}: <b>{paymentReference}</b></p>}<p>Total: <b>{money(total)}</b></p>{paymentMethod==="cash"&&<><p>Cash: <b>{money(cash)}</b></p><p>Change: <b>{money(change)}</b></p></>}</div><div className="modal-buttons"><button onClick={()=>printReceipt({})}>🖨️ Print Receipt</button><button className="primary" onClick={newSale}>New Sale</button></div></div></div>}
 
     {productModal&&<div className="modal-backdrop">
         <div className="modal">
