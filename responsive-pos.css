@@ -1,0 +1,64 @@
+/* SmallBiz POS responsive layout */
+html,body,#root{width:100%;min-width:0}
+*{-webkit-tap-highlight-color:transparent}
+
+@media (max-width:1180px){
+  .sidebar{width:220px;min-width:220px}
+  .main-area{padding:18px}
+  .pos-layout{grid-template-columns:minmax(0,1fr) minmax(320px,38%);gap:14px}
+  .products-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+  .product-image{height:145px}
+}
+
+@media (max-width:900px){
+  .app-shell{display:block}
+  .sidebar{position:fixed;z-index:1000;left:0;top:0;width:72px;min-width:72px;height:100dvh;overflow-y:auto}
+  .brand{justify-content:center;padding:14px 8px}
+  .brand h1,.brand>div:not(.brand-icon),.profile-box>div:not(.profile-avatar),.sidebar .nav-item b{display:none}
+  .profile-box{justify-content:center;margin:10px 8px;padding:8px}
+  .sidebar-nav{padding:4px 8px}
+  .nav-item{justify-content:center;padding:12px 6px}
+  .nav-item span{width:auto;font-size:19px}
+  .sidebar-bottom{padding:8px}
+  .logout-btn{justify-content:center;padding:11px 6px}
+  .main-area{margin-left:72px;padding:14px}
+  .pos-layout{grid-template-columns:1fr}
+  .pos-layout>:nth-child(2){position:static}
+  .products-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .product-image{height:130px}
+  .product-info{padding:10px}
+  button,input,select,.nav-item,.logout-btn{min-height:42px}
+}
+
+@media (max-width:640px){
+  .sidebar{width:60px;min-width:60px}
+  .main-area{margin-left:60px;padding:10px}
+  .page-header{align-items:flex-start;gap:10px;margin-bottom:12px}
+  .page-header h2{font-size:20px}
+  .page-header p{font-size:12px}
+  .products-panel{padding:12px;border-radius:12px}
+  .panel-title{align-items:flex-start;margin-bottom:12px}
+  .panel-title h2{font-size:17px}
+  .search-row{margin-bottom:10px}
+  .products-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .product-image{height:115px}
+  .product-info h3{font-size:13px}
+  .product-info small{font-size:10px}
+  .pos-layout>:nth-child(2){width:100%}
+  .pos-layout>:nth-child(2) button{min-height:46px}
+  table{min-width:620px}
+  .table-wrap,.table-container,.report-table-wrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .modal,.modal-card,.dialog,.card{max-width:calc(100vw - 20px)}
+  input,select,textarea{font-size:16px}
+}
+
+@media (max-width:390px){
+  .sidebar{width:54px;min-width:54px}
+  .main-area{margin-left:54px;padding:8px}
+  .products-grid{gap:6px}
+  .product-image{height:100px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
+}
