@@ -16,6 +16,8 @@ const groups = {
   other: "Other"
 };
 
+const platformCodes = new Set(["shopee", "lazada", "tiktok_shop", "shopify", "woocommerce"]);
+
 function Panel({onClose, profile}){
   const [channels,setChannels]=useState([]);
   const [cashDrawer,setCashDrawer]=useState(true);
@@ -31,7 +33,7 @@ function Panel({onClose, profile}){
     if(!sb||!profile?.business_id)return;
     setLoading(true);setError("");
     const [{data:c,error:ce},{data:s,error:se}]=await Promise.all([
-      sb.from("sales_channels").select("id,code,name,channel_type,enabled").eq("business_id",profile.business_id).order("channel_type").order("name"),
+      sb.from("sales_channels").select("id,code,name,channel_type,enabled,platform_enabled,platform_enabled_at,platform_enabled_by").eq("business_id",profile.business_id).order("channel_type").order("name"),
       sb.from("business_settings").select("cash_drawer_enabled").eq("business_id",profile.business_id).maybeSingle()
     ]);
     if(ce)setError(ce.message);else setChannels(c||[]);
@@ -42,7 +44,7 @@ function Panel({onClose, profile}){
   useEffect(()=>{load()},[profile?.business_id]);
 
   async function toggleChannel(channel){
-    if(!admin)return;
+    if(!admin||platformCodes.has(channel.code))return;
     setSaving(true);setError("");
     const {error:e}=await sb.from("sales_channels").update({enabled:!channel.enabled,updated_at:new Date().toISOString()}).eq("id",channel.id).eq("business_id",profile.business_id);
     if(e)setError(e.message);else{setChannels(x=>x.map(c=>c.id===channel.id?{...c,enabled:!channel.enabled}:c));setStatus(`${channel.name}: ${!channel.enabled?"ON":"OFF"}`)}
@@ -65,7 +67,7 @@ function Panel({onClose, profile}){
       {status&&<div className="sbc-success">✓ {status}</div>}
       {error&&<div className="sbc-error">{error}</div>}
 
-      {!admin&&<div className="sbc-info">Only the business owner/admin can configure sales channels and cash drawer settings.</div>}
+      <div className="sbc-info"><b>🔐 Online-platform authorization is controlled by SmallBiz Platform Admin.</b><span> Tenant admins can manage physical/direct channels, but cannot turn online platforms ON or OFF.</span></div>
 
       <section className="sbc-card">
         <div className="sbc-setting-row"><div><b>💰 Cash Drawer</b><small>Required for physical-store cashier shifts. Turn OFF for online-only businesses.</small></div><button disabled={!admin||saving} className={cashDrawer?"sbc-toggle on":"sbc-toggle"} onClick={()=>saveCashDrawer(!cashDrawer)}>{cashDrawer?"ON":"OFF"}</button></div>
@@ -74,9 +76,17 @@ function Panel({onClose, profile}){
 
       <div className="sbc-toolbar"><div className="sbc-tabs"><button className={filter==="all"?"active":""} onClick={()=>setFilter("all")}>All</button>{Object.entries(groups).map(([k,v])=><button key={k} className={filter===k?"active":""} onClick={()=>setFilter(k)}>{v}</button>)}</div><button className="sbc-refresh" onClick={load}>↻ Refresh</button></div>
 
-      {loading?<div className="sbc-empty">Loading channels...</div>:<div className="sbc-grid">{visible.map(c=><div className={c.enabled?"sbc-channel enabled":"sbc-channel"} key={c.id}><div className="sbc-channel-icon">{c.code==="pos"?"🏪":c.code==="shopee"?"🛍️":c.code==="lazada"?"🛒":c.code==="tiktok_shop"?"🎵":c.channel_type==="social"?"💬":c.channel_type==="website"?"🌐":c.channel_type==="wholesale"?"📦":"🧾"}</div><div className="sbc-channel-main"><b>{c.name}</b><small>{groups[c.channel_type]||"Other"}</small><span className={c.enabled?"sbc-pill on":"sbc-pill"}>{c.enabled?"Enabled":"Disabled"}</span></div><button disabled={!admin||saving} className={c.enabled?"sbc-small-toggle on":"sbc-small-toggle"} onClick={()=>toggleChannel(c)}>{c.enabled?"ON":"OFF"}</button></div>)}</div>}
+      {loading?<div className="sbc-empty">Loading channels...</div>:<div className="sbc-grid">{visible.map(c=>{
+        const platform=platformCodes.has(c.code);
+        const available=platform && c.platform_enabled===true;
+        return <div className={c.enabled&&(!platform||available)?"sbc-channel enabled":"sbc-channel"} key={c.id}>
+          <div className="sbc-channel-icon">{c.code==="pos"?"🏪":c.code==="shopee"?"🛍️":c.code==="lazada"?"🛒":c.code==="tiktok_shop"?"🎵":c.channel_type==="social"?"💬":c.channel_type==="website"?"🌐":c.channel_type==="wholesale"?"📦":"🧾"}</div>
+          <div className="sbc-channel-main"><b>{c.name}</b><small>{groups[c.channel_type]||"Other"}</small>{platform?<span className={available?"sbc-pill on":"sbc-pill"}>{available?"Authorized by Platform":"Disabled by Platform"}</span>:<span className={c.enabled?"sbc-pill on":"sbc-pill"}>{c.enabled?"Enabled":"Disabled"}</span>}</div>
+          {platform?<button disabled className={available?"sbc-small-toggle on":"sbc-small-toggle"}>{available?"AVAILABLE":"LOCKED"}</button>:<button disabled={!admin||saving} className={c.enabled?"sbc-small-toggle on":"sbc-small-toggle"} onClick={()=>toggleChannel(c)}>{c.enabled?"ON":"OFF"}</button>}
+        </div>;
+      })}</div>}
 
-      <section className="sbc-card" style={{marginTop:16}}><div className="sbc-section-title"><div><h3>🔌 Platform Connections</h3><p>API/OAuth connections will be added here. We keep tokens server-side and tenant-scoped.</p></div></div><div className="sbc-connection-list">{channels.filter(c=>["shopee","lazada","tiktok_shop","shopify","woocommerce"].includes(c.code)).map(c=><div className="sbc-connection" key={c.id}><span>{c.name}</span><span className="sbc-pill">Not Connected</span><button disabled>Connect</button></div>)}</div></section>
+      <section className="sbc-card" style={{marginTop:16}}><div className="sbc-section-title"><div><h3>🔌 Platform Connections</h3><p>Only platforms authorized by SmallBiz can be connected. Marketplace OAuth will be added next; tokens remain server-side and tenant-scoped.</p></div></div><div className="sbc-connection-list">{channels.filter(c=>platformCodes.has(c.code)).map(c=>{const available=c.platform_enabled===true;return <div className="sbc-connection" key={c.id}><span>{c.name}</span><span className={available?"sbc-pill on":"sbc-pill"}>{available?"Platform Authorized":"Disabled by Platform"}</span><button disabled={!available}>Connect Store</button></div>})}</div></section>
     </div>
   </div>;
 }
