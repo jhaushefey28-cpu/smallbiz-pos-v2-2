@@ -1,0 +1,87 @@
+/* SmallBiz POS — Sidebar layout fix */
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  align-items: stretch;
+}
+
+.sidebar {
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  max-height: 100vh;
+  max-height: 100dvh;
+  flex: 0 0 250px;
+  flex-shrink: 0 !important;
+  overflow: hidden !important;
+  background: #111827 !important;
+  color: #ffffff !important;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+}
+
+.sidebar-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #344154 #111827;
+  padding: 4px 12px;
+  gap: 3px;
+}
+
+.sidebar-nav::-webkit-scrollbar { width: 6px; }
+.sidebar-nav::-webkit-scrollbar-track { background: #111827; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: #344154; border-radius: 999px; }
+
+.nav-item {
+  flex: 0 0 auto;
+  padding: 10px 13px;
+  color: #b9c2cf;
+}
+
+.sidebar-bottom {
+  flex: 0 0 auto;
+  margin-top: 0 !important;
+  padding: 12px 16px !important;
+  background: #111827 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar-bottom > div {
+  margin-bottom: 8px !important;
+  padding: 10px !important;
+}
+
+.logout-btn {
+  min-height: 42px;
+  color: #cbd5e1;
+}
+
+@media (max-width: 900px) and (min-width: 701px) {
+  .sidebar { flex-basis: 210px; }
+}
+
+@media (max-width: 700px) {
+  .sidebar {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex-basis: auto;
+    position: static;
+  }
+
+  .sidebar-nav {
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex: 0 0 auto;
+  }
+
+  .sidebar-bottom { display: none; }
+}
