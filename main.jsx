@@ -243,33 +243,45 @@ function App(){
     if(paymentMethod==="cash"&&(!cash||Number(cash)<total))return;
     let w=null;
     if(autoPrintReceipt)w=window.open("","_blank","width=420,height=700");
-    setSavingPayment(true);setErr("");setStatus("Saving payment...");
+    setSavingPayment(true);setErr("");setStatus("Saving payment atomically...");
     const invoiceNumber="INV-"+Date.now();
     try{
-      const {data:sale,error:se}=await supabase.from("sales").insert({
-        business_id:profile.business_id,invoice_no:invoiceNumber,cashier_id:profile.id,customer_id:selectedCustomerId||null,
-        subtotal:Number(subtotal.toFixed(2)),discount:Number(discount.toFixed(2)),discount_reason:discountReason.trim()||null,total:Number(total.toFixed(2)),
-        payment_method:paymentMethod,payment_reference:paymentReference.trim()||null,amount_tendered:paymentMethod==="cash"?Number(Number(cash).toFixed(2)):Number(total.toFixed(2)),
-        change_amount:paymentMethod==="cash"?Number(change.toFixed(2)):0,status:"completed"
-      }).select().single();
-      if(se)throw new Error("Unable to save sale: "+se.message);
-      const items=cart.map(i=>{const cost=Number(i.cost_price||0),line=Number((i.price*i.qty).toFixed(2)),lineCost=Number((cost*i.qty).toFixed(2));return {sale_id:sale.id,product_id:i.id,product_name:i.name,barcode:i.barcode||"",quantity:Number(i.qty),unit_price:Number(i.price),line_total:line,cost_price:cost,line_cost:lineCost,gross_profit:Number((line-lineCost).toFixed(2))}});
-      const {error:ie}=await supabase.from("sale_items").insert(items);
-      if(ie)throw new Error("Unable to save sale items: "+ie.message);
+      // The existing Supabase complete_sale() RPC performs the entire sale
+      // as one database transaction: sale + sale items + stock deduction +
+      // stock movement. If any step fails, PostgreSQL rolls everything back.
+      const items=cart.map(i=>({
+        product_id:i.id,
+        quantity:Number(i.qty),
+        unit_price:Number(Number(i.price).toFixed(2))
+      }));
 
-      for(const item of cart){
-        const before=Number(item.stock||0),sold=Number(item.qty||0);
-        if(sold>before)throw new Error("Not enough stock for "+item.name);
-        const after=before-sold;
-        const {error:ue}=await supabase.from("products").update({stock:after,updated_at:new Date().toISOString()}).eq("id",item.id).eq("business_id",profile.business_id);
-        if(ue)throw new Error("Unable to update stock for "+item.name+": "+ue.message);
-        await recordMovement({product:item,quantity:-sold,before,after,type:"SALE",reason:"Sale",referenceType:"sale",referenceId:sale.id});
-      }
+      const {data:saleId,error}=await supabase.rpc("complete_sale",{
+        p_business_id:profile.business_id,
+        p_invoice_no:invoiceNumber,
+        p_cashier_id:profile.id,
+        p_customer_id:selectedCustomerId||null,
+        p_subtotal:Number(subtotal.toFixed(2)),
+        p_discount:Number(discount.toFixed(2)),
+        p_discount_reason:discountReason.trim()||null,
+        p_total:Number(total.toFixed(2)),
+        p_payment_method:paymentMethod,
+        p_payment_reference:paymentReference.trim()||null,
+        p_amount_tendered:paymentMethod==="cash"?Number(Number(cash).toFixed(2)):Number(total.toFixed(2)),
+        p_change_amount:paymentMethod==="cash"?Number(change.toFixed(2)):0,
+        p_items:items
+      });
+
+      if(error)throw new Error(error.message||"Unable to complete sale.");
+      if(!saleId)throw new Error("Sale completed without a sale ID.");
+
       await load(session.user.id);
-      setReceiptNo(invoiceNumber);setPaymentOpen(false);setPaymentDone(true);setStatus("Payment saved successfully.");
+      setReceiptNo(invoiceNumber);setPaymentOpen(false);setPaymentDone(true);setStatus("Payment saved successfully. Sale + stock completed atomically.");
       if(autoPrintReceipt)printReceipt({receiptNo:invoiceNumber,printWindow:w});
     }catch(e){
-      if(w&&!w.closed)w.close();console.error(e);setErr(e.message||"Payment failed.");setStatus("");
+      if(w&&!w.closed)w.close();
+      console.error("Atomic sale failed:",e);
+      setErr(e?.message||"Payment failed. No sale or stock changes were committed.");
+      setStatus("");
     }finally{setSavingPayment(false)}
   }
 
@@ -446,18 +458,32 @@ function App(){
   }
 
   async function doRestock(e){
-    e.preventDefault();if(!canManageInventory){setErr("Your role is not allowed to restock products.");return}if(!restockProduct)return;
+    e.preventDefault();
+    if(!canManageInventory){setErr("Your role is not allowed to restock products.");return}
+    if(!restockProduct)return;
     const n=Number(restockQty);
     if(!Number.isFinite(n)||n<=0){setErr("Enter a valid quantity.");return}
-    setSavingProduct(true);setErr("");
+    setSavingProduct(true);setErr("");setStatus("Restocking atomically...");
     try{
-      const before=Number(restockProduct.stock||0),after=before+n;
-      const {error}=await supabase.from("products").update({stock:after,updated_at:new Date().toISOString()})
-        .eq("id",restockProduct.id).eq("business_id",profile.business_id);
-      if(error)throw new Error(error.message);
-      await recordMovement({product:restockProduct,quantity:n,before,after,type:"STOCK_IN",reason:restockReason||"Restock"});
-      setRestockProduct(null);setRestockQty("");setRestockReason("Restock");setStatus("Stock added successfully.");await load(session.user.id);
-    }catch(e){setErr("Restock failed: "+e.message)}finally{setSavingProduct(false)}
+      // The existing Supabase restock_product() RPC performs the stock
+      // increase and stock movement in one database transaction.
+      const {data,error}=await supabase.rpc("restock_product",{
+        p_business_id:profile.business_id,
+        p_product_id:restockProduct.id,
+        p_quantity:n,
+        p_reason:restockReason.trim()||"Restock"
+      });
+      if(error)throw new Error(error.message||"Restock failed.");
+      if(!data?.success)throw new Error("Restock was not completed.");
+
+      setRestockProduct(null);setRestockQty("");setRestockReason("Restock");
+      setStatus("Stock added successfully. Stock + movement completed atomically.");
+      await load(session.user.id);
+    }catch(e){
+      console.error("Atomic restock failed:",e);
+      setErr(e?.message||"Restock failed. No stock change was committed.");
+      setStatus("");
+    }finally{setSavingProduct(false)}
   }
 
   function openCustomer(c=null){setEditingCustomer(c);setCustomerForm(c?{name:c.name||"",phone:c.phone||"",email:c.email||"",address:c.address||"",tin:c.tin||""}:{name:"",phone:"",email:"",address:"",tin:""});setCustomerModal(true);setErr("");}
