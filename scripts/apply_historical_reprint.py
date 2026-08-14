@@ -8,10 +8,9 @@ if marker in text:
     print('Historical reprint already applied; nothing to do.')
     raise SystemExit(0)
 
-start = text.index('  function printReceipt(')
-end = text.index('\n\n  if(configError)return', start)
+insert_at = text.index('  function printReceipt(')
 
-new_print = r'''  async function reprintSale(sale){
+new_function = r'''  async function reprintSale(sale){
     /* HISTORICAL_REPRINT_V1 */
     if(!canSell){setErr("Your role is not allowed to print receipts.");return}
     if(!sale?.id){setErr("Invalid transaction selected.");return}
@@ -86,9 +85,9 @@ new_print = r'''  async function reprintSale(sale){
     }
   }
 
-  function printReceipt({receiptNo:rn=receiptNo,printWindow=null}={}){'''
+'''
 
-text = text[:start] + new_print + text[end:]
+text = text[:insert_at] + new_function + text[insert_at:]
 
 old_action = '<td><button onClick={()=>openSaleDetails(s)}>🧾 View</button>{s.status==="completed"&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td>'
 new_action = '<td><button onClick={()=>openSaleDetails(s)}>🧾 View</button><button onClick={()=>reprintSale(s)} style={{marginLeft:6}}>🖨️ Reprint</button>{s.status==="completed"&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td>'
