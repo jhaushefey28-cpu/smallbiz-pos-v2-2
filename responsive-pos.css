@@ -30,6 +30,8 @@ html,body,#root{width:100%;min-width:0}
   button,input,select,.nav-item,.logout-btn{min-height:42px}
 }
 
+/* Phone POS: cart is intentionally placed ABOVE the product area so the
+   cashier sees the active cart/total first without scrolling to the bottom. */
 @media (max-width:640px){
   .sidebar{width:60px;min-width:60px}
   .main-area{margin-left:60px;padding:10px}
@@ -40,11 +42,16 @@ html,body,#root{width:100%;min-width:0}
   .panel-title{align-items:flex-start;margin-bottom:12px}
   .panel-title h2{font-size:17px}
   .search-row{margin-bottom:10px}
+
+  /* Keep the two POS sections full width, with the cart first on phones. */
+  .pos-layout{display:flex;flex-direction:column;gap:10px}
+  .pos-layout>:nth-child(2){order:-1;width:100%;position:static}
+  .pos-layout>:first-child{order:1;width:100%}
+
   .products-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .product-image{height:115px}
   .product-info h3{font-size:13px}
   .product-info small{font-size:10px}
-  .pos-layout>:nth-child(2){width:100%}
   .pos-layout>:nth-child(2) button{min-height:46px}
   table{min-width:620px}
   .table-wrap,.table-container,.report-table-wrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
