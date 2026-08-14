@@ -86,6 +86,10 @@ function App(){
   const [customers,setCustomers]=useState([]),[customerModal,setCustomerModal]=useState(false),[editingCustomer,setEditingCustomer]=useState(null),[customerForm,setCustomerForm]=useState({name:"",phone:"",email:"",address:"",tin:""}),[savingCustomer,setSavingCustomer]=useState(false),[customerSearch,setCustomerSearch]=useState("");
   const [selectedCustomerId,setSelectedCustomerId]=useState(""),[paymentReference,setPaymentReference]=useState(""),[discountAmount,setDiscountAmount]=useState(""),[discountReason,setDiscountReason]=useState("");
   const [dashboardRange,setDashboardRange]=useState("today"),[saleItemsHistory,setSaleItemsHistory]=useState([]);
+  const [receiptSettings,setReceiptSettings]=useState({businessName:"",tin:"",address:"",phone:""});
+  const [receiptSettingsOpen,setReceiptSettingsOpen]=useState(false);
+  const [receiptForm,setReceiptForm]=useState({businessName:"",tin:"",address:"",phone:""});
+  const [savingReceiptSettings,setSavingReceiptSettings]=useState(false);
 
   useEffect(()=>{
     if(!supabase)return;
@@ -104,6 +108,22 @@ function App(){
     const {data:p,error:pe}=await supabase.from("profiles").select("id,business_id,full_name,role,active,created_at").eq("id",uid).single();
     if(pe){setErr("Profile error: "+pe.message);return}
     setProfile(p);
+
+    const [{data:businessData,error:businessError},{data:settingsData,error:settingsError}]=await Promise.all([
+      supabase.from("businesses").select("id,name").eq("id",p.business_id).maybeSingle(),
+      supabase.from("business_settings").select("business_id,business_name,tin,address,phone").eq("business_id",p.business_id).maybeSingle()
+    ]);
+    if(businessError){setErr("Business error: "+businessError.message);return}
+    if(settingsError){setErr("Business settings error: "+settingsError.message);return}
+    const nextReceiptSettings={
+      businessName:String(settingsData?.business_name||businessData?.name||"SmallBiz POS").trim()||"SmallBiz POS",
+      tin:String(settingsData?.tin||"").trim(),
+      address:String(settingsData?.address||"").trim(),
+      phone:String(settingsData?.phone||"").trim()
+    };
+    setReceiptSettings(nextReceiptSettings);
+    setReceiptForm(nextReceiptSettings);
+
     const {data,error}=await supabase.from("products").select("*").eq("business_id",p.business_id).order("created_at",{ascending:false});
     if(error){setErr("Products error: "+error.message);return}
     setProducts((data||[]).map(norm));
@@ -130,6 +150,32 @@ function App(){
 
   async function loadCategories(businessId){const {data,error}=await supabase.from("product_categories").select("id,business_id,name,description,active,created_at,updated_at").eq("business_id",businessId).order("name");if(!error)setCategories(data||[]);}
   async function loadCustomers(businessId){const {data,error}=await supabase.from("customers").select("id,business_id,name,phone,email,address,tin,active,created_at,updated_at").eq("business_id",businessId).order("name");if(!error)setCustomers(data||[]);}
+
+  async function saveReceiptSettings(e){
+    e.preventDefault();
+    if(!profile?.business_id||!isOwner){setErr("Only the business owner/admin can change receipt business information.");return}
+    const businessName=String(receiptForm.businessName||"").trim();
+    if(!businessName){setErr("Business Name is required.");return}
+    setSavingReceiptSettings(true);setErr("");
+    try{
+      const payload={
+        business_id:profile.business_id,
+        business_name:businessName,
+        tin:String(receiptForm.tin||"").trim()||null,
+        address:String(receiptForm.address||"").trim()||null,
+        phone:String(receiptForm.phone||"").trim()||null,
+        updated_at:new Date().toISOString()
+      };
+      const {error}=await supabase.from("business_settings").upsert(payload,{onConflict:"business_id"});
+      if(error)throw new Error(error.message);
+      const next={businessName,tin:payload.tin||"",address:payload.address||"",phone:payload.phone||""};
+      setReceiptSettings(next);
+      setReceiptForm(next);
+      setReceiptSettingsOpen(false);
+      setStatus("Receipt business information saved for this business.");
+    }catch(e){setErr("Receipt settings save failed: "+(e?.message||"Unknown error"))}
+    finally{setSavingReceiptSettings(false)}
+  }
 
   async function loadMovements(businessId){
     if(!businessId)return;
@@ -219,7 +265,7 @@ function App(){
   const total=Math.max(0,subtotal-discount);
   const change=Number(cash||0)-total;
   const role=String(profile?.role||"owner").toLowerCase();
-  const isOwner=role==="owner"||role==="admin";
+  const isOwner=role==="super_admin"||role==="owner"||role==="admin";
   const canSell=isOwner||role==="manager"||role==="cashier";
   const canViewReports=isOwner||role==="manager";
   const canManageInventory=isOwner||role==="manager";
@@ -603,20 +649,27 @@ function App(){
   function exportMovements(){downloadExcel(movements.map(m=>({Date:new Date(m.created_at).toLocaleString("en-PH"),Product:m.product_name,Type:m.movement_type,Quantity:Number(m.quantity),StockBefore:Number(m.stock_before),StockAfter:Number(m.stock_after),Reason:m.reason||"",Reference:m.reference_type||""})),`SmallBiz_POS_Stock_Movements_${new Date().toISOString().slice(0,10)}`,"Stock Movements")}
 
   function printReceipt({receiptNo:rn=receiptNo,printWindow=null}={}){
+    const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#39;");
     const win=printWindow||window.open("","_blank","width=420,height=700");
     if(!win){setErr("Please allow pop-ups to print.");return}
     const cashier=profile?.full_name||"Cashier";
-    const rows=cart.map(i=>`<tr><td>${i.name}</td><td>${i.qty}</td><td style="text-align:right">${money(i.price)}</td><td style="text-align:right">${money(i.price*i.qty)}</td></tr>`).join("");
+    const businessName=esc(String(receiptSettings.businessName||"SmallBiz POS").trim()||"SmallBiz POS");
+    const businessTin=esc(String(receiptSettings.tin||"").trim());
+    const businessAddress=esc(String(receiptSettings.address||"").trim());
+    const businessPhone=esc(String(receiptSettings.phone||"").trim());
+    const cashierEsc=esc(cashier);
+    const rnEsc=esc(rn);
+    const rows=cart.map(i=>`<tr><td>${esc(i.name)}</td><td>${esc(i.qty)}</td><td style="text-align:right">${money(i.price)}</td><td style="text-align:right">${money(i.price*i.qty)}</td></tr>`).join("");
     win.document.write(`<!doctype html><html><head><title>${rn}</title><style>
       body{font-family:Arial;width:360px;margin:auto;padding:20px;color:#111}h1{text-align:center;font-size:22px}.center{text-align:center}.line{border-top:1px dashed #000;margin:12px 0}
       table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:5px 0}.row{display:flex;justify-content:space-between;margin:7px 0}.total{font-size:18px;font-weight:bold}.footer{text-align:center;margin-top:25px}
-    </style></head><body><h1>SmallBiz POS</h1><div class="center">Sales Receipt<br>${rn}<br>${new Date().toLocaleString("en-PH")}<br>Cashier: ${cashier}</div><div class="line"></div>
+    </style></head><body><h1>${businessName}</h1><div class="center">${businessAddress?`${businessAddress}<br>`:""}${businessPhone?`Tel: ${businessPhone}<br>`:""}${businessTin?`TIN: ${businessTin}<br>`:""}Sales Receipt<br>${rnEsc}<br>${esc(new Date().toLocaleString("en-PH"))}<br>Cashier: ${cashierEsc}</div><div class="line"></div>
     <table><thead><tr><th style="text-align:left">Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="line"></div>
     <div class="row"><span>Subtotal</span><span>${money(subtotal)}</span></div><div class="row"><span>Discount</span><span>${money(discount)}</span></div><div class="row total"><span>TOTAL</span><span>${money(total)}</span></div><div class="line"></div>
     <div class="row"><span>Payment</span><span>${paymentLabel(paymentMethod)}</span></div>
     ${paymentMethod!=="cash"&&paymentReference.trim()?`<div class="row"><span>${paymentMethod==="gcash"?"GCash Reference":"Card Approval No."}</span><span>${paymentReference.trim()}</span></div>`:""}
     <div class="row"><span>Amount Paid</span><span>${money(paymentMethod==="cash"?cash:total)}</span></div>
-    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.5</div>
+    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>${businessName}</div>
     <script>window.onload=()=>window.print()</script></body></html>`);win.document.close();
   }
 
@@ -636,6 +689,7 @@ function App(){
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><b style={{display:"block"}}>🖨️ Auto Print</b><small style={{opacity:.7}}>Print receipt after payment</small></div>
           <button type="button" onClick={()=>{const n=!autoPrintReceipt;setAutoPrintReceipt(n);localStorage.setItem("smallbiz_auto_print_receipt",String(n));setStatus(n?"Auto Print Receipt: ON":"Auto Print Receipt: OFF")}}>{autoPrintReceipt?"ON":"OFF"}</button></div>
         </div>
+        {isOwner&&<button className="logout-btn" onClick={()=>{setReceiptForm({...receiptSettings});setReceiptSettingsOpen(true)}}>🧾 Receipt Settings</button>}
         <button className="logout-btn" onClick={logout}>↪ Logout</button>
       </div>
     </aside>
@@ -881,6 +935,7 @@ function App(){
 
     {customerModal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>{editingCustomer?"✏ Edit Customer":"➕ Add Customer"}</h2><button onClick={()=>setCustomerModal(false)}>✕</button></div><form onSubmit={saveCustomer}><label>Name</label><input value={customerForm.name} onChange={e=>setCustomerForm({...customerForm,name:e.target.value})} required/><label>Phone</label><input value={customerForm.phone} onChange={e=>setCustomerForm({...customerForm,phone:e.target.value})}/><label>Email</label><input type="email" value={customerForm.email} onChange={e=>setCustomerForm({...customerForm,email:e.target.value})}/><label>Address</label><textarea rows="2" value={customerForm.address} onChange={e=>setCustomerForm({...customerForm,address:e.target.value})}/><div className="modal-buttons"><button type="button" onClick={()=>setCustomerModal(false)}>Cancel</button><button className="primary" disabled={savingCustomer}>{savingCustomer?"Saving...":"Save Customer"}</button></div></form></div></div>}
     {categoryModal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>🏷️ Add Category</h2><button onClick={()=>setCategoryModal(false)}>✕</button></div><form onSubmit={saveCategory}><label>Category Name</label><input value={categoryForm.name} onChange={e=>setCategoryForm({...categoryForm,name:e.target.value})} required/><label>Description</label><textarea rows="3" value={categoryForm.description} onChange={e=>setCategoryForm({...categoryForm,description:e.target.value})}/><div className="modal-buttons"><button type="button" onClick={()=>setCategoryModal(false)}>Cancel</button><button className="primary" disabled={savingCategory}>{savingCategory?"Saving...":"Save Category"}</button></div></form></div></div>}
+    {receiptSettingsOpen&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>🧾 Receipt / Business Information</h2><button onClick={()=>setReceiptSettingsOpen(false)}>✕</button></div><p>These details are stored per business in Supabase and will appear on printed receipts for every cashier under this business.</p><form onSubmit={saveReceiptSettings}><label>Business Name</label><input value={receiptForm.businessName||""} onChange={e=>setReceiptForm({...receiptForm,businessName:e.target.value})} placeholder="Your registered business name" required/><label>TIN</label><input value={receiptForm.tin||""} onChange={e=>setReceiptForm({...receiptForm,tin:e.target.value})} placeholder="000-000-000-000"/><label>Business Address</label><textarea rows="2" value={receiptForm.address||""} onChange={e=>setReceiptForm({...receiptForm,address:e.target.value})} placeholder="Complete business address"/><label>Contact Number</label><input value={receiptForm.phone||""} onChange={e=>setReceiptForm({...receiptForm,phone:e.target.value})} placeholder="09xx xxx xxxx"/><div className="modal-buttons"><button type="button" onClick={()=>setReceiptSettingsOpen(false)}>Cancel</button><button className="primary" disabled={savingReceiptSettings}>{savingReceiptSettings?"Saving...":"Save Receipt Settings"}</button></div></form></div></div>}
     {purchaseModal&&<div className="modal-backdrop"><div className="modal" style={{maxWidth:850}}><div className="modal-header"><h2>🚚 Receive Purchase</h2><button onClick={()=>setPurchaseModal(false)}>✕</button></div><form onSubmit={receivePurchase}><div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}><div><label>Supplier</label><select value={purchaseForm.supplier_id} onChange={e=>setPurchaseForm({...purchaseForm,supplier_id:e.target.value})} required><option value="">Select supplier</option>{suppliers.filter(s=>s.active!==false).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div><div><label>Purchase Date</label><input type="date" value={purchaseForm.purchase_date} onChange={e=>setPurchaseForm({...purchaseForm,purchase_date:e.target.value})} required/></div><div><label>Reference / Invoice No.</label><input value={purchaseForm.reference_no} onChange={e=>setPurchaseForm({...purchaseForm,reference_no:e.target.value})} placeholder="Supplier invoice no."/></div><div><label>Notes</label><input value={purchaseForm.notes} onChange={e=>setPurchaseForm({...purchaseForm,notes:e.target.value})} placeholder="Optional notes"/></div></div><div className="table-wrapper" style={{marginTop:14}}><table><thead><tr><th style={{minWidth:220}}>Product</th><th>Qty</th><th>Unit Cost</th><th>Line Total</th><th></th></tr></thead><tbody>{purchaseItems.map((item,index)=><tr key={index}><td><select value={item.product_id} onChange={e=>updatePurchaseItem(index,"product_id",e.target.value)} required><option value="">Select product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}{p.barcode?` (${p.barcode})`:""}</option>)}</select></td><td><input type="number" min="1" step="1" value={item.quantity} onChange={e=>updatePurchaseItem(index,"quantity",e.target.value)} required/></td><td><input type="number" min="0" step="0.01" value={item.unit_cost} onChange={e=>updatePurchaseItem(index,"unit_cost",e.target.value)} required/></td><td><b>{money(Number(item.quantity||0)*Number(item.unit_cost||0))}</b></td><td><button type="button" onClick={()=>removePurchaseItem(index)}>🗑</button></td></tr>)}</tbody></table></div><button type="button" onClick={addPurchaseItem} style={{marginTop:10}}>➕ Add Item</button><div className="sale-total" style={{marginTop:14}}><div className="grand-total"><span>TOTAL PURCHASE</span><b>{money(purchaseSubtotal)}</b></div></div>{err&&<p className="error">{err}</p>}<div className="modal-buttons"><button type="button" onClick={()=>setPurchaseModal(false)}>Cancel</button><button className="primary" disabled={receivingPurchase||!purchaseItems.length}>{receivingPurchase?"Receiving...":"Receive & Add Stock"}</button></div></form></div></div>}
 
     {purchaseDetailsOpen&&selectedPurchase&&<div className="modal-backdrop"><div className="modal sale-details-modal"><div className="modal-header"><h2>🧾 Purchase Details</h2><button onClick={()=>setPurchaseDetailsOpen(false)}>✕</button></div>{purchaseDetailsLoading?<div>Loading...</div>:<><p><b>Reference:</b> {selectedPurchase.reference_no||selectedPurchase.id}</p><p><b>Date:</b> {selectedPurchase.purchase_date||"-"}</p><p><b>Supplier:</b> {selectedPurchase.suppliers?.name||"-"}</p><p><b>Status:</b> {selectedPurchase.status}</p><div className="table-wrapper"><table><thead><tr><th>Product</th><th>Qty</th><th>Unit Cost</th><th>Total</th></tr></thead><tbody>{selectedPurchaseItems.map(i=><tr key={i.id}><td>{i.product_name}</td><td>{i.quantity}</td><td>{money(i.unit_cost)}</td><td>{money(i.line_total)}</td></tr>)}</tbody></table></div><div className="sale-total"><div className="grand-total"><span>TOTAL PURCHASE</span><b>{money(selectedPurchase.subtotal)}</b></div></div></>}</div></div>}
