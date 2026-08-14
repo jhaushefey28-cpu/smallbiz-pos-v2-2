@@ -9,9 +9,13 @@ class ErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state={error:null}; }
   static getDerivedStateFromError(error){ return {error}; }
   render(){
-    if(this.state.error) return <div className="auth"><div className="card error-card">
-      <h1>SmallBiz POS V2.5</h1><h2>App error</h2><pre>{String(this.state.error?.stack||this.state.error)}</pre>
-    </div></div>;
+    if(this.state.error){
+      console.error("SmallBiz POS render error:",this.state.error);
+      return <div className="auth"><div className="card error-card">
+        <h1>SmallBiz POS V2.5</h1><h2>Something went wrong</h2>
+        <p>The application encountered an unexpected error. Refresh the page and try again.</p>
+      </div></div>;
+    }
     return this.props.children;
   }
 }
@@ -22,6 +26,8 @@ const configError=!SUPABASE_URL||!SUPABASE_KEY;
 const supabase=configError?null:createClient(SUPABASE_URL,SUPABASE_KEY);
 
 const money=v=>new Intl.NumberFormat("en-PH",{style:"currency",currency:"PHP"}).format(Number(v||0));
+const escapeHtml=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+const manilaDateKey=d=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(d));
 
 const SAMPLE_PRODUCT_IMAGES={
   "lucky-me pancit canton":"/product-images/lucky-me-pancit-canton.png",
@@ -103,6 +109,8 @@ function App(){
     setErr("");
     const {data:p,error:pe}=await supabase.from("profiles").select("id,business_id,full_name,role,active,created_at").eq("id",uid).single();
     if(pe){setErr("Profile error: "+pe.message);return}
+    if(!p?.active){setErr("Your account is inactive. Please contact the business owner.");await supabase.auth.signOut();return}
+    if(!p?.business_id){setErr("Your account is not assigned to a business.");await supabase.auth.signOut();return}
     setProfile(p);
     const {data,error}=await supabase.from("products").select("*").eq("business_id",p.business_id).order("created_at",{ascending:false});
     if(error){setErr("Products error: "+error.message);return}
@@ -163,7 +171,7 @@ function App(){
     if(error)setErr(error.message);
   }
   async function logout(){
-    await supabase?.auth.signOut(); setSession(null); setProfile(null); setCart([]); setSalesHistory([]); setMovements([]); setSuppliers([]); setPurchaseHistory([]);
+    await supabase?.auth.signOut(); setSession(null); setProfile(null); setCart([]); setProducts([]); setSalesHistory([]); setSaleItemsHistory([]); setMovements([]); setSuppliers([]); setPurchaseHistory([]); setCategories([]); setCustomers([]);
     setPaymentOpen(false);setPaymentDone(false);setCash("");setReceiptNo("");setRecentScanned([]);setSelectedSale(null);setSaleDetailsOpen(false);
   }
 
@@ -218,7 +226,7 @@ function App(){
   const discount=Math.max(0,Math.min(subtotal,Number(discountAmount||0)));
   const total=Math.max(0,subtotal-discount);
   const change=Number(cash||0)-total;
-  const role=String(profile?.role||"owner").toLowerCase();
+  const role=String(profile?.role||"").trim().toLowerCase();
   const isOwner=role==="owner"||role==="admin";
   const canSell=isOwner||role==="manager"||role==="cashier";
   const canViewReports=isOwner||role==="manager";
@@ -240,11 +248,16 @@ function App(){
   async function completePayment(){
     if(savingPayment||!cart.length||!profile?.id||!profile?.business_id)return;
     if(!canSell){setErr("Your role is not allowed to process sales.");return}
-    if(paymentMethod==="cash"&&(!cash||Number(cash)<total))return;
+    if(!["cash","gcash","card"].includes(paymentMethod)){setErr("Invalid payment method.");return}
+    if(!Number.isFinite(subtotal)||!Number.isFinite(discount)||!Number.isFinite(total)||total<0){setErr("Invalid sale amount.");return}
+    if(discount<0||discount>subtotal){setErr("Invalid discount amount.");return}
+    if(paymentMethod==="cash"&&(!Number.isFinite(Number(cash))||Number(cash)<total)){setErr("Insufficient cash received.");return}
+    if(paymentMethod!=="cash"&&!paymentReference.trim()){setErr("Payment reference is required for GCash/Card.");return}
+    if(cart.some(i=>!i.id||!Number.isInteger(Number(i.qty))||Number(i.qty)<=0||!Number.isFinite(Number(i.price))||Number(i.price)<0)){setErr("Invalid cart item data.");return}
     let w=null;
     if(autoPrintReceipt)w=window.open("","_blank","width=420,height=700");
     setSavingPayment(true);setErr("");setStatus("Saving payment atomically...");
-    const invoiceNumber="INV-"+Date.now();
+    const invoiceNumber=`INV-${Date.now()}-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
     try{
       // The existing Supabase complete_sale() RPC performs the entire sale
       // as one database transaction: sale + sale items + stock deduction +
@@ -321,6 +334,7 @@ function App(){
     setErr("");
     if(!file.type.startsWith("image/")){setErr("Please select an image file.");return;}
     if(file.size>5*1024*1024){setErr("Image is too large. Maximum size is 5MB.");return;}
+    if(productImagePreview.startsWith("blob:"))URL.revokeObjectURL(productImagePreview);
     setProductImageFile(file);
     const preview=URL.createObjectURL(file);
     setProductImagePreview(preview);
@@ -427,6 +441,9 @@ function App(){
       const payload={business_id:profile.business_id,name:productForm.name.trim(),barcode:productForm.barcode.trim(),
         price:Number(productForm.price||0),cost_price:Number(productForm.cost_price||0),category_id:productForm.category_id||null,stock:Number(productForm.stock||0),image_url:imageUrl,updated_at:new Date().toISOString()};
       if(!payload.name)throw new Error("Product name is required.");
+      if(!Number.isFinite(payload.price)||payload.price<0)throw new Error("Selling price must be a valid non-negative number.");
+      if(!Number.isFinite(payload.cost_price)||payload.cost_price<0)throw new Error("Cost price must be a valid non-negative number.");
+      if(!Number.isInteger(payload.stock)||payload.stock<0)throw new Error("Stock must be a valid non-negative whole number.");
 
       if(editingProduct){
         const before=Number(editingProduct.stock||0),after=payload.stock;
@@ -572,7 +589,21 @@ function App(){
   },[salesHistory,historySearch,historyPaymentFilter,historyDateFilter,historyStatusFilter]);
 
   const lowStock=products.filter(p=>p.stock<=5&&p.stock>0),outStock=products.filter(p=>p.stock<=0);
-  const dashboardSales=useMemo(()=>{const now=new Date();return salesHistory.filter(s=>{if(s.status!=="completed")return false;const d=new Date(s.created_at);if(dashboardRange==="today")return d.toDateString()===now.toDateString();if(dashboardRange==="week"){const st=new Date(now);st.setDate(now.getDate()-6);st.setHours(0,0,0,0);return d>=st}if(dashboardRange==="month")return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();return true})},[salesHistory,dashboardRange]);
+  const dashboardSales=useMemo(()=>{
+    const now=new Date();
+    const todayKey=manilaDateKey(now);
+    const monthKey=todayKey.slice(0,7);
+    const weekStart=new Date(now);
+    weekStart.setDate(now.getDate()-6);
+    weekStart.setHours(0,0,0,0);
+    return salesHistory.filter(s=>{
+      if(s.status!=="completed")return false;
+      if(dashboardRange==="today")return manilaDateKey(s.created_at)===todayKey;
+      if(dashboardRange==="week")return new Date(s.created_at)>=weekStart;
+      if(dashboardRange==="month")return manilaDateKey(s.created_at).slice(0,7)===monthKey;
+      return true;
+    });
+  },[salesHistory,dashboardRange]);
   const dashboardIds=new Set(dashboardSales.map(s=>s.id));
   const dashboardItems=saleItemsHistory.filter(i=>dashboardIds.has(i.sale_id));
   const dashboardSalesTotal=dashboardSales.reduce((a,s)=>a+Number(s.total||0),0);
@@ -589,7 +620,12 @@ function App(){
       String(p.barcode||"").toLowerCase().includes(q)
     );
   },[products,productSearch]);
-  const transactionTotal=filteredSales.reduce((s,x)=>s+Number(x.total||0),0);
+  const transactionTotal=filteredSales.reduce((s,x)=>s+(x.status==="completed"?Number(x.total||0):0),0);
+  const reportSales=salesHistory.filter(s=>s.status==="completed");
+  const reportSaleIds=new Set(reportSales.map(s=>s.id));
+  const reportSaleItems=saleItemsHistory.filter(i=>reportSaleIds.has(i.sale_id));
+  const reportSalesTotal=reportSales.reduce((a,s)=>a+Number(s.total||0),0);
+  const reportProfit=reportSaleItems.reduce((a,i)=>a+Number(i.gross_profit||0),0);
 
   function downloadExcel(data,fileName,sheetName="Sheet1"){
     if(!data.length){setStatus("No data available.");return}
@@ -606,22 +642,22 @@ function App(){
     const win=printWindow||window.open("","_blank","width=420,height=700");
     if(!win){setErr("Please allow pop-ups to print.");return}
     const cashier=profile?.full_name||"Cashier";
-    const rows=cart.map(i=>`<tr><td>${i.name}</td><td>${i.qty}</td><td style="text-align:right">${money(i.price)}</td><td style="text-align:right">${money(i.price*i.qty)}</td></tr>`).join("");
-    win.document.write(`<!doctype html><html><head><title>${rn}</title><style>
+    const rows=cart.map(i=>`<tr><td>${escapeHtml(i.name)}</td><td>${Number(i.qty)}</td><td style="text-align:right">${money(i.price)}</td><td style="text-align:right">${money(i.price*i.qty)}</td></tr>`).join("");
+    win.document.write(`<!doctype html><html><head><title>${escapeHtml(rn)}</title><style>
       body{font-family:Arial;width:360px;margin:auto;padding:20px;color:#111}h1{text-align:center;font-size:22px}.center{text-align:center}.line{border-top:1px dashed #000;margin:12px 0}
       table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:5px 0}.row{display:flex;justify-content:space-between;margin:7px 0}.total{font-size:18px;font-weight:bold}.footer{text-align:center;margin-top:25px}
-    </style></head><body><h1>SmallBiz POS</h1><div class="center">Sales Receipt<br>${rn}<br>${new Date().toLocaleString("en-PH")}<br>Cashier: ${cashier}</div><div class="line"></div>
+    </style></head><body><h1>SmallBiz POS</h1><div class="center">Sales Receipt<br>${rn}<br>${new Date().toLocaleString("en-PH")}<br>Cashier: ${escapeHtml(cashier)}</div><div class="line"></div>
     <table><thead><tr><th style="text-align:left">Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="line"></div>
     <div class="row"><span>Subtotal</span><span>${money(subtotal)}</span></div><div class="row"><span>Discount</span><span>${money(discount)}</span></div><div class="row total"><span>TOTAL</span><span>${money(total)}</span></div><div class="line"></div>
     <div class="row"><span>Payment</span><span>${paymentLabel(paymentMethod)}</span></div>
-    ${paymentMethod!=="cash"&&paymentReference.trim()?`<div class="row"><span>${paymentMethod==="gcash"?"GCash Reference":"Card Approval No."}</span><span>${paymentReference.trim()}</span></div>`:""}
+    ${paymentMethod!=="cash"&&paymentReference.trim()?`<div class="row"><span>${paymentMethod==="gcash"?"GCash Reference":"Card Approval No."}</span><span>${escapeHtml(paymentReference.trim())}</span></div>`:""}
     <div class="row"><span>Amount Paid</span><span>${money(paymentMethod==="cash"?cash:total)}</span></div>
     ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.5</div>
     <script>window.onload=()=>window.print()</script></body></html>`);win.document.close();
   }
 
   if(configError)return <div className="auth"><div className="card"><h1>SmallBiz POS V2.5</h1><h2>Configuration missing</h2><p>Missing VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY</p></div></div>;
-  if(!session)return <div className="auth"><form className="login-card" onSubmit={login}><div className="login-logo">🛒</div><h1>SmallBiz POS</h1><p>Sign in to your business account</p><input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="primary">Login</button>{err&&<p className="error">{err}</p>}</form></div>;
+  if(!session)return <div className="auth"><form className="login-card" onSubmit={login}><div className="login-logo">🛒</div><h1>SmallBiz POS</h1><p>Sign in to your business account</p><input type="email" autoComplete="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="primary">Login</button>{err&&<p className="error">{err}</p>}</form></div>;
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -678,7 +714,7 @@ function App(){
         {historyLoading?<div className="empty-page">Loading transactions...</div>:<div className="table-wrapper"><table><thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Payment</th><th>Reference</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredSales.map(s=><tr key={s.id}><td><b>{s.invoice_no}</b></td><td>{s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"-"}</td><td>{customers.find(c=>c.id===s.customer_id)?.name||"Walk-in"}</td><td>{paymentLabel(s.payment_method)}</td><td>{s.payment_reference||"-"}</td><td><b>{money(s.total)}</b></td><td><span className="status-badge">{s.status}</span></td><td><button onClick={()=>openSaleDetails(s)}>🧾 View</button>{s.status==="completed"&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td></tr>)}</tbody></table></div>}</section>}
 
       {activePage==="reports"&&<section className="page-card"><div className="page-header"><div><h2>📊 Reports</h2><p>Sales and inventory performance.</p></div><button className="refresh-btn" onClick={()=>load(session.user.id)}>🔄 Refresh</button></div>
-        <div className="report-grid"><div className="report-card"><small>Total Transactions</small><strong>{salesHistory.length}</strong></div><div className="report-card"><small>Total Sales</small><strong>{money(salesHistory.reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div className="report-card"><small>Total Purchases</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div className="report-card"><small>Gross Profit</small><strong>{money(saleItemsHistory.reduce((a,i)=>a+Number(i.gross_profit||0),0))}</strong></div><div className="report-card"><small>Products</small><strong>{products.length}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div>
+        <div className="report-grid"><div className="report-card"><small>Total Transactions</small><strong>{reportSales.length}</strong></div><div className="report-card"><small>Total Sales</small><strong>{money(reportSalesTotal)}</strong></div><div className="report-card"><small>Total Purchases</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div className="report-card"><small>Gross Profit</small><strong>{money(reportProfit)}</strong></div><div className="report-card"><small>Products</small><strong>{products.length}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div>
         <div className="report-download-panel"><div><h3>📥 Download Reports</h3><p>Export your POS data to Excel.</p></div><div className="download-buttons"><button className="excel-btn" onClick={exportTransactions}>📊 Transactions</button><button className="excel-btn" onClick={exportProducts}>📦 Inventory</button><button className="excel-btn" onClick={exportMovements}>🔄 Stock Movements</button><button className="excel-btn" onClick={exportPurchases}>🚚 Purchases</button></div></div>
       </section>}
 
