@@ -9,13 +9,9 @@ class ErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state={error:null}; }
   static getDerivedStateFromError(error){ return {error}; }
   render(){
-    if(this.state.error){
-      console.error("SmallBiz POS render error:",this.state.error);
-      return <div className="auth"><div className="card error-card">
-        <h1>SmallBiz POS V2.5</h1><h2>Something went wrong</h2>
-        <p>The application encountered an unexpected error. Refresh the page and try again.</p>
-      </div></div>;
-    }
+    if(this.state.error) return <div className="auth"><div className="card error-card">
+      <h1>SmallBiz POS V2.6</h1><h2>App error</h2><pre>{String(this.state.error?.stack||this.state.error)}</pre>
+    </div></div>;
     return this.props.children;
   }
 }
@@ -26,8 +22,6 @@ const configError=!SUPABASE_URL||!SUPABASE_KEY;
 const supabase=configError?null:createClient(SUPABASE_URL,SUPABASE_KEY);
 
 const money=v=>new Intl.NumberFormat("en-PH",{style:"currency",currency:"PHP"}).format(Number(v||0));
-const escapeHtml=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-const manilaDateKey=d=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(d));
 
 const SAMPLE_PRODUCT_IMAGES={
   "lucky-me pancit canton":"/product-images/lucky-me-pancit-canton.png",
@@ -57,7 +51,7 @@ const norm=p=>({...p,
 
 function App(){
   const [session,setSession]=useState(null),[email,setEmail]=useState(""),[password,setPassword]=useState("");
-  const [products,setProducts]=useState([]),[search,setSearch]=useState(""),[posCategoryFilter,setPosCategoryFilter]=useState("all"),[cart,setCart]=useState([]);
+  const [products,setProducts]=useState([]),[search,setSearch]=useState(""),[cart,setCart]=useState([]);
   const [scan,setScan]=useState(false),[status,setStatus]=useState(""),[err,setErr]=useState("");
   const [profile,setProfile]=useState(null),[activePage,setActivePage]=useState("pos");
   const [autoPrintReceipt,setAutoPrintReceipt]=useState(()=>localStorage.getItem("smallbiz_auto_print_receipt")==="true");
@@ -102,20 +96,63 @@ function App(){
   },[]);
 
   useEffect(()=>{if(session?.user)load(session.user.id)},[session]);
-  useEffect(()=>{if(profile?.business_id)loadSaleItemsHistory()},[salesHistory,profile?.business_id]);
+  useEffect(()=>{
+    const r=String(profile?.role||"").trim().toLowerCase();
+    const admin=["super_admin","owner","admin"].includes(r);
+    if(admin && profile?.business_id)loadSaleItemsHistory();
+    else if(!admin)setSaleItemsHistory([]);
+  },[salesHistory,profile?.business_id,profile?.role]);
 
   async function load(uid){
     if(!supabase)return;
     setErr("");
     const {data:p,error:pe}=await supabase.from("profiles").select("id,business_id,full_name,role,active,created_at").eq("id",uid).single();
     if(pe){setErr("Profile error: "+pe.message);return}
-    if(!p?.active){setErr("Your account is inactive. Please contact the business owner.");await supabase.auth.signOut();return}
-    if(!p?.business_id){setErr("Your account is not assigned to a business.");await supabase.auth.signOut();return}
     setProfile(p);
-    const {data,error}=await supabase.from("products").select("*").eq("business_id",p.business_id).order("created_at",{ascending:false});
+    const r=String(p.role||"").trim().toLowerCase();
+    const admin=["super_admin","owner","admin"].includes(r);
+    const productColumns=admin
+      ?"*"
+      :"id,business_id,name,barcode,price,stock,image_url,created_at,updated_at";
+
+    const {data,error}=await supabase.from("products")
+      .select(productColumns)
+      .eq("business_id",p.business_id)
+      .order("created_at",{ascending:false});
+
     if(error){setErr("Products error: "+error.message);return}
     setProducts((data||[]).map(norm));
-    await Promise.all([loadSalesHistory(p.business_id),loadMovements(p.business_id),loadSuppliers(p.business_id),loadPurchaseHistory(p.business_id),loadCategories(p.business_id),loadCustomers(p.business_id)]);
+
+    if(admin){
+      await Promise.all([
+        loadSalesHistory(p.business_id),
+        loadMovements(p.business_id),
+        loadSuppliers(p.business_id),
+        loadPurchaseHistory(p.business_id),
+        loadCategories(p.business_id),
+        loadCustomers(p.business_id)
+      ]);
+    }else if(r==="cashier"){
+      // Cashiers need products, POS customers, and transaction history only.
+      await Promise.all([
+        loadSalesHistory(p.business_id),
+        loadCustomers(p.business_id)
+      ]);
+      setMovements([]);
+      setSuppliers([]);
+      setPurchaseHistory([]);
+      setCategories([]);
+      setSaleItemsHistory([]);
+    }else{
+      setProducts([]);
+      setSalesHistory([]);
+      setCustomers([]);
+      setMovements([]);
+      setSuppliers([]);
+      setPurchaseHistory([]);
+      setCategories([]);
+      setSaleItemsHistory([]);
+    }
   }
 
   async function loadSalesHistory(businessId){
@@ -171,18 +208,14 @@ function App(){
     if(error)setErr(error.message);
   }
   async function logout(){
-    await supabase?.auth.signOut(); setSession(null); setProfile(null); setCart([]); setProducts([]); setSalesHistory([]); setSaleItemsHistory([]); setMovements([]); setSuppliers([]); setPurchaseHistory([]); setCategories([]); setCustomers([]);
+    await supabase?.auth.signOut(); setSession(null); setProfile(null); setCart([]); setSalesHistory([]); setMovements([]); setSuppliers([]); setPurchaseHistory([]);
     setPaymentOpen(false);setPaymentDone(false);setCash("");setReceiptNo("");setRecentScanned([]);setSelectedSale(null);setSaleDetailsOpen(false);
   }
 
   const filtered=useMemo(()=>{
     const q=search.toLowerCase().trim();
-    return products.filter(p=>{
-      const matchesSearch=!q||String(p.name||"").toLowerCase().includes(q)||String(p.barcode||"").toLowerCase().includes(q);
-      const matchesCategory=posCategoryFilter==="all"||String(p.category_id||"")===String(posCategoryFilter);
-      return matchesSearch&&matchesCategory;
-    });
-  },[products,search,posCategoryFilter]);
+    return !q?products:products.filter(p=>String(p.name).toLowerCase().includes(q)||String(p.barcode).toLowerCase().includes(q));
+  },[products,search]);
 
   function add(product){
     if(product.stock<=0){setStatus("Out of stock: "+product.name);return}
@@ -226,13 +259,27 @@ function App(){
   const discount=Math.max(0,Math.min(subtotal,Number(discountAmount||0)));
   const total=Math.max(0,subtotal-discount);
   const change=Number(cash||0)-total;
+  // =========================
+  // ROLE / ACCESS CONTROL
+  // =========================
+  // Legacy owner/admin values are treated as Super Admin.
   const role=String(profile?.role||"").trim().toLowerCase();
-  const isOwner=role==="owner"||role==="admin";
-  const canSell=isOwner||role==="manager"||role==="cashier";
-  const canViewReports=isOwner||role==="manager";
-  const canManageInventory=isOwner||role==="manager";
-  const canManagePurchasing=isOwner||role==="manager";
-  const canManageMasters=isOwner||role==="manager";
+  const isSuperAdmin=role==="super_admin"||role==="owner"||role==="admin";
+  const isCashier=role==="cashier";
+  const canSell=isSuperAdmin||isCashier;
+  const canViewTransactions=isSuperAdmin||isCashier;
+  const canVoidTransaction=isSuperAdmin||isCashier;
+  const canViewReports=isSuperAdmin;
+  const canManageInventory=isSuperAdmin;
+  const canManagePurchasing=isSuperAdmin;
+  const canManageMasters=isSuperAdmin;
+
+  // Cashiers may only stay inside POS and Transaction History.
+  useEffect(()=>{
+    if(isCashier && !["pos","transactions"].includes(activePage)){
+      setActivePage("pos");
+    }
+  },[isCashier,activePage]);
 
   function paymentLabel(m){return m==="gcash"?"GCash":m==="card"?"Card":"Cash"}
 
@@ -248,54 +295,69 @@ function App(){
   async function completePayment(){
     if(savingPayment||!cart.length||!profile?.id||!profile?.business_id)return;
     if(!canSell){setErr("Your role is not allowed to process sales.");return}
-    if(!["cash","gcash","card"].includes(paymentMethod)){setErr("Invalid payment method.");return}
-    if(!Number.isFinite(subtotal)||!Number.isFinite(discount)||!Number.isFinite(total)||total<0){setErr("Invalid sale amount.");return}
-    if(discount<0||discount>subtotal){setErr("Invalid discount amount.");return}
-    if(paymentMethod==="cash"&&(!Number.isFinite(Number(cash))||Number(cash)<total)){setErr("Insufficient cash received.");return}
-    if(paymentMethod!=="cash"&&!paymentReference.trim()){setErr("Payment reference is required for GCash/Card.");return}
-    if(cart.some(i=>!i.id||!Number.isInteger(Number(i.qty))||Number(i.qty)<=0||!Number.isFinite(Number(i.price))||Number(i.price)<0)){setErr("Invalid cart item data.");return}
+    if(paymentMethod==="cash"&&(!cash||Number(cash)<total))return;
+
     let w=null;
     if(autoPrintReceipt)w=window.open("","_blank","width=420,height=700");
-    setSavingPayment(true);setErr("");setStatus("Saving payment atomically...");
-    const invoiceNumber=`INV-${Date.now()}-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
+
+    setSavingPayment(true);
+    setErr("");
+    setStatus("Saving payment securely...");
+
     try{
-      // The existing Supabase complete_sale() RPC performs the entire sale
-      // as one database transaction: sale + sale items + stock deduction +
-      // stock movement. If any step fails, PostgreSQL rolls everything back.
       const items=cart.map(i=>({
         product_id:i.id,
-        quantity:Number(i.qty),
-        unit_price:Number(Number(i.price).toFixed(2))
+        quantity:Number(i.qty)
       }));
 
-      const {data:saleId,error}=await supabase.rpc("complete_sale",{
+      const {data,error}=await supabase.rpc("complete_sale_v26",{
         p_business_id:profile.business_id,
-        p_invoice_no:invoiceNumber,
-        p_cashier_id:profile.id,
+        p_payment_method:paymentMethod,
+        p_amount_tendered:paymentMethod==="cash"
+          ? Number(Number(cash).toFixed(2))
+          : Number(total.toFixed(2)),
         p_customer_id:selectedCustomerId||null,
-        p_subtotal:Number(subtotal.toFixed(2)),
         p_discount:Number(discount.toFixed(2)),
         p_discount_reason:discountReason.trim()||null,
-        p_total:Number(total.toFixed(2)),
-        p_payment_method:paymentMethod,
         p_payment_reference:paymentReference.trim()||null,
-        p_amount_tendered:paymentMethod==="cash"?Number(Number(cash).toFixed(2)):Number(total.toFixed(2)),
-        p_change_amount:paymentMethod==="cash"?Number(change.toFixed(2)):0,
         p_items:items
       });
 
       if(error)throw new Error(error.message||"Unable to complete sale.");
-      if(!saleId)throw new Error("Sale completed without a sale ID.");
+      if(!data?.sale_id||!data?.invoice_no){
+        throw new Error("Sale completed without a valid invoice result.");
+      }
+
+      const invoiceNumber=data.invoice_no;
+      const savedTotal=Number(data.total??total);
+      const savedAmount=Number(data.amount_tendered??(paymentMethod==="cash"?cash:savedTotal));
+      const savedChange=Number(data.change_amount??(paymentMethod==="cash"?change:0));
 
       await load(session.user.id);
-      setReceiptNo(invoiceNumber);setPaymentOpen(false);setPaymentDone(true);setStatus("Payment saved successfully. Sale + stock completed atomically.");
-      if(autoPrintReceipt)printReceipt({receiptNo:invoiceNumber,printWindow:w});
+
+      setReceiptNo(invoiceNumber);
+      setPaymentOpen(false);
+      setPaymentDone(true);
+      setStatus("Payment saved successfully.");
+
+      // Print the just-completed sale using the server-calculated values.
+      if(autoPrintReceipt){
+        printReceipt({
+          receiptNo:invoiceNumber,
+          printWindow:w,
+          receiptTotal:savedTotal,
+          receiptAmount:savedAmount,
+          receiptChange:savedChange
+        });
+      }
     }catch(e){
       if(w&&!w.closed)w.close();
-      console.error("Atomic sale failed:",e);
-      setErr(e?.message||"Payment failed. No sale or stock changes were committed.");
+      console.error(e);
+      setErr(e?.message||"Payment failed.");
       setStatus("");
-    }finally{setSavingPayment(false)}
+    }finally{
+      setSavingPayment(false);
+    }
   }
 
   function newSale(){
@@ -303,14 +365,70 @@ function App(){
   }
 
   async function openSaleDetails(sale){
+    if(!canViewTransactions){setErr("Your role is not allowed to view transactions.");return}
     setSelectedSale(sale);setSelectedSaleItems([]);setSaleDetailsOpen(true);setSaleDetailsLoading(true);
     const {data,error}=await supabase.from("sale_items").select("id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total").eq("sale_id",sale.id).order("id");
     if(error)setErr("Unable to load sale items: "+error.message);else setSelectedSaleItems(data||[]);
     setSaleDetailsLoading(false);
   }
 
+  async function reprintSale(sale){
+    if(!canViewTransactions){setErr("Your role is not allowed to reprint transactions.");return}
+    if(!sale?.id)return;
+    setErr("");
+    try{
+      const {data:items,error}=await supabase.from("sale_items")
+        .select("id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total")
+        .eq("sale_id",sale.id).order("id",{ascending:true});
+      if(error)throw new Error(error.message);
+      if(!items?.length)throw new Error("No line items found for this transaction.");
+      printHistoricalReceipt({sale,items});
+    }catch(e){
+      setErr("Unable to reprint invoice: "+(e?.message||"Unknown error"));
+    }
+  }
+
+  function escapeHtml(value){
+    return String(value??"")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+  }
+
+  function printHistoricalReceipt({sale,items}){
+    const win=window.open("","_blank","width=420,height=700");
+    if(!win){setErr("Please allow pop-ups to reprint.");return}
+    const cashierName=sale.cashier_id===profile?.id?(profile?.full_name||"Cashier"):(sale.cashier_id||"Cashier");
+    const rows=(items||[]).map(i=>`<tr><td>${escapeHtml(i.product_name||"Item")}</td><td>${Number(i.quantity||0)}</td><td style="text-align:right">${money(i.unit_price)}</td><td style="text-align:right">${money(i.line_total)}</td></tr>`).join("");
+    win.document.write(`<!doctype html><html><head><title>${escapeHtml(sale.invoice_no||"Invoice")}</title><style>
+      body{font-family:Arial;width:360px;margin:auto;padding:20px;color:#111}
+      h1{text-align:center;font-size:22px;margin:0 0 6px}.center{text-align:center}.line{border-top:1px dashed #000;margin:12px 0}
+      table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:5px 0;vertical-align:top}
+      .row{display:flex;justify-content:space-between;margin:7px 0}.total{font-size:18px;font-weight:bold}
+      .voided{font-weight:bold;text-align:center;margin:10px 0}.footer{text-align:center;margin-top:25px}
+    </style></head><body>
+      <h1>SmallBiz POS</h1>
+      <div class="center">Sales Receipt<br>${escapeHtml(sale.invoice_no||"")}<br>${sale.created_at?escapeHtml(new Date(sale.created_at).toLocaleString("en-PH")):""}<br>Cashier: ${escapeHtml(cashierName)}</div>
+      ${sale.status==="voided"?`<div class="voided">*** VOIDED TRANSACTION ***</div>`:""}
+      <div class="line"></div>
+      <table><thead><tr><th style="text-align:left">Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="line"></div>
+      <div class="row"><span>Subtotal</span><span>${money(sale.subtotal)}</span></div>
+      <div class="row"><span>Discount</span><span>${money(sale.discount)}</span></div>
+      <div class="row total"><span>TOTAL</span><span>${money(sale.total)}</span></div>
+      <div class="line"></div>
+      <div class="row"><span>Payment</span><span>${paymentLabel(sale.payment_method)}</span></div>
+      ${sale.payment_reference?`<div class="row"><span>Reference</span><span>${escapeHtml(sale.payment_reference)}</span></div>`:""}
+      <div class="row"><span>Amount Paid</span><span>${money(sale.amount_tendered)}</span></div>
+      ${sale.payment_method==="cash"?`<div class="row"><span>Change</span><span>${money(sale.change_amount)}</span></div>`:""}
+      <div class="footer">Reprinted Invoice<br>Status: ${escapeHtml(String(sale.status||"").toUpperCase())}<br>SmallBiz POS</div>
+      <script>window.onload=()=>window.print()</script></body></html>`);
+    win.document.close();
+  }
+
   async function performVoid(){
-    if(!voidSale||!profile?.id)return;if(!isOwner){setErr("Only an owner/admin can void a transaction.");return}
+    if(!voidSale||!profile?.id)return;
+    if(!canVoidTransaction){setErr("Your role is not allowed to void transactions.");return}
     if(!voidReason.trim()){setErr("Please enter a void reason.");return}
     setVoiding(true);setErr("");
     try{
@@ -334,7 +452,6 @@ function App(){
     setErr("");
     if(!file.type.startsWith("image/")){setErr("Please select an image file.");return;}
     if(file.size>5*1024*1024){setErr("Image is too large. Maximum size is 5MB.");return;}
-    if(productImagePreview.startsWith("blob:"))URL.revokeObjectURL(productImagePreview);
     setProductImageFile(file);
     const preview=URL.createObjectURL(file);
     setProductImagePreview(preview);
@@ -441,9 +558,6 @@ function App(){
       const payload={business_id:profile.business_id,name:productForm.name.trim(),barcode:productForm.barcode.trim(),
         price:Number(productForm.price||0),cost_price:Number(productForm.cost_price||0),category_id:productForm.category_id||null,stock:Number(productForm.stock||0),image_url:imageUrl,updated_at:new Date().toISOString()};
       if(!payload.name)throw new Error("Product name is required.");
-      if(!Number.isFinite(payload.price)||payload.price<0)throw new Error("Selling price must be a valid non-negative number.");
-      if(!Number.isFinite(payload.cost_price)||payload.cost_price<0)throw new Error("Cost price must be a valid non-negative number.");
-      if(!Number.isInteger(payload.stock)||payload.stock<0)throw new Error("Stock must be a valid non-negative whole number.");
 
       if(editingProduct){
         const before=Number(editingProduct.stock||0),after=payload.stock;
@@ -475,32 +589,18 @@ function App(){
   }
 
   async function doRestock(e){
-    e.preventDefault();
-    if(!canManageInventory){setErr("Your role is not allowed to restock products.");return}
-    if(!restockProduct)return;
+    e.preventDefault();if(!canManageInventory){setErr("Your role is not allowed to restock products.");return}if(!restockProduct)return;
     const n=Number(restockQty);
     if(!Number.isFinite(n)||n<=0){setErr("Enter a valid quantity.");return}
-    setSavingProduct(true);setErr("");setStatus("Restocking atomically...");
+    setSavingProduct(true);setErr("");
     try{
-      // The existing Supabase restock_product() RPC performs the stock
-      // increase and stock movement in one database transaction.
-      const {data,error}=await supabase.rpc("restock_product",{
-        p_business_id:profile.business_id,
-        p_product_id:restockProduct.id,
-        p_quantity:n,
-        p_reason:restockReason.trim()||"Restock"
-      });
-      if(error)throw new Error(error.message||"Restock failed.");
-      if(!data?.success)throw new Error("Restock was not completed.");
-
-      setRestockProduct(null);setRestockQty("");setRestockReason("Restock");
-      setStatus("Stock added successfully. Stock + movement completed atomically.");
-      await load(session.user.id);
-    }catch(e){
-      console.error("Atomic restock failed:",e);
-      setErr(e?.message||"Restock failed. No stock change was committed.");
-      setStatus("");
-    }finally{setSavingProduct(false)}
+      const before=Number(restockProduct.stock||0),after=before+n;
+      const {error}=await supabase.from("products").update({stock:after,updated_at:new Date().toISOString()})
+        .eq("id",restockProduct.id).eq("business_id",profile.business_id);
+      if(error)throw new Error(error.message);
+      await recordMovement({product:restockProduct,quantity:n,before,after,type:"STOCK_IN",reason:restockReason||"Restock"});
+      setRestockProduct(null);setRestockQty("");setRestockReason("Restock");setStatus("Stock added successfully.");await load(session.user.id);
+    }catch(e){setErr("Restock failed: "+e.message)}finally{setSavingProduct(false)}
   }
 
   function openCustomer(c=null){setEditingCustomer(c);setCustomerForm(c?{name:c.name||"",phone:c.phone||"",email:c.email||"",address:c.address||"",tin:c.tin||""}:{name:"",phone:"",email:"",address:"",tin:""});setCustomerModal(true);setErr("");}
@@ -589,21 +689,7 @@ function App(){
   },[salesHistory,historySearch,historyPaymentFilter,historyDateFilter,historyStatusFilter]);
 
   const lowStock=products.filter(p=>p.stock<=5&&p.stock>0),outStock=products.filter(p=>p.stock<=0);
-  const dashboardSales=useMemo(()=>{
-    const now=new Date();
-    const todayKey=manilaDateKey(now);
-    const monthKey=todayKey.slice(0,7);
-    const weekStart=new Date(now);
-    weekStart.setDate(now.getDate()-6);
-    weekStart.setHours(0,0,0,0);
-    return salesHistory.filter(s=>{
-      if(s.status!=="completed")return false;
-      if(dashboardRange==="today")return manilaDateKey(s.created_at)===todayKey;
-      if(dashboardRange==="week")return new Date(s.created_at)>=weekStart;
-      if(dashboardRange==="month")return manilaDateKey(s.created_at).slice(0,7)===monthKey;
-      return true;
-    });
-  },[salesHistory,dashboardRange]);
+  const dashboardSales=useMemo(()=>{const now=new Date();return salesHistory.filter(s=>{if(s.status!=="completed")return false;const d=new Date(s.created_at);if(dashboardRange==="today")return d.toDateString()===now.toDateString();if(dashboardRange==="week"){const st=new Date(now);st.setDate(now.getDate()-6);st.setHours(0,0,0,0);return d>=st}if(dashboardRange==="month")return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();return true})},[salesHistory,dashboardRange]);
   const dashboardIds=new Set(dashboardSales.map(s=>s.id));
   const dashboardItems=saleItemsHistory.filter(i=>dashboardIds.has(i.sale_id));
   const dashboardSalesTotal=dashboardSales.reduce((a,s)=>a+Number(s.total||0),0);
@@ -620,12 +706,7 @@ function App(){
       String(p.barcode||"").toLowerCase().includes(q)
     );
   },[products,productSearch]);
-  const transactionTotal=filteredSales.reduce((s,x)=>s+(x.status==="completed"?Number(x.total||0):0),0);
-  const reportSales=salesHistory.filter(s=>s.status==="completed");
-  const reportSaleIds=new Set(reportSales.map(s=>s.id));
-  const reportSaleItems=saleItemsHistory.filter(i=>reportSaleIds.has(i.sale_id));
-  const reportSalesTotal=reportSales.reduce((a,s)=>a+Number(s.total||0),0);
-  const reportProfit=reportSaleItems.reduce((a,i)=>a+Number(i.gross_profit||0),0);
+  const transactionTotal=filteredSales.reduce((s,x)=>s+Number(x.total||0),0);
 
   function downloadExcel(data,fileName,sheetName="Sheet1"){
     if(!data.length){setStatus("No data available.");return}
@@ -638,33 +719,33 @@ function App(){
   function exportTransactions(){downloadExcel(filteredSales.map(s=>({Invoice:s.invoice_no,Date:s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"",Payment:paymentLabel(s.payment_method),Reference:s.payment_reference||"",Customer:customers.find(c=>c.id===s.customer_id)?.name||"Walk-in",Subtotal:Number(s.subtotal||0),Discount:Number(s.discount||0),Total:Number(s.total||0),AmountTendered:Number(s.amount_tendered||0),Change:Number(s.change_amount||0),Status:s.status})),`SmallBiz_POS_Transactions_${new Date().toISOString().slice(0,10)}`,"Transactions")}
   function exportMovements(){downloadExcel(movements.map(m=>({Date:new Date(m.created_at).toLocaleString("en-PH"),Product:m.product_name,Type:m.movement_type,Quantity:Number(m.quantity),StockBefore:Number(m.stock_before),StockAfter:Number(m.stock_after),Reason:m.reason||"",Reference:m.reference_type||""})),`SmallBiz_POS_Stock_Movements_${new Date().toISOString().slice(0,10)}`,"Stock Movements")}
 
-  function printReceipt({receiptNo:rn=receiptNo,printWindow=null}={}){
+  function printReceipt({receiptNo:rn=receiptNo,printWindow=null,receiptTotal=total,receiptAmount=null,receiptChange=change}={}){
     const win=printWindow||window.open("","_blank","width=420,height=700");
     if(!win){setErr("Please allow pop-ups to print.");return}
     const cashier=profile?.full_name||"Cashier";
-    const rows=cart.map(i=>`<tr><td>${escapeHtml(i.name)}</td><td>${Number(i.qty)}</td><td style="text-align:right">${money(i.price)}</td><td style="text-align:right">${money(i.price*i.qty)}</td></tr>`).join("");
-    win.document.write(`<!doctype html><html><head><title>${escapeHtml(rn)}</title><style>
+    const rows=cart.map(i=>`<tr><td>${i.name}</td><td>${i.qty}</td><td style="text-align:right">${money(i.price)}</td><td style="text-align:right">${money(i.price*i.qty)}</td></tr>`).join("");
+    win.document.write(`<!doctype html><html><head><title>${rn}</title><style>
       body{font-family:Arial;width:360px;margin:auto;padding:20px;color:#111}h1{text-align:center;font-size:22px}.center{text-align:center}.line{border-top:1px dashed #000;margin:12px 0}
       table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:5px 0}.row{display:flex;justify-content:space-between;margin:7px 0}.total{font-size:18px;font-weight:bold}.footer{text-align:center;margin-top:25px}
-    </style></head><body><h1>SmallBiz POS</h1><div class="center">Sales Receipt<br>${rn}<br>${new Date().toLocaleString("en-PH")}<br>Cashier: ${escapeHtml(cashier)}</div><div class="line"></div>
+    </style></head><body><h1>SmallBiz POS</h1><div class="center">Sales Receipt<br>${rn}<br>${new Date().toLocaleString("en-PH")}<br>Cashier: ${cashier}</div><div class="line"></div>
     <table><thead><tr><th style="text-align:left">Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="line"></div>
     <div class="row"><span>Subtotal</span><span>${money(subtotal)}</span></div><div class="row"><span>Discount</span><span>${money(discount)}</span></div><div class="row total"><span>TOTAL</span><span>${money(total)}</span></div><div class="line"></div>
-    <div class="row"><span>Payment</span><span>${paymentLabel(paymentMethod)}</span></div>
-    ${paymentMethod!=="cash"&&paymentReference.trim()?`<div class="row"><span>${paymentMethod==="gcash"?"GCash Reference":"Card Approval No."}</span><span>${escapeHtml(paymentReference.trim())}</span></div>`:""}
-    <div class="row"><span>Amount Paid</span><span>${money(paymentMethod==="cash"?cash:total)}</span></div>
-    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.5</div>
+    <div class="row"><span>Payment</span><span>${paymentLabel(paymentMethod)}</span></div><div class="row"><span>Amount Paid</span><span>${money(paymentMethod==="cash"?cash:total)}</span></div>
+    ${paymentMethod==="cash"?`<div class="row"><span>Change</span><span>${money(change)}</span></div>`:""}<div class="footer">Thank you for your purchase!<br>SmallBiz POS V2.6</div>
     <script>window.onload=()=>window.print()</script></body></html>`);win.document.close();
   }
 
-  if(configError)return <div className="auth"><div className="card"><h1>SmallBiz POS V2.5</h1><h2>Configuration missing</h2><p>Missing VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY</p></div></div>;
-  if(!session)return <div className="auth"><form className="login-card" onSubmit={login}><div className="login-logo">🛒</div><h1>SmallBiz POS</h1><p>Sign in to your business account</p><input type="email" autoComplete="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="primary">Login</button>{err&&<p className="error">{err}</p>}</form></div>;
+  if(configError)return <div className="auth"><div className="card"><h1>SmallBiz POS V2.6</h1><h2>Configuration missing</h2><p>Missing VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY</p></div></div>;
+  if(!session)return <div className="auth"><form className="login-card" onSubmit={login}><div className="login-logo">🛒</div><h1>SmallBiz POS</h1><p>Sign in to your business account</p><input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="primary">Login</button>{err&&<p className="error">{err}</p>}</form></div>;
+  if(profile && profile.active===false)return <div className="auth"><div className="card"><h1>SmallBiz POS</h1><h2>Account inactive</h2><p>This account has been deactivated. Please contact your business administrator.</p><button className="primary" onClick={logout}>Logout</button></div></div>;
+  if(profile && !isSuperAdmin && !isCashier)return <div className="auth"><div className="card"><h1>SmallBiz POS</h1><h2>Access denied</h2><p>This account does not have a valid application role.</p><button className="primary" onClick={logout}>Logout</button></div></div>;
 
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="brand"><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.5</span></div></div>
+      <div className="brand"><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.6</span></div></div>
       <div className="profile-box"><div className="profile-avatar">👤</div><div><b>{profile?.full_name||"Business Owner"}</b><small>{profile?.role||"owner"}</small><small className="online">● Online</small></div></div>
       <nav className="sidebar-nav">
-        {[["pos","🛒","POS",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["products","📦","Products",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>
+        {[["pos","🛒","POS",canSell],["transactions","📋","Transactions",canViewTransactions],["dashboard","📈","Dashboard",canViewReports],["reports","📊","Reports",canViewReports],["products","📦","Products",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>
           <button key={key} className={activePage===key?"nav-item active":"nav-item"} onClick={()=>setActivePage(key)}><span>{icon}</span><b>{label}</b></button>)}
       </nav>
       <div className="sidebar-bottom">
@@ -684,17 +765,10 @@ function App(){
       <div className="pos-layout">
         <section className="products-panel"><div className="panel-title"><div><h2>Products</h2><p>Search or scan a product.</p></div><button className={scan?"scan-btn scanning":"scan-btn"} onClick={()=>{setScan(!scan);setStatus("")}}>📷 {scan?"Close Scanner":"Scan Barcode"}</button></div>
         {scan&&<div className="scanner-box"><div id="reader"></div><small>Allow camera access and point at the barcode.</small></div>}
-        <div className="search-row">
-          <span>🔍</span>
-          <input className="product-search" placeholder="Search product or barcode..." value={search} onChange={e=>setSearch(e.target.value)}/>
-          <select value={posCategoryFilter} onChange={e=>setPosCategoryFilter(e.target.value)} aria-label="Filter products by category">
-            <option value="all">All Categories</option>
-            {activeCategories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
+        <div className="search-row"><span>🔍</span><input className="product-search" placeholder="Search product or barcode..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
         <div className="products-grid">{filtered.length?filtered.map(p=><div className="product-card" key={p.id} style={{overflow:"hidden"}}>
           <div className="product-image" style={{height:170,background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>{productImage(p)?<img src={productImage(p)} alt={p.name} style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>:<div className="image-placeholder" style={{fontSize:42}}>📦</div>}</div>
-          <div className="product-info"><h3>{p.name}</h3><small>Category: {activeCategories.find(c=>c.id===p.category_id)?.name||"Uncategorized"}</small><small>Barcode: {p.barcode||"N/A"}</small><small>Stock: {p.stock}</small></div>
+          <div className="product-info"><h3>{p.name}</h3><small>Barcode: {p.barcode||"N/A"}</small><small>Stock: {p.stock}</small></div>
           <div className="product-bottom"><strong>{money(p.price)}</strong><button className="add-cart-btn" disabled={p.stock<=0} onClick={()=>add(p)}>{p.stock>0?"Add to Cart":"Out of Stock"}</button></div>
         </div>):<div className="empty-products">No product found.</div>}</div></section>
         <aside className="right-panel">
@@ -708,13 +782,13 @@ function App(){
 
       {activePage==="dashboard"&&<section className="page-card"><div className="page-header"><div><h2>📈 Business Dashboard</h2><p>Sales, profit and inventory overview.</p></div><div style={{display:"flex",gap:8}}><select value={dashboardRange} onChange={e=>setDashboardRange(e.target.value)}><option value="today">Today</option><option value="week">Last 7 Days</option><option value="month">This Month</option><option value="all">All Time</option></select><button className="refresh-btn" onClick={()=>load(session.user.id)}>🔄 Refresh</button></div></div><div className="report-grid"><div className="report-card"><small>Sales</small><strong>{money(dashboardSalesTotal)}</strong></div><div className="report-card"><small>Gross Profit</small><strong>{money(dashboardProfit)}</strong></div><div className="report-card"><small>COGS</small><strong>{money(dashboardCOGS)}</strong></div><div className="report-card"><small>Transactions</small><strong>{dashboardSales.length}</strong></div><div className="report-card"><small>Inventory Cost</small><strong>{money(inventoryCostValue)}</strong></div><div className="report-card"><small>Inventory Retail</small><strong>{money(inventoryRetailValue)}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div><div className="info-box" style={{marginTop:18}}><h3>🔥 Top Selling Products</h3>{topProducts.length?topProducts.map(([n,q],i)=><div className="row" key={n}><span>{i+1}. {n}</span><b>{q} pcs</b></div>):<p>No sales data.</p>}</div></section>}
 
-      {activePage==="transactions"&&<section className="page-card"><div className="page-header"><div><h2>📋 Transactions</h2><p>Sales History / Transactions</p></div><div><button className="refresh-btn" onClick={()=>loadSalesHistory(profile.business_id)}>🔄 Refresh</button> <button className="excel-btn" onClick={exportTransactions}>📊 Excel</button></div></div>
+      {activePage==="transactions"&&<section className="page-card"><div className="page-header"><div><h2>📋 Transactions</h2><p>Sales History / Transactions</p></div><div><button className="refresh-btn" onClick={()=>loadSalesHistory(profile.business_id)}>🔄 Refresh</button>{isSuperAdmin&&<button className="excel-btn" onClick={exportTransactions}>📊 Excel</button>}</div></div>
         <div className="filters"><input placeholder="Search invoice..." value={historySearch} onChange={e=>setHistorySearch(e.target.value)}/><select value={historyPaymentFilter} onChange={e=>setHistoryPaymentFilter(e.target.value)}><option value="all">All Payments</option><option value="cash">Cash</option><option value="gcash">GCash</option><option value="card">Card</option></select><input type="date" value={historyDateFilter} onChange={e=>setHistoryDateFilter(e.target.value)}/><select value={historyStatusFilter} onChange={e=>setHistoryStatusFilter(e.target.value)}><option value="all">All Status</option><option value="completed">Completed</option><option value="voided">Voided</option><option value="cancelled">Cancelled</option></select></div>
         <div className="summary-grid"><div><small>Transactions</small><strong>{filteredSales.length}</strong></div><div><small>Total Sales</small><strong>{money(transactionTotal)}</strong></div><div><small>Cash</small><strong>{money(filteredSales.filter(s=>s.payment_method==="cash").reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div><small>GCash</small><strong>{money(filteredSales.filter(s=>s.payment_method==="gcash").reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div><small>Card</small><strong>{money(filteredSales.filter(s=>s.payment_method==="card").reduce((a,s)=>a+Number(s.total||0),0))}</strong></div></div>
-        {historyLoading?<div className="empty-page">Loading transactions...</div>:<div className="table-wrapper"><table><thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Payment</th><th>Reference</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredSales.map(s=><tr key={s.id}><td><b>{s.invoice_no}</b></td><td>{s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"-"}</td><td>{customers.find(c=>c.id===s.customer_id)?.name||"Walk-in"}</td><td>{paymentLabel(s.payment_method)}</td><td>{s.payment_reference||"-"}</td><td><b>{money(s.total)}</b></td><td><span className="status-badge">{s.status}</span></td><td><button onClick={()=>openSaleDetails(s)}>🧾 View</button>{s.status==="completed"&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td></tr>)}</tbody></table></div>}</section>}
+        {historyLoading?<div className="empty-page">Loading transactions...</div>:<div className="table-wrapper"><table><thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Payment</th><th>Reference</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredSales.map(s=><tr key={s.id}><td><b>{s.invoice_no}</b></td><td>{s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"-"}</td><td>{customers.find(c=>c.id===s.customer_id)?.name||"Walk-in"}</td><td>{paymentLabel(s.payment_method)}</td><td>{s.payment_reference||"-"}</td><td><b>{money(s.total)}</b></td><td><span className="status-badge">{s.status}</span></td><td><button onClick={()=>openSaleDetails(s)}>🧾 View</button><button onClick={()=>reprintSale(s)} style={{marginLeft:6}}>🖨️ Reprint</button>{s.status==="completed"&&canVoidTransaction&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td></tr>)}</tbody></table></div>}</section>}
 
       {activePage==="reports"&&<section className="page-card"><div className="page-header"><div><h2>📊 Reports</h2><p>Sales and inventory performance.</p></div><button className="refresh-btn" onClick={()=>load(session.user.id)}>🔄 Refresh</button></div>
-        <div className="report-grid"><div className="report-card"><small>Total Transactions</small><strong>{reportSales.length}</strong></div><div className="report-card"><small>Total Sales</small><strong>{money(reportSalesTotal)}</strong></div><div className="report-card"><small>Total Purchases</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div className="report-card"><small>Gross Profit</small><strong>{money(reportProfit)}</strong></div><div className="report-card"><small>Products</small><strong>{products.length}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div>
+        <div className="report-grid"><div className="report-card"><small>Total Transactions</small><strong>{salesHistory.length}</strong></div><div className="report-card"><small>Total Sales</small><strong>{money(salesHistory.reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div className="report-card"><small>Total Purchases</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div className="report-card"><small>Gross Profit</small><strong>{money(saleItemsHistory.reduce((a,i)=>a+Number(i.gross_profit||0),0))}</strong></div><div className="report-card"><small>Products</small><strong>{products.length}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div>
         <div className="report-download-panel"><div><h3>📥 Download Reports</h3><p>Export your POS data to Excel.</p></div><div className="download-buttons"><button className="excel-btn" onClick={exportTransactions}>📊 Transactions</button><button className="excel-btn" onClick={exportProducts}>📦 Inventory</button><button className="excel-btn" onClick={exportMovements}>🔄 Stock Movements</button><button className="excel-btn" onClick={exportPurchases}>🚚 Purchases</button></div></div>
       </section>}
 
@@ -812,7 +886,7 @@ function App(){
 
     {paymentOpen&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>Payment</h2><button onClick={()=>setPaymentOpen(false)}>✕</button></div><div className="payment-total"><span>Total</span><b>{money(total)}</b></div><label>Payment Method</label><div className="payment-methods"><button className={paymentMethod==="cash"?"primary":""} onClick={()=>{setPaymentMethod("cash");setCash("")}}>💵 Cash</button><button className={paymentMethod==="gcash"?"primary":""} onClick={()=>{setPaymentMethod("gcash");setCash("")}}>📱 GCash</button><button className={paymentMethod==="card"?"primary":""} onClick={()=>{setPaymentMethod("card");setCash("")}}>💳 Card</button></div><label>Customer</label><select value={selectedCustomerId} onChange={e=>setSelectedCustomerId(e.target.value)}><option value="">Walk-in Customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><label>Discount</label><input type="number" min="0" max={subtotal} step=".01" value={discountAmount} onChange={e=>setDiscountAmount(e.target.value)} placeholder="0.00"/>{discount>0&&<><label>Discount Reason</label><input value={discountReason} onChange={e=>setDiscountReason(e.target.value)} placeholder="Promo / Senior / Manager approval"/></>}{paymentMethod!=="cash"&&<><label>Payment Reference</label><input value={paymentReference} onChange={e=>setPaymentReference(e.target.value)} placeholder="GCash reference / card approval no."/></>}{paymentMethod==="cash"&&<><label>Cash Received</label><input type="number" min="0" step=".01" value={cash} onChange={e=>setCash(e.target.value)} placeholder="Enter cash amount"/>{cash&&Number(cash)>=total&&<div className="change-box"><span>Change</span><b>{money(change)}</b></div>}</>}{err&&<p className="error">{err}</p>}<div className="modal-buttons"><button onClick={()=>setPaymentOpen(false)}>Cancel</button><button className="primary" disabled={savingPayment||(paymentMethod==="cash"&&(!cash||Number(cash)<total))} onClick={completePayment}>{savingPayment?"Saving...":"Complete Payment"}</button></div></div></div>}
 
-    {paymentDone&&<div className="modal-backdrop"><div className="modal"><div className="success-icon">✓</div><h2>Payment Complete</h2><div className="receipt-summary"><p>Invoice: <b>{receiptNo}</b></p><p>Payment: <b>{paymentLabel(paymentMethod)}</b></p>{paymentMethod!=="cash"&&paymentReference.trim()&&<p>{paymentMethod==="gcash"?"GCash Reference":"Card Approval No."}: <b>{paymentReference}</b></p>}<p>Total: <b>{money(total)}</b></p>{paymentMethod==="cash"&&<><p>Cash: <b>{money(cash)}</b></p><p>Change: <b>{money(change)}</b></p></>}</div><div className="modal-buttons"><button onClick={()=>printReceipt({})}>🖨️ Print Receipt</button><button className="primary" onClick={newSale}>New Sale</button></div></div></div>}
+    {paymentDone&&<div className="modal-backdrop"><div className="modal"><div className="success-icon">✓</div><h2>Payment Complete</h2><div className="receipt-summary"><p>Invoice: <b>{receiptNo}</b></p><p>Payment: <b>{paymentLabel(paymentMethod)}</b></p><p>Total: <b>{money(total)}</b></p>{paymentMethod==="cash"&&<><p>Cash: <b>{money(cash)}</b></p><p>Change: <b>{money(change)}</b></p></>}</div><div className="modal-buttons"><button onClick={()=>printReceipt({})}>🖨️ Print Receipt</button><button className="primary" onClick={newSale}>New Sale</button></div></div></div>}
 
     {productModal&&<div className="modal-backdrop">
         <div className="modal">
@@ -921,7 +995,7 @@ function App(){
 
     {purchaseDetailsOpen&&selectedPurchase&&<div className="modal-backdrop"><div className="modal sale-details-modal"><div className="modal-header"><h2>🧾 Purchase Details</h2><button onClick={()=>setPurchaseDetailsOpen(false)}>✕</button></div>{purchaseDetailsLoading?<div>Loading...</div>:<><p><b>Reference:</b> {selectedPurchase.reference_no||selectedPurchase.id}</p><p><b>Date:</b> {selectedPurchase.purchase_date||"-"}</p><p><b>Supplier:</b> {selectedPurchase.suppliers?.name||"-"}</p><p><b>Status:</b> {selectedPurchase.status}</p><div className="table-wrapper"><table><thead><tr><th>Product</th><th>Qty</th><th>Unit Cost</th><th>Total</th></tr></thead><tbody>{selectedPurchaseItems.map(i=><tr key={i.id}><td>{i.product_name}</td><td>{i.quantity}</td><td>{money(i.unit_cost)}</td><td>{money(i.line_total)}</td></tr>)}</tbody></table></div><div className="sale-total"><div className="grand-total"><span>TOTAL PURCHASE</span><b>{money(selectedPurchase.subtotal)}</b></div></div></>}</div></div>}
 
-    {saleDetailsOpen&&selectedSale&&<div className="modal-backdrop"><div className="modal sale-details-modal"><div className="modal-header"><h2>🧾 Sale Details</h2><button onClick={()=>setSaleDetailsOpen(false)}>✕</button></div>{saleDetailsLoading?<div>Loading...</div>:<><p>Invoice: <b>{selectedSale.invoice_no}</b></p><p>Status: <b>{selectedSale.status}</b></p><div className="table-wrapper"><table><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>{selectedSaleItems.map(i=><tr key={i.id}><td>{i.product_name}</td><td>{i.quantity}</td><td>{money(i.unit_price)}</td><td>{money(i.line_total)}</td></tr>)}</tbody></table></div><div className="sale-total"><div><span>Subtotal</span><b>{money(selectedSale.subtotal)}</b></div><div className="grand-total"><span>TOTAL</span><b>{money(selectedSale.total)}</b></div></div></>}</div></div>}
+    {saleDetailsOpen&&selectedSale&&<div className="modal-backdrop"><div className="modal sale-details-modal"><div className="modal-header"><h2>🧾 Sale Details</h2><button onClick={()=>setSaleDetailsOpen(false)}>✕</button></div>{saleDetailsLoading?<div>Loading...</div>:<><p>Invoice: <b>{selectedSale.invoice_no}</b></p><p>Status: <b>{selectedSale.status}</b></p><div style={{marginBottom:12}}><button onClick={()=>reprintSale(selectedSale)}>🖨️ Reprint Invoice</button></div><div className="table-wrapper"><table><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>{selectedSaleItems.map(i=><tr key={i.id}><td>{i.product_name}</td><td>{i.quantity}</td><td>{money(i.unit_price)}</td><td>{money(i.line_total)}</td></tr>)}</tbody></table></div><div className="sale-total"><div><span>Subtotal</span><b>{money(selectedSale.subtotal)}</b></div><div className="grand-total"><span>TOTAL</span><b>{money(selectedSale.total)}</b></div></div></>}</div></div>}
   </div>
 }
 
