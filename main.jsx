@@ -648,6 +648,81 @@ function App(){
   function exportTransactions(){downloadExcel(filteredSales.map(s=>({Invoice:s.invoice_no,Date:s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"",Payment:paymentLabel(s.payment_method),Reference:s.payment_reference||"",Customer:customers.find(c=>c.id===s.customer_id)?.name||"Walk-in",Subtotal:Number(s.subtotal||0),Discount:Number(s.discount||0),Total:Number(s.total||0),AmountTendered:Number(s.amount_tendered||0),Change:Number(s.change_amount||0),Status:s.status})),`SmallBiz_POS_Transactions_${new Date().toISOString().slice(0,10)}`,"Transactions")}
   function exportMovements(){downloadExcel(movements.map(m=>({Date:new Date(m.created_at).toLocaleString("en-PH"),Product:m.product_name,Type:m.movement_type,Quantity:Number(m.quantity),StockBefore:Number(m.stock_before),StockAfter:Number(m.stock_after),Reason:m.reason||"",Reference:m.reference_type||""})),`SmallBiz_POS_Stock_Movements_${new Date().toISOString().slice(0,10)}`,"Stock Movements")}
 
+  async function reprintSale(sale){
+    /* HISTORICAL_REPRINT_V1 */
+    if(!canSell){setErr("Your role is not allowed to print receipts.");return}
+    if(!sale?.id){setErr("Invalid transaction selected.");return}
+
+    const win=window.open("","_blank","width=420,height=700");
+    if(!win){setErr("Please allow pop-ups to print.");return}
+
+    setErr("");
+    try{
+      const [{data:items,error:itemError},{data:cashierProfile,error:cashierError}]=await Promise.all([
+        supabase.from("sale_items")
+          .select("id,sale_id,product_id,product_name,barcode,quantity,unit_price,line_total")
+          .eq("sale_id",sale.id)
+          .order("id",{ascending:true}),
+        sale.cashier_id
+          ? supabase.from("profiles").select("id,full_name").eq("id",sale.cashier_id).eq("business_id",profile.business_id).maybeSingle()
+          : Promise.resolve({data:null,error:null})
+      ]);
+
+      if(itemError)throw new Error(itemError.message||"Unable to load transaction items.");
+      if(cashierError)throw new Error(cashierError.message||"Unable to load cashier information.");
+      if(!items?.length)throw new Error("This transaction has no saved line items.");
+
+      const esc=v=>String(v??"")
+        .replace(/&/g,"&amp;")
+        .replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;")
+        .replace(/\"/g,"&quot;")
+        .replace(/'/g,"&#39;");
+
+      const businessName=esc(String(receiptSettings.businessName||"SmallBiz POS").trim()||"SmallBiz POS");
+      const businessTin=esc(String(receiptSettings.tin||"").trim());
+      const businessAddress=esc(String(receiptSettings.address||"").trim());
+      const businessPhone=esc(String(receiptSettings.phone||"").trim());
+      const invoice=esc(sale.invoice_no||sale.id);
+      const cashier=esc(cashierProfile?.full_name||"Cashier");
+      const customer=esc(customers.find(c=>c.id===sale.customer_id)?.name||"Walk-in Customer");
+      const saleDate=sale.created_at?new Date(sale.created_at).toLocaleString("en-PH"):"-";
+      const statusText=String(sale.status||"").toLowerCase()==="completed"?"":`<div class="status">${esc(String(sale.status||"").toUpperCase())}</div>`;
+      const rows=items.map(i=>`<tr><td>${esc(i.product_name)}</td><td>${Number(i.quantity||0)}</td><td style="text-align:right">${money(i.unit_price)}</td><td style="text-align:right">${money(i.line_total)}</td></tr>`).join("");
+      const paymentMethodText=paymentLabel(sale.payment_method);
+      const amountPaid=Number(sale.amount_tendered||0);
+      const changeAmount=Number(sale.change_amount||0);
+
+      win.document.write(`<!doctype html><html><head><title>${invoice}</title><style>
+        body{font-family:Arial,sans-serif;width:360px;margin:auto;padding:20px;color:#111;font-size:12px}
+        h1{text-align:center;font-size:22px;margin:0 0 8px}.center{text-align:center}.line{border-top:1px dashed #000;margin:12px 0}
+        table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:5px 0;vertical-align:top}.row{display:flex;justify-content:space-between;gap:10px;margin:7px 0}.total{font-size:18px;font-weight:bold}
+        .status{text-align:center;font-weight:bold;border:1px solid #000;padding:5px;margin:8px 0}.footer{text-align:center;margin-top:25px}
+      </style></head><body>
+        <h1>${businessName}</h1>
+        <div class="center">${businessAddress?`${businessAddress}<br>`:""}${businessPhone?`Tel: ${businessPhone}<br>`:""}${businessTin?`TIN: ${businessTin}<br>`:""}Sales Receipt<br>${invoice}<br>${esc(saleDate)}<br>Cashier: ${cashier}<br>Customer: ${customer}</div>
+        ${statusText}<div class="line"></div>
+        <table><thead><tr><th style="text-align:left">Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
+        <div class="line"></div>
+        <div class="row"><span>Subtotal</span><span>${money(sale.subtotal)}</span></div>
+        <div class="row"><span>Discount</span><span>${money(sale.discount)}</span></div>
+        ${sale.discount_reason?`<div class="row"><span>Reason</span><span>${esc(sale.discount_reason)}</span></div>`:""}
+        <div class="row total"><span>TOTAL</span><span>${money(sale.total)}</span></div><div class="line"></div>
+        <div class="row"><span>Payment</span><span>${paymentMethodText}</span></div>
+        ${sale.payment_reference?`<div class="row"><span>Reference</span><span>${esc(sale.payment_reference)}</span></div>`:""}
+        <div class="row"><span>Amount Paid</span><span>${money(amountPaid||sale.total)}</span></div>
+        ${String(sale.payment_method||"").toLowerCase()==="cash"?`<div class="row"><span>Change</span><span>${money(changeAmount)}</span></div>`:""}
+        <div class="footer">Historical reprint<br>${businessName}</div>
+        <script>window.onload=()=>window.print()</script>
+      </body></html>`);
+      win.document.close();
+    }catch(e){
+      if(win&&!win.closed)win.close();
+      console.error("Historical receipt reprint failed:",e);
+      setErr("Reprint failed: "+(e?.message||"Unable to load transaction."));
+    }
+  }
+
   function printReceipt({receiptNo:rn=receiptNo,printWindow=null}={}){
     const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#39;");
     const win=printWindow||window.open("","_blank","width=420,height=700");
@@ -729,7 +804,7 @@ function App(){
       {activePage==="transactions"&&<section className="page-card"><div className="page-header"><div><h2>📋 Transactions</h2><p>Sales History / Transactions</p></div><div><button className="refresh-btn" onClick={()=>loadSalesHistory(profile.business_id)}>🔄 Refresh</button> <button className="excel-btn" onClick={exportTransactions}>📊 Excel</button></div></div>
         <div className="filters"><input placeholder="Search invoice..." value={historySearch} onChange={e=>setHistorySearch(e.target.value)}/><select value={historyPaymentFilter} onChange={e=>setHistoryPaymentFilter(e.target.value)}><option value="all">All Payments</option><option value="cash">Cash</option><option value="gcash">GCash</option><option value="card">Card</option></select><input type="date" value={historyDateFilter} onChange={e=>setHistoryDateFilter(e.target.value)}/><select value={historyStatusFilter} onChange={e=>setHistoryStatusFilter(e.target.value)}><option value="all">All Status</option><option value="completed">Completed</option><option value="voided">Voided</option><option value="cancelled">Cancelled</option></select></div>
         <div className="summary-grid"><div><small>Transactions</small><strong>{filteredSales.length}</strong></div><div><small>Total Sales</small><strong>{money(transactionTotal)}</strong></div><div><small>Cash</small><strong>{money(filteredSales.filter(s=>s.payment_method==="cash").reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div><small>GCash</small><strong>{money(filteredSales.filter(s=>s.payment_method==="gcash").reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div><small>Card</small><strong>{money(filteredSales.filter(s=>s.payment_method==="card").reduce((a,s)=>a+Number(s.total||0),0))}</strong></div></div>
-        {historyLoading?<div className="empty-page">Loading transactions...</div>:<div className="table-wrapper"><table><thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Payment</th><th>Reference</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredSales.map(s=><tr key={s.id}><td><b>{s.invoice_no}</b></td><td>{s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"-"}</td><td>{customers.find(c=>c.id===s.customer_id)?.name||"Walk-in"}</td><td>{paymentLabel(s.payment_method)}</td><td>{s.payment_reference||"-"}</td><td><b>{money(s.total)}</b></td><td><span className="status-badge">{s.status}</span></td><td><button onClick={()=>openSaleDetails(s)}>🧾 View</button>{s.status==="completed"&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td></tr>)}</tbody></table></div>}</section>}
+        {historyLoading?<div className="empty-page">Loading transactions...</div>:<div className="table-wrapper"><table><thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Payment</th><th>Reference</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredSales.map(s=><tr key={s.id}><td><b>{s.invoice_no}</b></td><td>{s.created_at?new Date(s.created_at).toLocaleString("en-PH"):"-"}</td><td>{customers.find(c=>c.id===s.customer_id)?.name||"Walk-in"}</td><td>{paymentLabel(s.payment_method)}</td><td>{s.payment_reference||"-"}</td><td><b>{money(s.total)}</b></td><td><span className="status-badge">{s.status}</span></td><td><button onClick={()=>openSaleDetails(s)}>🧾 View</button><button onClick={()=>reprintSale(s)} style={{marginLeft:6}}>🖨️ Reprint</button>{s.status==="completed"&&<button onClick={()=>{setVoidSale(s);setVoidReason("");setErr("")}} style={{marginLeft:6}}>↩ Void</button>}</td></tr>)}</tbody></table></div>}</section>}
 
       {activePage==="reports"&&<section className="page-card"><div className="page-header"><div><h2>📊 Reports</h2><p>Sales and inventory performance.</p></div><button className="refresh-btn" onClick={()=>load(session.user.id)}>🔄 Refresh</button></div>
         <div className="report-grid"><div className="report-card"><small>Total Transactions</small><strong>{salesHistory.length}</strong></div><div className="report-card"><small>Total Sales</small><strong>{money(salesHistory.reduce((a,s)=>a+Number(s.total||0),0))}</strong></div><div className="report-card"><small>Total Purchases</small><strong>{money(purchaseHistory.reduce((a,p)=>a+Number(p.subtotal||0),0))}</strong></div><div className="report-card"><small>Gross Profit</small><strong>{money(saleItemsHistory.reduce((a,i)=>a+Number(i.gross_profit||0),0))}</strong></div><div className="report-card"><small>Products</small><strong>{products.length}</strong></div><div className="report-card"><small>Low Stock</small><strong>{lowStock.length}</strong></div><div className="report-card"><small>Out of Stock</small><strong>{outStock.length}</strong></div></div>
