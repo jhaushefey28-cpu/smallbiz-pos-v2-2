@@ -1,0 +1,36 @@
+name: Apply historical receipt reprint
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch main.jsx
+        run: python3 scripts/apply_historical_reprint.py
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build verification
+        run: npm run build
+
+      - name: Commit patch and remove one-time workflow and script
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add main.jsx
+          git rm .github/workflows/apply-historical-reprint.yml scripts/apply_historical_reprint.py
+          git commit -m "Add historical transaction receipt reprint"
+          git push origin HEAD:main
