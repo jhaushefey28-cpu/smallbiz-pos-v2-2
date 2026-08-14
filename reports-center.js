@@ -5,7 +5,6 @@ const key=import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const sb=url&&key?createClient(url,key):null;
 const money=v=>new Intl.NumberFormat("en-PH",{style:"currency",currency:"PHP"}).format(Number(v||0));
 const esc=v=>String(v??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
-
 function dateOnly(v){return v?new Date(v).toLocaleDateString("en-CA",{timeZone:"Asia/Manila"}):""}
 function dateTime(v){return v?new Date(v).toLocaleString("en-PH"):""}
 function todayPH(){return new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Manila"})}
@@ -29,8 +28,7 @@ async function loadData(ctx,start,end,channel){
   const salesQ=sb.from("sales").select("id,business_id,invoice_no,cashier_id,customer_id,subtotal,discount,discount_reason,total,payment_method,payment_reference,amount_tendered,change_amount,status,created_at").eq("business_id",bid).gte("created_at",from).lte("created_at",to).order("created_at",{ascending:false}).limit(5000);
   const extQ=sb.from("external_orders").select("id,business_id,sales_channel_id,external_order_no,customer_name,customer_phone,payment_method,subtotal,discount,platform_fee,shipping_fee,total,order_status,fulfillment_status,ordered_at,created_at,updated_at,sales_channels(name,code)").eq("business_id",bid).gte("created_at",from).lte("created_at",to).order("created_at",{ascending:false}).limit(5000);
   const [salesRes,extRes,prodRes,movRes,purRes,chanRes]=await Promise.all([
-    salesQ,
-    extQ,
+    salesQ,extQ,
     sb.from("products").select("id,name,barcode,category_id,cost_price,price,stock").eq("business_id",bid).order("name"),
     sb.from("stock_movements").select("id,product_id,product_name,movement_type,quantity,stock_before,stock_after,reason,reference_type,reference_id,user_id,created_at").eq("business_id",bid).gte("created_at",from).lte("created_at",to).order("created_at",{ascending:false}).limit(10000),
     sb.from("purchases").select("id,reference_no,purchase_date,subtotal,notes,status,created_at,suppliers(name)").eq("business_id",bid).gte("created_at",from).lte("created_at",to).order("created_at",{ascending:false}).limit(5000),
@@ -38,11 +36,9 @@ async function loadData(ctx,start,end,channel){
   ]);
   if(salesRes.error)throw salesRes.error;
   if(extRes.error)throw extRes.error;
-  const channelName=channel==="all"?null:channel;
   const channels=chanRes.data||[];
-  const channelMap=Object.fromEntries(channels.map(c=>[c.id,c]));
   let externalOrders=extRes.data||[];
-  if(channelName)externalOrders=externalOrders.filter(o=>o.sales_channels?.code===channelName||o.sales_channels?.name===channelName||o.sales_channel_id===channelName);
+  if(channel!=="all")externalOrders=externalOrders.filter(o=>o.sales_channels?.code===channel||o.sales_channels?.name===channel||o.sales_channel_id===channel);
   const sales=salesRes.data||[];
   const extIds=externalOrders.map(o=>o.id);
   const saleIds=sales.map(s=>s.id);
@@ -54,7 +50,7 @@ async function loadData(ctx,start,end,channel){
   if(saleItemsRes.error)throw saleItemsRes.error;
   if(extItemsRes.error)throw extItemsRes.error;
   if(shipRes.error)throw shipRes.error;
-  return {sales,externalOrders,products:prodRes.data||[],movements:movRes.data||[],purchases:purRes.data||[],channels,saleItems:saleItemsRes.data||[],externalItems:extItemsRes.data||[],shipments:shipRes.data||[],channelMap};
+  return {sales,externalOrders,products:prodRes.data||[],movements:movRes.data||[],purchases:purRes.data||[],channels,saleItems:saleItemsRes.data||[],externalItems:extItemsRes.data||[],shipments:shipRes.data||[]};
 }
 
 function rows(data,mapper){return data.map(mapper)}
@@ -66,24 +62,14 @@ function exportData(ctx,data,start,end,channel){
   const platformFees=data.externalOrders.reduce((a,o)=>a+Number(o.platform_fee||0),0);
   const cogs=data.saleItems.reduce((a,i)=>a+Number(i.line_cost||0),0);
   const summary=[
-    {Metric:"Report Period",Value:`${start} to ${end}`},
-    {Metric:"Channel Filter",Value:channel||"all"},
-    {Metric:"POS Completed Sales",Value:posSales},
-    {Metric:"Online Order Sales",Value:onlineSales},
-    {Metric:"Marketplace Fees",Value:platformFees},
-    {Metric:"POS COGS",Value:cogs},
-    {Metric:"POS Gross Profit",Value:posSales-cogs},
-    {Metric:"Total Transactions",Value:sales.length},
-    {Metric:"Online Orders",Value:data.externalOrders.length}
+    {Metric:"Report Period",Value:`${start} to ${end}`},{Metric:"Channel Filter",Value:channel||"all"},{Metric:"POS Completed Sales",Value:posSales},{Metric:"Online Order Sales",Value:onlineSales},{Metric:"Marketplace Fees",Value:platformFees},{Metric:"POS COGS",Value:cogs},{Metric:"POS Gross Profit",Value:posSales-cogs},{Metric:"Total Transactions",Value:sales.length},{Metric:"Online Orders",Value:data.externalOrders.length}
   ];
-  const channelSales={};
-  sales.forEach(s=>{channelSales["POS"]=(channelSales["POS"]||0)+Number(s.total||0)});
+  const channelSales={POS:posSales};
   data.externalOrders.forEach(o=>{const n=o.sales_channels?.name||"Online";channelSales[n]=(channelSales[n]||0)+Number(o.total||0)});
   const channelRows=Object.entries(channelSales).map(([name,total])=>({Channel:name,Sales:total}));
   const info={"Business Name":ctx.businessName,"TIN":ctx.tin,"Address":ctx.address,"Phone":ctx.phone,"Generated By":ctx.profile.full_name||ctx.profile.role||"User","Generated At":dateTime(new Date()),"Period":`${start} to ${end}`,"Channel":channel||"All Channels"};
   window.SmallBizExport.exportWorkbook({filename:`SmallBiz_POS_Report_${ctx.businessName}_${start}_${end}`,metadata:info,sheets:[
-    {name:"Summary",rows:summary},
-    {name:"Sales by Channel",rows:channelRows},
+    {name:"Summary",rows:summary},{name:"Sales by Channel",rows:channelRows},
     {name:"POS Sales",rows:rows(sales,s=>({Invoice:s.invoice_no,Date:dateTime(s.created_at),Payment:s.payment_method,Reference:s.payment_reference||"",Subtotal:Number(s.subtotal||0),Discount:Number(s.discount||0),Total:Number(s.total||0),Status:s.status}))},
     {name:"POS Sale Items",rows:rows(data.saleItems,i=>({SaleID:i.sale_id,Product:i.product_name,Barcode:i.barcode||"",Qty:Number(i.quantity||0),UnitPrice:Number(i.unit_price||0),LineTotal:Number(i.line_total||0),Cost:Number(i.line_cost||0),GrossProfit:Number(i.gross_profit||0)}))},
     {name:"Online Orders",rows:rows(data.externalOrders,o=>({Order:o.external_order_no,Channel:o.sales_channels?.name||"",Customer:o.customer_name||"",Payment:o.payment_method||"",Subtotal:Number(o.subtotal||0),Discount:Number(o.discount||0),PlatformFee:Number(o.platform_fee||0),ShippingFee:Number(o.shipping_fee||0),Total:Number(o.total||0),OrderStatus:o.order_status||"",Fulfillment:o.fulfillment_status||"",OrderedAt:dateTime(o.ordered_at||o.created_at)}))},
@@ -95,14 +81,24 @@ function exportData(ctx,data,start,end,channel){
   ]});
 }
 
+function findReportPanel(){
+  const heading=[...document.querySelectorAll("h1,h2,h3,h4,h5,div,section")].find(el=>el.children.length<8&&/\bDownload Reports\b/i.test(el.textContent||""));
+  if(!heading)return null;
+  let node=heading;
+  for(let i=0;i<6&&node;i++,node=node.parentElement){
+    const buttons=node.querySelectorAll("button");
+    if(buttons.length>=4&&/Transactions/i.test(node.textContent||"")&&/Inventory/i.test(node.textContent||""))return node;
+  }
+  return heading.parentElement||heading;
+}
+
 function inject(){
-  const panel=[...document.querySelectorAll(".report-download-panel")].find(x=>x.textContent.includes("Download Reports"));
-  if(!panel||panel.dataset.advancedReports)return;
-  panel.dataset.advancedReports="1";
+  const panel=findReportPanel();
+  if(!panel||panel.querySelector(".sb-report-center")||document.querySelector(".sb-report-modal"))return;
   const box=document.createElement("div");
   box.className="sb-report-center";
   box.innerHTML=`<div class="sb-report-head"><div><h3>📊 Complete Report Center</h3><p>Export POS, online orders, inventory, stock movements, purchases and shipment data in one Excel workbook.</p></div><button type="button" class="excel-btn sb-report-open">Open Report Center</button></div>`;
-  panel.parentNode.insertBefore(box,panel.nextSibling);
+  panel.appendChild(box);
   box.querySelector(".sb-report-open").addEventListener("click",openModal);
 }
 
@@ -125,8 +121,7 @@ async function openModal(){
       const pos=data.sales.filter(s=>s.status==="completed").reduce((a,s)=>a+Number(s.total||0),0),online=data.externalOrders.reduce((a,o)=>a+Number(o.total||0),0),fees=data.externalOrders.reduce((a,o)=>a+Number(o.platform_fee||0),0);
       preview.innerHTML=`<div class="sb-report-cards"><div><small>POS Sales</small><b>${money(pos)}</b></div><div><small>Online Sales</small><b>${money(online)}</b></div><div><small>Marketplace Fees</small><b>${money(fees)}</b></div><div><small>Orders</small><b>${data.sales.length+data.externalOrders.length}</b></div></div><div class="sb-report-note">Includes ${data.products.length} products, ${data.movements.length} stock movements, ${data.purchases.length} purchases, ${data.externalOrders.length} online orders and ${data.shipments.length} shipments.</div>`;
       status.textContent=`Ready • ${ctx.businessName}`;
-      modal.dataset.loaded="1";
-    }catch(e){status.textContent="Report error: "+(e?.message||e);preview.innerHTML="";modal.dataset.loaded="0"}
+    }catch(e){status.textContent="Report error: "+(e?.message||e);preview.innerHTML=""}
   }
   modal.querySelector("#sb-r-refresh").onclick=refresh;
   modal.querySelector("#sb-r-export").onclick=async()=>{try{const start=modal.querySelector("#sb-r-from").value,end=modal.querySelector("#sb-r-to").value,channel=channelSelect.value;ctx=ctx||await getBusinessContext();const data=await loadData(ctx,start,end,channel);exportData(ctx,data,start,end,channel);status.textContent="Excel report generated successfully."}catch(e){status.textContent="Export failed: "+(e?.message||e)}};
