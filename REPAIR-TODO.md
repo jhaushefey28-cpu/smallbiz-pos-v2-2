@@ -1,0 +1,1 @@
+Temporary marker: restore main.jsx using the known-good blob from 4c289904 without touching the other feature modules.
