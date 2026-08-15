@@ -1,0 +1,37 @@
+/* SmallBiz POS mobile login touch fix.
+   Keep the login form above any fixed/mobile UI layers and make the controls explicitly touchable. */
+.auth {
+  position: relative;
+  z-index: 99999;
+  isolation: isolate;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.login-card {
+  position: relative;
+  z-index: 100000;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.login-card input,
+.login-card button {
+  position: relative;
+  z-index: 100001;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+@media (max-width: 640px) {
+  .auth {
+    min-height: 100dvh;
+    padding: 16px;
+  }
+
+  .login-card {
+    width: min(420px, calc(100vw - 32px));
+  }
+}
