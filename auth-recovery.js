@@ -28,4 +28,42 @@
       }
     }
   }catch(_){ /* never block app startup */ }
+
+  // Mobile auth recovery: Supabase successfully accepts the password login,
+  // but some mobile browsers can fail to deliver the auth-state event to the
+  // React app. When a fresh auth token appears, reload once so main.jsx calls
+  // getSession() and enters the POS with the persisted session.
+  try{
+    const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||window.matchMedia('(max-width: 640px)').matches;
+    if(!isMobile)return;
+    const FLAG='smallbiz_mobile_auth_reload_v1';
+    const hasAuthToken=()=>{
+      for(let i=0;i<localStorage.length;i++){
+        const key=localStorage.key(i);
+        if(!key||!key.startsWith('sb-')||!key.endsWith('-auth-token'))continue;
+        const raw=localStorage.getItem(key);
+        if(!raw)continue;
+        try{if(JSON.parse(raw)?.access_token)return true}catch(_){ }
+      }
+      return false;
+    };
+
+    if(!hasAuthToken())sessionStorage.removeItem(FLAG);
+
+    let checks=0;
+    const timer=setInterval(()=>{
+      if(hasAuthToken()){
+        if(sessionStorage.getItem(FLAG)==='1'){
+          clearInterval(timer);
+          return;
+        }
+        sessionStorage.setItem(FLAG,'1');
+        clearInterval(timer);
+        window.location.reload();
+        return;
+      }
+      checks++;
+      if(checks>=40)clearInterval(timer);
+    },250);
+  }catch(_){ /* never block app startup */ }
 })();
