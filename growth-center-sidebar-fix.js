@@ -1,31 +1,70 @@
 (() => {
   const ID = 'smallbiz-growth-center-button';
   const LABEL = 'Growth Center';
+  const EVENT = 'smallbiz:open-growth-center';
+
+  function makeClickable(button) {
+    if (!button) return;
+    button.type = 'button';
+    button.classList.add('growth-center-persistent');
+    button.style.setProperty('position', 'relative', 'important');
+    button.style.setProperty('z-index', '999999', 'important');
+    button.style.setProperty('pointer-events', 'auto', 'important');
+    button.setAttribute('aria-label', LABEL);
+    button.dataset.growthCenterButton = 'true';
+  }
+
+  // Capture at document level so another sidebar layer cannot swallow the click.
+  document.addEventListener('click', (event) => {
+    const button = event.target?.closest?.(`#${ID}`);
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    window.dispatchEvent(new CustomEvent(EVENT));
+  }, true);
+
   function attach() {
     const nav = document.querySelector('.sidebar-nav');
     if (!nav) return;
-    const existing = document.getElementById(ID);
-    if (existing && existing.parentElement === nav) return;
-    if (existing) existing.remove();
-    const b = document.createElement('button');
-    b.id = ID;
-    b.type = 'button';
-    b.className = 'nav-item growth-center-persistent';
-    b.innerHTML = '<span>🚀</span><b>' + LABEL + '</b>';
-    b.addEventListener('click', () => window.dispatchEvent(new CustomEvent('smallbiz:open-growth-center')));
-    nav.appendChild(b);
+
+    let button = document.getElementById(ID);
+    if (button && button.parentElement !== nav) {
+      button.remove();
+      button = null;
+    }
+
+    if (!button) {
+      button = document.createElement('button');
+      button.id = ID;
+      button.type = 'button';
+      button.className = 'nav-item growth-center-persistent';
+      button.innerHTML = '<span>🚀</span><b>' + LABEL + '</b>';
+      nav.appendChild(button);
+    }
+
+    makeClickable(button);
   }
-  let lastNav = null;
-  const observe = new MutationObserver(() => {
+
+  let observedNav = null;
+  let navObserver = null;
+  const bodyObserver = new MutationObserver(() => {
     const nav = document.querySelector('.sidebar-nav');
-    if (nav !== lastNav) {
-      lastNav = nav;
-      if (nav) new MutationObserver(attach).observe(nav, {childList:true, subtree:true});
+    if (nav !== observedNav) {
+      observedNav = nav;
+      navObserver?.disconnect();
+      if (nav) navObserver = new MutationObserver(attach);
+      if (nav) navObserver.observe(nav, { childList: true, subtree: true });
     }
     attach();
   });
-  observe.observe(document.body, {childList:true, subtree:true});
+
+  bodyObserver.observe(document.body, { childList: true, subtree: true });
   const timer = setInterval(attach, 500);
   attach();
-  window.addEventListener('beforeunload', () => { clearInterval(timer); observe.disconnect(); });
+
+  window.addEventListener('beforeunload', () => {
+    clearInterval(timer);
+    bodyObserver.disconnect();
+    navObserver?.disconnect();
+  });
 })();
