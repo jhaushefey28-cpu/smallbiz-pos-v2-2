@@ -1,0 +1,1 @@
+Force a fresh production build after restoring main.jsx to the known-good cashier-shift version.
