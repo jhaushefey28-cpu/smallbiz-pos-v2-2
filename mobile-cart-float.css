@@ -1,0 +1,101 @@
+/* Mobile POS: Messenger-style floating cart bubble. Desktop/tablet remain unchanged. */
+.mobile-cart-bubble{display:none}
+
+@media (max-width:640px){
+  /* Products stay as the main screen. */
+  .pos-layout{display:block!important;position:relative}
+  .pos-layout>.products-panel{width:100%!important}
+
+  /* Hide the desktop cart from normal document flow and turn it into a drawer. */
+  .pos-layout>.right-panel{
+    position:fixed!important;
+    z-index:2000!important;
+    top:0!important;
+    right:0!important;
+    bottom:0!important;
+    width:min(92vw,390px)!important;
+    max-width:390px!important;
+    height:100dvh!important;
+    margin:0!important;
+    padding:10px!important;
+    box-sizing:border-box!important;
+    overflow-y:auto!important;
+    background:var(--card-bg,#fff)!important;
+    box-shadow:-12px 0 32px rgba(15,23,42,.24)!important;
+    transform:translateX(110%)!important;
+    transition:transform .22s ease!important;
+    visibility:hidden!important;
+  }
+
+  body.mobile-cart-open .pos-layout>.right-panel{
+    transform:translateX(0)!important;
+    visibility:visible!important;
+  }
+
+  /* Recent Scanned is not part of the mobile cart drawer. */
+  .pos-layout>.right-panel>.recent-panel{display:none!important}
+
+  .mobile-cart-bubble{
+    display:flex;
+    position:fixed;
+    z-index:2100;
+    right:14px;
+    bottom:18px;
+    width:58px;
+    height:58px;
+    border:0;
+    border-radius:50%;
+    align-items:center;
+    justify-content:center;
+    background:#111827;
+    color:#fff;
+    box-shadow:0 8px 24px rgba(15,23,42,.28),0 2px 6px rgba(15,23,42,.18);
+    cursor:pointer;
+    touch-action:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+
+  .mobile-cart-bubble:active{transform:scale(.95)}
+  .mobile-cart-bubble.has-items{box-shadow:0 8px 26px rgba(37,99,235,.34),0 2px 7px rgba(15,23,42,.18)}
+  .mobile-cart-icon{font-size:25px;line-height:1}
+
+  .mobile-cart-badge{
+    position:absolute;
+    top:-3px;
+    right:-3px;
+    min-width:22px;
+    height:22px;
+    padding:0 6px;
+    box-sizing:border-box;
+    border-radius:999px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#ef4444;
+    color:#fff;
+    border:2px solid #fff;
+    font:700 11px/1 Arial,sans-serif;
+  }
+
+  body.mobile-cart-open::after{
+    content:"";
+    position:fixed;
+    z-index:1990;
+    inset:0;
+    background:rgba(15,23,42,.34);
+  }
+
+  body.mobile-cart-open .mobile-cart-bubble{right:min(92vw,390px);transform:translateX(50%)}
+  body.mobile-cart-open .mobile-cart-bubble:active{transform:translateX(50%) scale(.95)}
+
+  /* Keep the product area comfortable behind the floating control. */
+  .products-grid{padding-bottom:82px}
+}
+
+@media (max-width:390px){
+  .mobile-cart-bubble{right:10px;bottom:14px;width:54px;height:54px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .pos-layout>.right-panel{transition:none!important}
+}
