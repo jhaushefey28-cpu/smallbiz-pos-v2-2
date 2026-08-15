@@ -1,0 +1,43 @@
+/* Business Controls: keep long sections compact with internal scrolling. */
+.bc-grid2 .bc-section{
+  max-height:320px !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  scrollbar-width:thin;
+}
+
+.bc-grid2 .bc-section h3{
+  position:sticky !important;
+  top:0 !important;
+  z-index:3 !important;
+  background:#fff !important;
+  padding:2px 0 10px !important;
+}
+
+/* Long Business Controls tables (especially Online Channels) scroll inside the panel. */
+.bc-table{
+  max-height:380px !important;
+  overflow:auto !important;
+  scrollbar-width:thin;
+}
+
+.bc-table table{
+  min-width:720px;
+}
+
+.bc-table th{
+  position:sticky !important;
+  top:0 !important;
+  z-index:2 !important;
+  background:#f8fafc !important;
+}
+
+@media(max-width:800px){
+  .bc-grid2 .bc-section{max-height:300px !important;}
+  .bc-table{max-height:320px !important;}
+}
+
+@media(max-width:480px){
+  .bc-grid2 .bc-section{max-height:280px !important;}
+  .bc-table{max-height:300px !important;}
+}
