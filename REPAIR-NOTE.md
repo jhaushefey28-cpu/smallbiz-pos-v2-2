@@ -1,0 +1,1 @@
+Repair: restore the last known-good main.jsx from commit 4c289904 while keeping the marketplace feature modules already present on main. This prevents the truncated main.jsx build failure and lets Vercel build the full app again.
