@@ -1,7 +1,6 @@
 import React,{useEffect,useMemo,useState} from "react";
 import {createRoot} from "react-dom/client";
 import {createClient} from "@supabase/supabase-js";
-import {buildMockMarketplaceOrder} from "./marketplace-mock-provider.js";
 
 const url=import.meta.env.VITE_SUPABASE_URL;
 const key=import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -38,32 +37,12 @@ function Panel({profile,onClose}){
   if(!sb||!profile?.business_id||!admin)return;
   setBusy(true);setError("");setMsg("");setDemo(null);
   try{
-   const {data:channel,error:ce}=await sb.from("sales_channels").select("id,code,name").eq("business_id",profile.business_id).eq("code","shopee").maybeSingle();
-   if(ce)throw ce;if(!channel)throw new Error("Shopee channel record is missing for this business.");
-   const {data:product,error:pe}=await sb.from("products").select("id,name,sku,barcode,price,stock,active").eq("business_id",profile.business_id).eq("active",true).gt("stock",0).order("created_at",{ascending:true}).limit(1).maybeSingle();
-   if(pe)throw pe;if(!product)throw new Error("No active product with stock is available for the demo order.");
-   const externalSku=product.sku||product.barcode||`DEMO-SKU-${product.id.slice(0,8)}`;
-   const {data:mapping,error:me}=await sb.from("product_channel_mappings").upsert({business_id:profile.business_id,product_id:product.id,sales_channel_id:channel.id,external_product_id:`DEMO-PRODUCT-${String(sequence).padStart(4,"0")}`,external_sku:externalSku,external_product_name:product.name,enabled:true,updated_at:new Date().toISOString()},{onConflict:"business_id,product_id,sales_channel_id"}).select("id").single();
-   if(me)throw me;
-   const fixture=buildMockMarketplaceOrder({businessId:profile.business_id,channelCode:"shopee",productId:product.id,sku:externalSku,productName:product.name,quantity:2,unitPrice:Number(product.price||0),sequence});
-   const payload={...fixture.order,sales_channel_id:channel.id,raw_payload:{source:"smallbiz_mock",idempotency_key:fixture.idempotencyKey,fixture:fixture.order}};
-   let order=null;
-   const {data:existing,error:ee}=await sb.from("external_orders").select("id,external_order_no,fulfillment_status,total").eq("business_id",profile.business_id).eq("sales_channel_id",channel.id).eq("external_order_no",fixture.order.external_order_no).maybeSingle();
-   if(ee)throw ee;
-   if(existing){order=existing;}else{
-    const {data:created,error:oe}=await sb.from("external_orders").insert(payload).select("id,external_order_no,fulfillment_status,total").single();
-    if(oe){
-      const {data:retry}=await sb.from("external_orders").select("id,external_order_no,fulfillment_status,total").eq("business_id",profile.business_id).eq("sales_channel_id",channel.id).eq("external_order_no",fixture.order.external_order_no).maybeSingle();
-      if(!retry)throw oe;order=retry;
-    }else order=created;
-   }
-   const {data:item,error:ie}=await sb.from("external_order_items").select("id,external_order_id,product_id,quantity").eq("business_id",profile.business_id).eq("external_order_id",order.id).maybeSingle();
-   if(ie)throw ie;
-   if(!item){const {error:ie2}=await sb.from("external_order_items").insert({...fixture.items[0],business_id:profile.business_id,external_order_id:order.id,product_channel_mapping_id:mapping.id}).select("id").single();if(ie2)throw ie2;}
-   const {data:reservation,error:re}=await sb.rpc("reserve_external_order",{p_external_order_id:order.id});
-   if(re)throw re;
-   setDemo({orderNo:order.external_order_no,product:product.name,stockBefore:Number(product.stock),reserved:2,reservationStatus:reservation?.status||"reserved",duplicate:!!existing});
-   setMsg(existing?`Duplicate test passed: ${order.external_order_no} was reused without creating another order or reservation.`:`Mock order ${order.external_order_no} imported and stock reserved.`);
+   const {data,result,error}=await sb.rpc("create_marketplace_demo_order",{p_sequence:sequence});
+   if(error)throw error;
+   const demoResult=data||result;
+   if(!demoResult?.success)throw new Error("Demo order RPC did not return a success result.");
+   setDemo({orderNo:demoResult.order_no,product:demoResult.product_name,stockBefore:Number(demoResult.stock_before),reserved:Number(demoResult.reserved||0),reservationStatus:demoResult.reservation_status||"reserved",duplicate:!!demoResult.duplicate});
+   setMsg(demoResult.duplicate?`Duplicate test passed: ${demoResult.order_no} was reused without creating another order or reservation.`:`Mock order ${demoResult.order_no} imported and stock reserved.`);
    await load();
   }catch(e){setError(e?.message||String(e));}
   finally{setBusy(false);}
