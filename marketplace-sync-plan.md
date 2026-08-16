@@ -20,6 +20,10 @@ Marketplace channel -> external_orders -> external_order_items -> product_channe
 8. Let the existing fulfillment RPC perform physical stock deduction and sales/COGS creation.
 9. Record sync failures without corrupting existing POS/inventory data.
 
+## No-cost validation stage
+
+`marketplace-mock-provider.js` provides deterministic demo orders and an idempotency key without calling Shopee, Lazada, TikTok, or any paid provider. It is a test/demo fixture only; it does not write to Supabase and contains no credentials. The live adapter must remain responsible for fetching, authorization, normalization, and persistence.
+
 ## Non-goals
 
 - No duplicate marketplace fulfillment component.
@@ -27,6 +31,7 @@ Marketplace channel -> external_orders -> external_order_items -> product_channe
 - No duplicate stock reservation engine.
 - No changes to Cashier Shift.
 - No live marketplace credentials stored in frontend code.
+- No unofficial marketplace scraping or API workarounds.
 
 ## Implementation gate
 
