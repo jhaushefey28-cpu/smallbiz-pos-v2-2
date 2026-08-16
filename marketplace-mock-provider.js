@@ -30,8 +30,9 @@ export function buildMockMarketplaceOrder({
       platform_fee: 0,
       shipping_fee: 0,
       total: qty * price,
-      order_status: "unpaid",
-      fulfillment_status: "new",
+      // Must match the production external_orders check constraints.
+      order_status: "pending",
+      fulfillment_status: "unfulfilled",
       ordered_at: new Date().toISOString(),
       source: "mock",
     },
