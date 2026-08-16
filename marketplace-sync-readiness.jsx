@@ -16,15 +16,25 @@ function Panel({profile,onClose}){
  async function load(){
   if(!sb||!profile?.business_id)return;
   setLoading(true);setError("");
-  const [{data:c,error:ce},{data:m,error:me},{data:o,error:oe}]=await Promise.all([
-   sb.from("sales_channels").select("id,code,name,platform_enabled,enabled").eq("business_id",profile.business_id).in("code",MARKETPLACES).order("name"),
-   sb.from("product_channel_mappings").select("id,sales_channel_id,product_id,external_sku,external_product_name,enabled").eq("business_id",profile.business_id).in("sales_channel_id",(await sb.from("sales_channels").select("id").eq("business_id",profile.business_id).in("code",MARKETPLACES))).order("created_at",{ascending:false}).limit(500),
-   sb.from("external_orders").select("id,sales_channel_id,external_order_no,total,order_status,fulfillment_status,created_at").eq("business_id",profile.business_id).in("sales_channel_id",(await sb.from("sales_channels").select("id").eq("business_id",profile.business_id).in("code",MARKETPLACES))).order("created_at",{ascending:false}).limit(500)
-  ]);
-  if(ce)setError(ce.message);if(me)setError(me.message);if(oe)setError(oe.message);setRows(c||[]);setMaps(m||[]);setOrders(o||[]);setLoading(false);
+  try{
+   const {data:c,error:ce}=await sb.from("sales_channels").select("id,code,name,platform_enabled,enabled").eq("business_id",profile.business_id).in("code",MARKETPLACES).order("name");
+   if(ce)throw ce;
+   const channels=c||[];
+   const ids=channels.map(x=>x.id);
+   if(!ids.length){setRows(channels);setMaps([]);setOrders([]);return;}
+   const [{data:m,error:me},{data:o,error:oe}]=await Promise.all([
+    sb.from("product_channel_mappings").select("id,sales_channel_id,product_id,external_sku,external_product_name,enabled").eq("business_id",profile.business_id).in("sales_channel_id",ids).order("created_at",{ascending:false}).limit(500),
+    sb.from("external_orders").select("id,sales_channel_id,external_order_no,total,order_status,fulfillment_status,created_at").eq("business_id",profile.business_id).in("sales_channel_id",ids).order("created_at",{ascending:false}).limit(500)
+   ]);
+   if(me)throw me;
+   if(oe)throw oe;
+   setRows(channels);setMaps(m||[]);setOrders(o||[]);
+  }catch(e){
+   setRows([]);setMaps([]);setOrders([]);setError(e?.message||String(e));
+  }finally{setLoading(false);}
  }
  useEffect(()=>{load()},[profile?.business_id]);
- const stats=useMemo(()=>({orders:orders.length,mapped:maps.filter(x=>x.enabled!==false).length,unmapped:maps.filter(x=>!x.product_id).length,value:orders.reduce((a,x)=>a+Number(x.total||0),0)}),[orders,maps]);
+ const stats=useMemo(()=>({orders:orders.length,mapped:maps.filter(x=>x.enabled!==false&&x.product_id).length,unmapped:maps.filter(x=>!x.product_id).length,value:orders.reduce((a,x)=>a+Number(x.total||0),0)}),[orders,maps]);
  return <div className="msr-overlay"><div className="msr-panel"><header><div><div className="msr-kicker">SMALLBIZ POS</div><h2>🌐 Marketplace Order Center</h2><p>One queue for Shopee, Lazada and TikTok Shop. API credentials remain server-side.</p></div><button onClick={onClose}>✕</button></header>{msg&&<div className="msr-ok">✓ {msg}</div>}{error&&<div className="msr-error">{error}</div>}
  <div className="msr-stats"><div><b>{stats.orders}</b><span>Imported Orders</span></div><div><b>{stats.mapped}</b><span>SKU Mappings</span></div><div><b>{stats.unmapped}</b><span>Needs Mapping</span></div><div><b>{money(stats.value)}</b><span>Order Value</span></div></div>
  <section><h3>Channel Readiness</h3><div className="msr-grid">{rows.map(c=><article key={c.id}><div className="msr-icon">{icon(c.code)}</div><div><b>{c.name}</b><small>{c.platform_enabled?"Platform enabled":"Platform disabled"} • {c.enabled?"Channel active":"Channel inactive"}</small><p>{c.platform_enabled?"Ready for OAuth credentials and server-side sync adapter.":"Enable this channel first from Platform Channel Admin."}</p></div></article>)}</div></section>
