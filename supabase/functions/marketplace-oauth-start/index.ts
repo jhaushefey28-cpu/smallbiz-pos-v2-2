@@ -1,5 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  buildMarketplaceAuthorizationUrl,
+  getConfiguredProviderEnvironment,
+  normalizeMarketplaceProvider,
+} from "../_shared/marketplace-providers.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -57,10 +62,13 @@ Deno.serve(async (req: Request) => {
   if (!channel) return json({ error: "Marketplace channel not found for this business" }, 404);
   if (!channel.platform_enabled) return json({ error: "Marketplace channel is not platform-enabled" }, 409);
 
-  const provider = String(channel.code);
+  const provider = normalizeMarketplaceProvider(String(channel.code));
+  if (!provider) return json({ error: `Unsupported marketplace provider: ${channel.code}` }, 422);
+
   const rawState = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
   const stateHash = await hashState(rawState);
-  const redirectUri = Deno.env.get(`${provider.toUpperCase()}_OAUTH_REDIRECT_URI`) || null;
+  const providerEnv = getConfiguredProviderEnvironment(provider);
+  const redirectUri = providerEnv.redirectUri;
 
   const { data: connection } = await admin
     .from("channel_connections")
@@ -102,13 +110,7 @@ Deno.serve(async (req: Request) => {
   });
   if (stateError) return json({ error: stateError.message }, 500);
 
-  const configured = Boolean(
-    Deno.env.get(`${provider.toUpperCase()}_OAUTH_AUTHORIZE_URL`) &&
-    Deno.env.get(`${provider.toUpperCase()}_APP_ID`) &&
-    redirectUri
-  );
-
-  if (!configured) {
+  if (!providerEnv.configured) {
     return json({
       ok: true,
       configured: false,
@@ -118,10 +120,10 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const authorizeUrl = new URL(Deno.env.get(`${provider.toUpperCase()}_OAUTH_AUTHORIZE_URL`)!);
-  authorizeUrl.searchParams.set("client_id", Deno.env.get(`${provider.toUpperCase()}_APP_ID`)!);
-  authorizeUrl.searchParams.set("redirect_uri", redirectUri!);
-  authorizeUrl.searchParams.set("state", rawState);
+  const authorizationUrl = buildMarketplaceAuthorizationUrl(provider, rawState);
+  if (!authorizationUrl) {
+    return json({ error: `${channel.name} OAuth configuration is incomplete` }, 500);
+  }
 
-  return json({ ok: true, configured: true, provider, authorization_url: authorizeUrl.toString() });
+  return json({ ok: true, configured: true, provider, authorization_url: authorizationUrl });
 });
