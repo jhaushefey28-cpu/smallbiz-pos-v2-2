@@ -31,7 +31,7 @@ const configs: Record<MarketplaceProvider, MarketplaceProviderConfig> = {
     provider: "tiktok_shop",
     authorizeUrlEnv: "TIKTOK_SHOP_OAUTH_AUTHORIZE_URL",
     appIdEnv: "TIKTOK_SHOP_APP_ID",
-    redirectUriEnv: "TIKTOK_SHOP_OAUTH_REDIRECT_URI",
+    redirectUriEnv: "TIKTOK_SHOP_REDIRECT_URI",
     stateParam: "state",
     clientIdParam: "client_id",
   },
@@ -64,21 +64,13 @@ export function getConfiguredProviderEnvironment(provider: MarketplaceProvider) 
   };
 }
 
-export function buildMarketplaceAuthorizationUrl(
-  provider: MarketplaceProvider,
-  state: string,
-): string | null {
+export function buildMarketplaceAuthorizationUrl(provider: MarketplaceProvider, state: string): string | null {
   const env = getConfiguredProviderEnvironment(provider);
   if (!env.configured || !env.authorizeUrl || !env.appId || !env.redirectUri) return null;
-
   const url = new URL(env.authorizeUrl);
   url.searchParams.set(env.clientIdParam, env.appId);
   url.searchParams.set("redirect_uri", env.redirectUri);
   url.searchParams.set(env.stateParam, state);
-
-  for (const [key, value] of Object.entries(env.extraAuthorizeParams ?? {})) {
-    url.searchParams.set(key, value);
-  }
-
+  for (const [key, value] of Object.entries(env.extraAuthorizeParams ?? {})) url.searchParams.set(key, value);
   return url.toString();
 }
