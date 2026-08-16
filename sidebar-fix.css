@@ -63,6 +63,29 @@
   color: #cbd5e1;
 }
 
+/* Marketplace Order Center — keep the full modal content inside its own scroll area. */
+.msr-overlay {
+  align-items: flex-start !important;
+  box-sizing: border-box;
+}
+
+.msr-panel {
+  height: auto !important;
+  max-height: calc(100dvh - 40px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+  flex: 0 1 1120px !important;
+  min-height: 0 !important;
+}
+
+.msr-panel section,
+.msr-panel header,
+.msr-panel .msr-note,
+.msr-panel .msr-stats {
+  box-sizing: border-box;
+}
+
 @media (max-width: 900px) and (min-width: 701px) {
   .sidebar { flex-basis: 210px; }
 }
@@ -84,4 +107,8 @@
   }
 
   .sidebar-bottom { display: none; }
+
+  .msr-panel {
+    max-height: calc(100dvh - 16px) !important;
+  }
 }
