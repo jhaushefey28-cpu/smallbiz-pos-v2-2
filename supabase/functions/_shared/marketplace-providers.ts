@@ -1,76 +1,13 @@
+// Provider configuration and authorization helpers. Shopee uses signed v2 partner authorization; Lazada/TikTok retain generic OAuth parameters until their official app configuration is supplied.
 export type MarketplaceProvider = "shopee" | "lazada" | "tiktok_shop";
-
-export type MarketplaceProviderConfig = {
-  provider: MarketplaceProvider;
-  authorizeUrlEnv: string;
-  appIdEnv: string;
-  redirectUriEnv: string;
-  stateParam: string;
-  clientIdParam: string;
-  extraAuthorizeParams?: Record<string, string>;
-};
-
+export type MarketplaceProviderConfig = { provider: MarketplaceProvider; authorizeUrlEnv: string; appIdEnv: string; redirectUriEnv: string; stateParam: string; clientIdParam: string };
 const configs: Record<MarketplaceProvider, MarketplaceProviderConfig> = {
-  shopee: {
-    provider: "shopee",
-    authorizeUrlEnv: "SHOPEE_OAUTH_AUTHORIZE_URL",
-    appIdEnv: "SHOPEE_APP_ID",
-    redirectUriEnv: "SHOPEE_OAUTH_REDIRECT_URI",
-    stateParam: "state",
-    clientIdParam: "client_id",
-  },
-  lazada: {
-    provider: "lazada",
-    authorizeUrlEnv: "LAZADA_OAUTH_AUTHORIZE_URL",
-    appIdEnv: "LAZADA_APP_ID",
-    redirectUriEnv: "LAZADA_OAUTH_REDIRECT_URI",
-    stateParam: "state",
-    clientIdParam: "client_id",
-  },
-  tiktok_shop: {
-    provider: "tiktok_shop",
-    authorizeUrlEnv: "TIKTOK_SHOP_OAUTH_AUTHORIZE_URL",
-    appIdEnv: "TIKTOK_SHOP_APP_ID",
-    redirectUriEnv: "TIKTOK_SHOP_REDIRECT_URI",
-    stateParam: "state",
-    clientIdParam: "client_id",
-  },
+  shopee: { provider: "shopee", authorizeUrlEnv: "SHOPEE_OAUTH_AUTHORIZE_URL", appIdEnv: "SHOPEE_PARTNER_ID", redirectUriEnv: "SHOPEE_OAUTH_REDIRECT_URI", stateParam: "state", clientIdParam: "partner_id" },
+  lazada: { provider: "lazada", authorizeUrlEnv: "LAZADA_OAUTH_AUTHORIZE_URL", appIdEnv: "LAZADA_APP_ID", redirectUriEnv: "LAZADA_OAUTH_REDIRECT_URI", stateParam: "state", clientIdParam: "client_id" },
+  tiktok_shop: { provider: "tiktok_shop", authorizeUrlEnv: "TIKTOK_SHOP_OAUTH_AUTHORIZE_URL", appIdEnv: "TIKTOK_SHOP_APP_ID", redirectUriEnv: "TIKTOK_SHOP_REDIRECT_URI", stateParam: "state", clientIdParam: "client_id" },
 };
-
-export function normalizeMarketplaceProvider(value: string): MarketplaceProvider | null {
-  const normalized = value.trim().toLowerCase().replace(/[-\s]/g, "_");
-  if (normalized === "shopee") return "shopee";
-  if (normalized === "lazada") return "lazada";
-  if (normalized === "tiktok" || normalized === "tiktok_shop") return "tiktok_shop";
-  return null;
-}
-
-export function getMarketplaceProviderConfig(provider: MarketplaceProvider): MarketplaceProviderConfig {
-  return configs[provider];
-}
-
-export function getConfiguredProviderEnvironment(provider: MarketplaceProvider) {
-  const config = getMarketplaceProviderConfig(provider);
-  const authorizeUrl = Deno.env.get(config.authorizeUrlEnv) ?? null;
-  const appId = Deno.env.get(config.appIdEnv) ?? null;
-  const redirectUri = Deno.env.get(config.redirectUriEnv) ?? null;
-
-  return {
-    ...config,
-    authorizeUrl,
-    appId,
-    redirectUri,
-    configured: Boolean(authorizeUrl && appId && redirectUri),
-  };
-}
-
-export function buildMarketplaceAuthorizationUrl(provider: MarketplaceProvider, state: string): string | null {
-  const env = getConfiguredProviderEnvironment(provider);
-  if (!env.configured || !env.authorizeUrl || !env.appId || !env.redirectUri) return null;
-  const url = new URL(env.authorizeUrl);
-  url.searchParams.set(env.clientIdParam, env.appId);
-  url.searchParams.set("redirect_uri", env.redirectUri);
-  url.searchParams.set(env.stateParam, state);
-  for (const [key, value] of Object.entries(env.extraAuthorizeParams ?? {})) url.searchParams.set(key, value);
-  return url.toString();
-}
+export function normalizeMarketplaceProvider(value: string): MarketplaceProvider | null { const normalized = value.trim().toLowerCase().replace(/[-\s]/g, "_"); if (normalized === "shopee") return "shopee"; if (normalized === "lazada") return "lazada"; if (normalized === "tiktok" || normalized === "tiktok_shop") return "tiktok_shop"; return null; }
+export function getMarketplaceProviderConfig(provider: MarketplaceProvider) { return configs[provider]; }
+export function getConfiguredProviderEnvironment(provider: MarketplaceProvider) { const config = getMarketplaceProviderConfig(provider); const authorizeUrl = Deno.env.get(config.authorizeUrlEnv) ?? null; const appId = Deno.env.get(config.appIdEnv) ?? null; const redirectUri = Deno.env.get(config.redirectUriEnv) ?? null; return { ...config, authorizeUrl, appId, redirectUri, configured: Boolean(authorizeUrl && appId && redirectUri) }; }
+export async function hmacSha256Hex(message: string, secret: string) { const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)); return Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join(""); }
+export async function buildMarketplaceAuthorizationUrl(provider: MarketplaceProvider, state: string): Promise<string | null> { const env = getConfiguredProviderEnvironment(provider); if (!env.configured || !env.authorizeUrl || !env.appId || !env.redirectUri) return null; const url = new URL(env.authorizeUrl); if (provider === "shopee") { const partnerKey = Deno.env.get("SHOPEE_PARTNER_KEY"); if (!partnerKey) return null; const timestamp = Math.floor(Date.now() / 1000).toString(); const sign = await hmacSha256Hex(`${env.appId}${url.pathname}${timestamp}`, partnerKey); url.searchParams.set("partner_id", env.appId); url.searchParams.set("timestamp", timestamp); url.searchParams.set("sign", sign); url.searchParams.set("redirect", env.redirectUri); return url.toString(); } url.searchParams.set(env.clientIdParam, env.appId); url.searchParams.set("redirect_uri", env.redirectUri); url.searchParams.set(env.stateParam, state); return url.toString(); }
