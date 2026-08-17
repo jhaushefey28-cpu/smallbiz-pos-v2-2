@@ -24,6 +24,11 @@
   function fmt(v){return v?new Date(v).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}):'—'}
   function esc(v){return String(v??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]))}
   function addNav(){const nav=document.querySelector('.sidebar-nav');if(!nav)return;let b=nav.querySelector('[data-smallbiz-attendance]');if(b){const label=b.querySelector('b');if(label)label.textContent='Employees / Attendance';return}b=document.createElement('button');b.className='nav-item';b.dataset.smallbizAttendance='1';b.innerHTML='<span>👥</span><b>Employees / Attendance</b>';b.onclick=()=>render();nav.appendChild(b)}
-  function boot(){const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js';s.onload=()=>setTimeout(addNav,500);s.onerror=()=>console.error('Face recognition library failed to load');document.head.appendChild(s);const poll=setInterval(()=>{addNav();if(document.querySelector('.sidebar-nav'))clearInterval(poll)},500)}
+  function boot(){
+    const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js';s.onload=()=>setTimeout(addNav,500);s.onerror=()=>console.error('Face recognition library failed to load');document.head.appendChild(s);
+    const observer=new MutationObserver(()=>addNav());
+    observer.observe(document.body,{childList:true,subtree:true});
+    addNav();
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
