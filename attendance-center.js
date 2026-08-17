@@ -24,14 +24,28 @@
   async function record(p,action){try{const live=await liveDescriptor();setMsg('Matching face...');const r=await sb.rpc('record_face_attendance',{p_business_id:p.business_id,p_face_embedding:live.descriptor,p_action:action,p_liveness_score:live.liveness,p_branch_id:null,p_device_id:localStorage.getItem('smallbiz_attendance_device')||null});if(r.error)throw r.error;const x=r.data||{};setMsg(`${action==='time_in'?'Time In':'Time Out'} recorded for ${x.employee_name||'employee'}.`)}catch(e){setMsg(e.message||String(e),true)}}
   async function renderLogs(body,p){const start=new Date();start.setDate(start.getDate()-7);const r=await sb.rpc('list_attendance',{p_business_id:p.business_id,p_start_date:start.toISOString().slice(0,10),p_end_date:new Date().toISOString().slice(0,10)});if(r.error)throw r.error;const rows=r.data||[];body.innerHTML=`<div class="sb-att-log-head"><b>Last 7 Days</b><button id="sb-att-refresh">🔄 Refresh</button></div><div class="sb-att-table"><table><thead><tr><th>Date</th><th>Employee</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>Method</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${x.attendance_date}</td><td><b>${esc(x.employee_name)}</b></td><td>${fmt(x.time_in)}</td><td>${fmt(x.time_out)}</td><td>${Number(x.regular_hours||0).toFixed(2)}</td><td>${esc(x.recognition_method||'manual')}</td></tr>`).join(''):'<tr><td colspan="6">No attendance records.</td></tr>'}</tbody></table></div>`;$('#sb-att-refresh').onclick=()=>renderLogs(body,p)}
   function fmt(v){return v?new Date(v).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}):'—'}
-  function esc(v){return String(v??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]))}
-  function addNav(){const nav=document.querySelector('.sidebar-nav');if(!nav)return;let b=nav.querySelector('[data-smallbiz-attendance]');if(b){const label=b.querySelector('b');if(label)label.textContent='Employees / Attendance';return}b=document.createElement('button');b.className='nav-item';b.dataset.smallbizAttendance='1';b.innerHTML='<span>👥</span><b>Employees / Attendance</b>';b.onclick=()=>render();nav.appendChild(b)}
+  function esc(v){return String(v??'').replace(/[&<>'\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[m]))}
+  function addNav(){
+    const nav=document.querySelector('.sidebar-nav');
+    if(!nav)return;
+    let b=nav.querySelector('[data-smallbiz-attendance]');
+    if(b){const label=b.querySelector('b');if(label)label.textContent='Employees / Attendance';return}
+    b=document.createElement('button');
+    b.type='button';
+    b.className='nav-item';
+    b.dataset.smallbizAttendance='1';
+    b.setAttribute('aria-label','Employees / Attendance');
+    b.innerHTML='<span>👥</span><b>Employees / Attendance</b>';
+    b.onclick=()=>window.__smallbizOpenAttendance?.();
+    const bottom=nav.parentElement?.querySelector('.sidebar-bottom');
+    if(bottom)nav.insertBefore(b,bottom);else nav.appendChild(b);
+  }
   function boot(){
-    const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js';s.onload=()=>setTimeout(addNav,500);s.onerror=()=>console.error('Face recognition library failed to load');document.head.appendChild(s);
+    const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js';s.onload=()=>setTimeout(addNav,300);s.onerror=()=>console.error('Face recognition library failed to load');document.head.appendChild(s);
     const observer=new MutationObserver(()=>addNav());
     observer.observe(document.body,{childList:true,subtree:true});
     addNav();
-    let attempts=0;const timer=setInterval(()=>{addNav();if(++attempts>120)clearInterval(timer)},250);
+    let attempts=0;const timer=setInterval(()=>{addNav();if(++attempts>240)clearInterval(timer)},250);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
