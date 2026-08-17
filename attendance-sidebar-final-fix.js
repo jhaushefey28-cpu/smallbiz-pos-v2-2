@@ -2,8 +2,20 @@
   function addAttendanceNav(){
     const nav=document.querySelector('.sidebar-nav');
     if(!nav)return false;
+
+    // Reuse the attendance button created by attendance-center.js when it exists.
+    // The previous version inserted the button beside .sidebar-nav, which could
+    // be hidden because .sidebar-nav owns the scrollable/flexible sidebar area.
     let button=nav.querySelector('[data-smallbiz-attendance-final]');
     if(button)return true;
+
+    button=document.querySelector('[data-smallbiz-attendance]');
+    if(button){
+      button.dataset.smallbizAttendanceFinal='1';
+      if(button.parentElement!==nav)nav.appendChild(button);
+      return true;
+    }
+
     button=document.createElement('button');
     button.type='button';
     button.className='nav-item';
@@ -14,12 +26,10 @@
       if(typeof window.__smallbizOpenAttendance==='function') window.__smallbizOpenAttendance();
       else window.dispatchEvent(new CustomEvent('smallbiz:open-attendance'));
     });
-    const parent=nav.parentElement;
-    const bottom=parent&&parent.querySelector('.sidebar-bottom');
-    if(bottom&&bottom.parentElement===parent) parent.insertBefore(button,bottom);
-    else nav.appendChild(button);
+    nav.appendChild(button);
     return true;
   }
+
   function boot(){
     addAttendanceNav();
     const observer=new MutationObserver(function(){addAttendanceNav()});
@@ -29,5 +39,6 @@
       if(addAttendanceNav()||++tries>240)clearInterval(timer);
     },250);
   }
+
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
