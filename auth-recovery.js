@@ -1,9 +1,10 @@
 // SmallBiz POS auth-session recovery.
-// Supabase documents that client clock skew can cause JWT timing errors.
-// If a persisted access token is clearly issued in the future, discard only
-// the affected Supabase auth session so the app can request a fresh session.
+// Supabase access tokens are short-lived JWTs. If a persisted token is
+// clearly issued in the future, discard only that auth session so the app
+// can request a fresh token instead of sending a known-invalid JWT to PostgREST.
 (function(){
-  const FUTURE_SKEW_SECONDS=60;
+  const FUTURE_SKEW_SECONDS=10*60;
+  let clearedFutureToken=false;
   try{
     const now=Math.floor(Date.now()/1000);
     for(let i=0;i<localStorage.length;i++){
@@ -25,14 +26,22 @@
       if(Number.isFinite(payload?.iat)&&payload.iat>now+FUTURE_SKEW_SECONDS){
         localStorage.removeItem(key);
         sessionStorage.removeItem(key);
+        clearedFutureToken=true;
       }
     }
   }catch(_){ /* never block app startup */ }
 
-  // Mobile auth recovery: Supabase successfully accepts the password login,
-  // but some mobile browsers can fail to deliver the auth-state event to the
-  // React app. When a fresh auth token appears, reload once so main.jsx calls
-  // getSession() and enters the POS with the persisted session.
+  // If a future-issued token was found, force one clean app start. This makes
+  // main.jsx call getSession() without reusing the rejected JWT.
+  if(clearedFutureToken){
+    try{ sessionStorage.removeItem('smallbiz_mobile_auth_reload_v1'); }catch(_){ }
+    try{ window.location.reload(); }catch(_){ }
+    return;
+  }
+
+  // Mobile auth recovery: Supabase can complete password login while a mobile
+  // browser misses the auth-state event. When a fresh auth token appears,
+  // reload once so main.jsx calls getSession() with the new session.
   try{
     const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||window.matchMedia('(max-width: 640px)').matches;
     if(!isMobile)return;
