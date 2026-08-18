@@ -8,53 +8,66 @@
 
     const email=form.querySelector('input[type="email"]');
     const password=form.querySelector('input[type="password"]');
-    const button=form.querySelector('button');
+    const button=form.querySelector('button[type="submit"],button');
     if(email){ email.setAttribute('autocomplete','username'); email.setAttribute('inputmode','email'); email.setAttribute('enterkeyhint','next'); }
     if(password){ password.setAttribute('autocomplete','current-password'); password.setAttribute('enterkeyhint','go'); }
     if(button){ button.type='submit'; button.setAttribute('aria-label','Login'); }
 
     let submitted=false;
-    let fallbackTimer=null;
+    let submitTimer=null;
     const originalText=button?.textContent||'Login';
 
+    const resetButton=()=>{
+      submitted=false;
+      if(button){
+        button.disabled=false;
+        button.textContent=originalText;
+      }
+      if(submitTimer){clearTimeout(submitTimer);submitTimer=null;}
+    };
+
+    // Only mark the form as submitting. Do not reload the page and do not
+    // interfere with Supabase's persisted session/auth-state lifecycle.
     const markSubmitted=()=>{
       submitted=true;
       if(button){
         button.disabled=true;
         button.textContent='Signing in...';
       }
-      if(fallbackTimer)clearTimeout(fallbackTimer);
-      // If Supabase has accepted the credentials but React did not receive the
-      // auth-state event on a mobile browser, one controlled reload lets the
-      // persisted Supabase session be picked up by getSession().
-      fallbackTimer=setTimeout(()=>{
-        if(!document.body.contains(form))return;
-        if(sessionStorage.getItem('smallbiz_mobile_login_reload')==='1'){
-          if(button){button.disabled=false;button.textContent=originalText;}
-          return;
-        }
-        sessionStorage.setItem('smallbiz_mobile_login_reload','1');
-        window.location.reload();
-      },8000);
+      if(submitTimer)clearTimeout(submitTimer);
+      // If React/Supabase returns an error, the React UI remains on the form.
+      // Re-enable the button after a bounded timeout so a mobile browser cannot
+      // leave the user permanently stuck in a disabled state.
+      submitTimer=setTimeout(()=>{
+        if(document.body.contains(form) && !document.querySelector('.auth-error')) resetButton();
+      },12000);
     };
 
-    const clearReloadFlag=()=>{
-      try{sessionStorage.removeItem('smallbiz_mobile_login_reload')}catch(_){ }
-    };
-    clearReloadFlag();
     form.addEventListener('submit',markSubmitted,true);
 
+    // Some mobile browsers can miss the synthetic submit after a touch.
+    // requestSubmit() re-enters the normal React onSubmit handler; it does not
+    // authenticate independently and is guarded against duplicate submission.
     const fallbackSubmit=()=>{
       if(submitted||!document.body.contains(form)||form.dataset.loginFallbackUsed==='1')return;
       form.dataset.loginFallbackUsed='1';
-      try{form.requestSubmit(button)}catch(_){button?.click()}
+      try{
+        if(typeof form.requestSubmit==='function') form.requestSubmit(button);
+        else button?.click();
+      }catch(_){
+        try{button?.click()}catch(__){}
+      }
       setTimeout(()=>{form.dataset.loginFallbackUsed='';},1500);
     };
 
     if(button){
-      button.addEventListener('pointerup',()=>setTimeout(fallbackSubmit,350),{passive:true});
-      button.addEventListener('touchend',()=>setTimeout(fallbackSubmit,350),{passive:true});
+      button.addEventListener('click',()=>setTimeout(fallbackSubmit,150),{passive:true});
+      button.addEventListener('pointerup',()=>setTimeout(fallbackSubmit,300),{passive:true});
+      button.addEventListener('touchend',()=>setTimeout(fallbackSubmit,300),{passive:true});
     }
+
+    // Keep the Login button usable after a browser-level validation failure.
+    form.addEventListener('invalid',()=>resetButton(),true);
   };
 
   const observer=new MutationObserver(install);
