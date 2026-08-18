@@ -3,7 +3,10 @@
 // clearly issued in the future, discard only that auth session so the app
 // can request a fresh token instead of sending a known-invalid JWT to PostgREST.
 (function(){
-  const FUTURE_SKEW_SECONDS=10*60;
+  // Keep this tight: PostgREST rejects JWTs whose iat is in its future.
+  // A large tolerance can allow a bad token to survive long enough to break
+  // the first profile query after login.
+  const FUTURE_SKEW_SECONDS=30;
   let clearedFutureToken=false;
   try{
     const now=Math.floor(Date.now()/1000);
