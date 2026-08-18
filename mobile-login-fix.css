@@ -5,6 +5,16 @@ body,
   width: 100% !important;
   min-width: 0 !important;
   max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+html,
+body,
+#root,
+.auth,
+.login-card,
+.login-card * {
+  box-sizing: border-box !important;
 }
 
 html {
@@ -13,6 +23,7 @@ html {
 
 body {
   overflow-x: hidden !important;
+  margin: 0 !important;
 }
 
 .auth {
@@ -27,7 +38,7 @@ body {
   isolation: isolate !important;
   display: grid !important;
   place-items: center !important;
-  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)) !important;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)) !important;
   pointer-events: auto !important;
   touch-action: manipulation !important;
   overflow-y: auto !important;
@@ -44,17 +55,21 @@ body {
 .login-card {
   position: relative !important;
   z-index: 2147483647 !important;
-  width: min(380px, calc(100vw - 28px)) !important;
+  display: block !important;
+  width: min(380px, 100%) !important;
   max-width: 380px !important;
   min-width: 0 !important;
-  max-height: calc(100dvh - 24px);
+  max-height: calc(100dvh - 20px);
   margin: auto !important;
   padding: 24px !important;
+  border-radius: 18px !important;
   pointer-events: auto !important;
   touch-action: manipulation !important;
   user-select: auto !important;
   -webkit-user-select: auto !important;
   overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 .login-card input,
@@ -65,6 +80,7 @@ body {
   pointer-events: auto !important;
   touch-action: manipulation !important;
   max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .login-card input {
@@ -85,6 +101,8 @@ body {
   width: 100% !important;
   min-width: 0 !important;
   min-height: 48px !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
   cursor: pointer !important;
   user-select: none !important;
   -webkit-user-select: none !important;
@@ -109,16 +127,13 @@ body {
 
   .auth {
     place-items: center !important;
-    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)) !important;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)) !important;
   }
 
   .login-card {
-    width: min(380px, calc(100vw - 20px)) !important;
+    width: 100% !important;
     max-width: 380px !important;
-    max-height: calc(100dvh - 20px);
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    -webkit-overflow-scrolling: touch;
+    max-height: calc(100dvh - 16px);
     padding: 20px !important;
     border-radius: 18px !important;
   }
@@ -126,7 +141,8 @@ body {
 
 @media (max-width: 380px) {
   .login-card {
-    width: calc(100vw - 16px) !important;
-    padding: 18px !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 16px !important;
   }
 }
