@@ -1,36 +1,24 @@
 (function(){
-  function addAttendanceNav(){
-    const nav=document.querySelector('.sidebar-nav');
-    if(!nav)return false;
-    let button=nav.querySelector('[data-smallbiz-attendance-final]');
-    if(button)return true;
-    button=document.querySelector('[data-smallbiz-attendance]');
-    if(button){
-      button.dataset.smallbizAttendanceFinal='1';
-      if(button.parentElement!==nav)nav.appendChild(button);
-      return true;
-    }
-    button=document.createElement('button');
-    button.type='button';
-    button.className='nav-item';
-    button.dataset.smallbizAttendanceFinal='1';
-    button.setAttribute('aria-label','Employees / Attendance');
-    button.innerHTML='<span>👥</span><b>Employees / Attendance</b>';
-    button.addEventListener('click',function(){
-      if(typeof window.__smallbizOpenAttendance==='function') window.__smallbizOpenAttendance();
-      else window.dispatchEvent(new CustomEvent('smallbiz:open-attendance'));
-    });
-    nav.appendChild(button);
-    return true;
-  }
-  function boot(){
-    addAttendanceNav();
-    const observer=new MutationObserver(function(){addAttendanceNav()});
-    observer.observe(document.body,{childList:true,subtree:true});
-    let tries=0;
-    const timer=setInterval(function(){
-      if(addAttendanceNav()||++tries>240)clearInterval(timer);
-    },250);
-  }
+  const SUPABASE_URL='https://fnuncwcsliojhgkmmhwo.supabase.co';
+  const SUPABASE_KEY='sb_publishable_jvzxrFRakTBDiQvST5e44w_X60WWMPe';
+  const MODEL_URL='https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+  let sb=null,stream=null,capturedDescriptor=null,busy=false;
+  const $=(s,r=document)=>r.querySelector(s);
+  const msg=(text,error=false)=>{const el=$('#sb-att-msg');if(el){el.textContent=text;el.className=error?'sb-att-msg error':'sb-att-msg'}};
+  const esc=v=>String(v??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]));
+  function client(){if(!sb&&window.supabase?.createClient)sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);return sb}
+  async function context(){const c=client();if(!c)throw new Error('Supabase client unavailable.');const {data:{session}}=await c.auth.getSession();if(!session)throw new Error('Please login first.');const {data:profile,error}=await c.from('profiles').select('id,business_id,full_name,role,active').eq('id',session.user.id).single();if(error)throw error;if(!profile?.active)throw new Error('Inactive account.');return profile}
+  async function ensureModels(){if(window.faceapi)return;await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js?attendancefix=1';s.onload=resolve;s.onerror=()=>reject(new Error('Face recognition library did not load.'));document.head.appendChild(s)})}
+  async function modelsReady(){await ensureModels();if(!faceapi.nets.tinyFaceDetector.params)await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);if(!faceapi.nets.faceLandmark68Net.params)await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);if(!faceapi.nets.faceRecognitionNet.params)await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)}
+  async function openCamera(){const v=$('#sb-att-video');if(!v)throw new Error('Camera is not available.');if(stream)stream.getTracks().forEach(t=>t.stop());stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:720},height:{ideal:720}},audio:false});v.srcObject=stream;v.muted=true;v.setAttribute('playsinline','');await v.play();return v}
+  function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+  function resetCapture(){capturedDescriptor=null;busy=false;$('#sb-att-preview')?.setAttribute('hidden','');$('#sb-att-video')?.removeAttribute('hidden');$('#sb-att-capture')?.removeAttribute('disabled');$('#sb-att-retake')?.setAttribute('disabled','disabled');$('#sb-att-use')?.setAttribute('disabled','disabled');$('#sb-att-in')?.setAttribute('disabled','disabled');$('#sb-att-out')?.setAttribute('disabled','disabled');$('#sb-att-confirmed')?.replaceChildren();msg('Center one face in the frame, then press Capture Photo.')}
+  async function capture(){if(busy)return;busy=true;try{const v=$('#sb-att-video');if(!v)throw new Error('Camera is not available.');if(v.readyState<2||!v.videoWidth)await openCamera();await modelsReady();const d=await faceapi.detectSingleFace(v,new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:.45})).withFaceLandmarks().withFaceDescriptor();if(!d)throw new Error('No clear face detected. Center one face and try again.');const c=document.createElement('canvas');c.width=v.videoWidth||720;c.height=v.videoHeight||720;c.getContext('2d').drawImage(v,0,0,c.width,c.height);const preview=$('#sb-att-preview');if(preview){preview.src=c.toDataURL('image/jpeg',.88);preview.hidden=false}capturedDescriptor=Array.from(d.descriptor);v.hidden=true;$('#sb-att-capture')?.setAttribute('disabled','disabled');$('#sb-att-retake')?.removeAttribute('disabled');$('#sb-att-use')?.removeAttribute('disabled');stopCamera();msg('Photo captured. Review it, then use it or retake it.')}catch(e){msg(e.message||String(e),true)}finally{busy=false}}
+  async function retake(){if(busy)return;resetCapture();try{await openCamera();msg('Camera ready. Center one face, then press Capture Photo.')}catch(e){msg(e.message||String(e),true)}}
+  function usePhoto(){if(!capturedDescriptor){msg('Capture a photo first.',true);return}$('#sb-att-use')?.setAttribute('disabled','disabled');$('#sb-att-retake')?.setAttribute('disabled','disabled');$('#sb-att-in')?.removeAttribute('disabled');$('#sb-att-out')?.removeAttribute('disabled');const box=$('#sb-att-confirmed');if(box)box.innerHTML='<div class="sb-att-confirmed"><span class="sb-att-check">✓</span><div><b>Photo confirmed</b><span>Ready to record attendance.</span></div></div>';msg('Photo confirmed. Choose TIME IN or TIME OUT to save the attendance log.')}
+  async function record(action){if(busy)return;if(!capturedDescriptor){msg('Capture and confirm a photo first.',true);return}busy=true;$('#sb-att-in')?.setAttribute('disabled','disabled');$('#sb-att-out')?.setAttribute('disabled','disabled');try{const p=await context();msg(action==='time_in'?'Recording Time In...':'Recording Time Out...');const r=await client().rpc('record_face_attendance',{p_business_id:p.business_id,p_face_embedding:capturedDescriptor,p_action:action,p_liveness_score:1,p_branch_id:null,p_device_id:localStorage.getItem('smallbiz_attendance_device')||null});if(r.error)throw r.error;const x=r.data||{};const box=$('#sb-att-confirmed');if(box)box.insertAdjacentHTML('beforeend',`<div class="sb-att-recorded">✓ ${action==='time_in'?'TIME IN':'TIME OUT'} saved successfully for ${esc(x.employee_name||'employee')}.</div>`);msg(`${action==='time_in'?'Time In':'Time Out'} recorded successfully.`);capturedDescriptor=null}catch(e){msg(e.message||String(e),true);$('#sb-att-in')?.removeAttribute('disabled');$('#sb-att-out')?.removeAttribute('disabled')}finally{busy=false}}
+  function addAttendanceNav(){const nav=document.querySelector('.sidebar-nav');if(!nav)return false;let button=nav.querySelector('[data-smallbiz-attendance-final]');if(button)return true;button=document.querySelector('[data-smallbiz-attendance]');if(button){button.dataset.smallbizAttendanceFinal='1';if(button.parentElement!==nav)nav.appendChild(button);return true}button=document.createElement('button');button.type='button';button.className='nav-item';button.dataset.smallbizAttendanceFinal='1';button.setAttribute('aria-label','Employees / Attendance');button.innerHTML='<span>👥</span><b>Employees / Attendance</b>';button.addEventListener('click',function(){if(typeof window.__smallbizOpenAttendance==='function')window.__smallbizOpenAttendance();else window.dispatchEvent(new CustomEvent('smallbiz:open-attendance'))});nav.appendChild(button);return true}
+  function bindKiosk(){const root=$('#sb-att-overlay');if(!root)return;root.style.pointerEvents='auto';root.style.zIndex='1000000';const modal=root.querySelector('.sb-att-modal');if(modal)modal.style.pointerEvents='auto';root.querySelectorAll('button').forEach(b=>{b.style.pointerEvents='auto';b.style.touchAction='manipulation'});if(root.dataset.attendanceClickFix==='1')return;root.dataset.attendanceClickFix='1';root.addEventListener('click',function(e){const b=e.target.closest('button');if(!b||b.disabled)return;const id=b.id;if(!['sb-att-capture','sb-att-retake','sb-att-use','sb-att-in','sb-att-out'].includes(id))return;e.preventDefault();e.stopImmediatePropagation();if(id==='sb-att-capture')capture();else if(id==='sb-att-retake')retake();else if(id==='sb-att-use')usePhoto();else if(id==='sb-att-in')record('time_in');else if(id==='sb-att-out')record('time_out')},true)}
+  function boot(){addAttendanceNav();const observer=new MutationObserver(function(){addAttendanceNav();bindKiosk()});observer.observe(document.body,{childList:true,subtree:true});let tries=0;const timer=setInterval(function(){addAttendanceNav();bindKiosk();if(++tries>240)clearInterval(timer)},250)}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
