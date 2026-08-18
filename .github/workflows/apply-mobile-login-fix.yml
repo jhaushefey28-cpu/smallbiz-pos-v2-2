@@ -1,0 +1,90 @@
+name: Apply mobile login fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: ${{ !contains(github.event.head_commit.message, 'fix mobile login: direct session handoff') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch React login flow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('main.jsx')
+          text = path.read_text(encoding='utf-8')
+
+          pattern = re.compile(r'  async function login\(e\)\{.*?\n  \}\n  async function logout\(\)', re.S)
+          replacement = '''  async function login(e){
+    e.preventDefault();
+    if(!supabase)return;
+    setErr("");
+    setStatus("");
+
+    try{
+      const {data,error}=await supabase.auth.signInWithPassword({email,password});
+      if(error)throw new Error(error.message||"Unable to sign in.");
+
+      // Use the session returned by Supabase immediately. This avoids relying
+      // only on the asynchronous onAuthStateChange callback on mobile Safari/
+      // Chrome, where the login form could remain stuck on "Signing in...".
+      if(data?.session){
+        setSession(data.session);
+        try{sessionStorage.removeItem("smallbiz-login-recovery-used")}catch(_){ }
+        return;
+      }
+
+      // Supabase normally returns a session for password login. If it does not,
+      // explicitly ask for the current persisted session before declaring login
+      // successful, without forcing a full page reload.
+      const {data:sessionData,error:sessionError}=await supabase.auth.getSession();
+      if(sessionError)throw new Error(sessionError.message||"Unable to read login session.");
+      if(sessionData?.session){
+        setSession(sessionData.session);
+        try{sessionStorage.removeItem("smallbiz-login-recovery-used")}catch(_){ }
+        return;
+      }
+
+      throw new Error("Login succeeded but no session was returned. Please try again.");
+    }catch(error){
+      setSession(null);
+      setErr(error?.message||"Unable to sign in.");
+    }
+  }
+  async function logout()'''
+
+          updated, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('Expected login function was not found; no changes made.')
+
+          path.write_text(updated, encoding='utf-8')
+          print('Patched main.jsx login flow successfully.')
+          PY
+
+      - name: Verify patch
+        run: |
+          grep -n -A38 'async function login' main.jsx
+          test "$(grep -c 'Use the session returned by Supabase immediately' main.jsx)" = "1"
+
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add main.jsx
+          git rm .github/workflows/apply-mobile-login-fix.yml
+          git commit -m "fix mobile login: direct session handoff"
+          git push origin main
