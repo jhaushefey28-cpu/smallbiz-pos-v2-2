@@ -15,10 +15,16 @@
 
     let submitted=false;
     let submitTimer=null;
+    let sessionPoll=null;
     const originalText=button?.textContent||'Login';
+
+    const stopSessionPoll=()=>{
+      if(sessionPoll){clearInterval(sessionPoll);sessionPoll=null;}
+    };
 
     const resetButton=()=>{
       submitted=false;
+      stopSessionPoll();
       if(button){
         button.disabled=false;
         button.textContent=originalText;
@@ -26,8 +32,37 @@
       if(submitTimer){clearTimeout(submitTimer);submitTimer=null;}
     };
 
-    // Only mark the form as submitting. Do not reload the page and do not
-    // interfere with Supabase's persisted session/auth-state lifecycle.
+    // The auth request itself remains owned by React/Supabase. We only watch
+    // for the persisted Supabase session so a mobile browser cannot remain on
+    // the login screen when Supabase has already completed the password login.
+    const sessionWasPersisted=()=>{
+      try{
+        for(let i=0;i<localStorage.length;i++){
+          const key=localStorage.key(i)||'';
+          if(!key.startsWith('sb-')||!key.endsWith('-auth-token'))continue;
+          const raw=localStorage.getItem(key);
+          if(!raw)continue;
+          const value=JSON.parse(raw);
+          if(value?.access_token && value?.user?.id)return true;
+        }
+      }catch(_){ }
+      return false;
+    };
+
+    const recoverIfSessionReady=()=>{
+      if(!submitted||!document.body.contains(form)||!sessionWasPersisted())return;
+      stopSessionPoll();
+      try{
+        if(sessionStorage.getItem('smallbiz-login-recovery-used')==='1')return;
+        sessionStorage.setItem('smallbiz-login-recovery-used','1');
+      }catch(_){ }
+      // Give supabase-js a moment to finish its auth-state callback, then
+      // reload only when a valid persisted session is already present.
+      setTimeout(()=>{
+        if(document.body.contains(form)) window.location.replace(window.location.href);
+      },250);
+    };
+
     const markSubmitted=()=>{
       submitted=true;
       if(button){
@@ -35,12 +70,12 @@
         button.textContent='Signing in...';
       }
       if(submitTimer)clearTimeout(submitTimer);
-      // If React/Supabase returns an error, the React UI remains on the form.
-      // Re-enable the button after a bounded timeout so a mobile browser cannot
-      // leave the user permanently stuck in a disabled state.
       submitTimer=setTimeout(()=>{
-        if(document.body.contains(form) && !document.querySelector('.auth-error')) resetButton();
+        if(document.body.contains(form) && !sessionWasPersisted()) resetButton();
       },12000);
+      stopSessionPoll();
+      sessionPoll=setInterval(recoverIfSessionReady,250);
+      recoverIfSessionReady();
     };
 
     form.addEventListener('submit',markSubmitted,true);
@@ -66,7 +101,6 @@
       button.addEventListener('touchend',()=>setTimeout(fallbackSubmit,300),{passive:true});
     }
 
-    // Keep the Login button usable after a browser-level validation failure.
     form.addEventListener('invalid',()=>resetButton(),true);
   };
 
