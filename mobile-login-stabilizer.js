@@ -14,7 +14,34 @@
     if(button){ button.type='submit'; button.setAttribute('aria-label','Login'); }
 
     let submitted=false;
-    const markSubmitted=()=>{submitted=true;setTimeout(()=>{submitted=false;},1200)};
+    let fallbackTimer=null;
+    const originalText=button?.textContent||'Login';
+
+    const markSubmitted=()=>{
+      submitted=true;
+      if(button){
+        button.disabled=true;
+        button.textContent='Signing in...';
+      }
+      if(fallbackTimer)clearTimeout(fallbackTimer);
+      // If Supabase has accepted the credentials but React did not receive the
+      // auth-state event on a mobile browser, one controlled reload lets the
+      // persisted Supabase session be picked up by getSession().
+      fallbackTimer=setTimeout(()=>{
+        if(!document.body.contains(form))return;
+        if(sessionStorage.getItem('smallbiz_mobile_login_reload')==='1'){
+          if(button){button.disabled=false;button.textContent=originalText;}
+          return;
+        }
+        sessionStorage.setItem('smallbiz_mobile_login_reload','1');
+        window.location.reload();
+      },8000);
+    };
+
+    const clearReloadFlag=()=>{
+      try{sessionStorage.removeItem('smallbiz_mobile_login_reload')}catch(_){ }
+    };
+    clearReloadFlag();
     form.addEventListener('submit',markSubmitted,true);
 
     const fallbackSubmit=()=>{
