@@ -3,7 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const sb = url && key ? createClient(url, key) : null;
-
 const esc = v => String(v ?? '').replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));
 const money = v => new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(Number(v || 0));
 
@@ -14,6 +13,38 @@ async function getContext() {
   if (error) throw new Error(error.message);
   if (!profile?.active) throw new Error('User account is inactive');
   return profile;
+}
+
+function wirePaymentUI() {
+  const pay = document.getElementById('sb-cpos5-payment');
+  const cash = document.getElementById('sb-cpos5-cash');
+  const qty = document.getElementById('sb-cpos5-qty');
+  const bundleSelect = document.getElementById('sb-cpos5-bundle');
+  const totalEl = document.getElementById('sb-cpos5-total');
+  if (!pay || !cash || !qty || !bundleSelect || !totalEl) return;
+  let change = document.getElementById('sb-cpos5-change');
+  if (!change) {
+    change = document.createElement('div');
+    change.id = 'sb-cpos5-change';
+    change.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding:8px 0;font-size:14px;font-weight:700;';
+    totalEl.insertAdjacentElement('afterend', change);
+  }
+  const refresh = () => {
+    const selected = bundleSelect.options[bundleSelect.selectedIndex];
+    const text = selected?.textContent || '';
+    const match = text.match(/₱\s*([\d,.]+)/);
+    const unit = match ? Number(match[1].replace(/,/g,'')) : 0;
+    const total = unit * Math.max(0, Math.floor(Number(qty.value || 0)));
+    const tendered = Number(cash.value || 0);
+    const isCash = pay.value === 'cash';
+    cash.disabled = !isCash;
+    change.innerHTML = `<span>Change</span><span>${money(isCash && tendered >= total ? tendered - total : 0)}</span>`;
+    change.style.color = isCash && tendered >= total ? '#166534' : '#64748b';
+  };
+  qty.addEventListener('input', refresh);
+  cash.addEventListener('input', refresh);
+  pay.addEventListener('change', refresh);
+  refresh();
 }
 
 async function checkout() {
@@ -46,7 +77,7 @@ async function checkout() {
     const total = Number(bundle.price || 0) * qty;
     const cash = Number(cashEl.value || 0);
     if (method === 'cash' && cash < total) {
-      message.innerHTML = `<div class="sb-cpos5-warn">Insufficient cash. Required ${money(total)}.</div>`;
+      message.innerHTML = `<div class="sb-cpos5-warn">Insufficient cash. Required ${money(total)}. Enter the exact tendered amount before proceeding.</div>`;
       button.disabled = false; button.textContent = 'Proceed to Payment'; return;
     }
 
@@ -76,9 +107,10 @@ async function checkout() {
     if (resultError) throw new Error(resultError.message);
 
     const invoice = result?.invoice_no || 'Sale completed';
-    message.innerHTML = `<div class="sb-cpos5-success"><b>Sale completed.</b><br>${esc(invoice)} · ${qty} set(s) · ${money(total)}</div>`;
+    const change = method === 'cash' ? cash - total : 0;
+    message.innerHTML = `<div class="sb-cpos5-success"><b>Sale completed.</b><br>${esc(invoice)} · ${qty} set(s) · ${money(total)}<br>Payment: ${esc(method)} · Change: ${money(change)}</div>`;
     button.textContent = 'Completed';
-    window.dispatchEvent(new CustomEvent('smallbiz:combo-sale-complete', { detail: { bundleId: bundle.id } }));
+    window.dispatchEvent(new CustomEvent('smallbiz:combo-sale-complete', { detail: { bundleId: bundle.id, invoice, paymentMethod: method, amountTendered: method === 'cash' ? cash : total, change } }));
     setTimeout(() => { const close = document.getElementById('sb-cpos5-close'); close?.click(); }, 900);
   } catch (e) {
     message.innerHTML = `<div class="sb-cpos5-error">Checkout failed: ${esc(e.message)}</div>`;
@@ -87,8 +119,6 @@ async function checkout() {
   }
 }
 
-// v5 assigned the RPC result to `data` but checked/used an undeclared `result` variable.
-// Capture the button before v5's target handler and run the corrected transaction instead.
 document.addEventListener('click', e => {
   const btn = e.target?.closest?.('#sb-cpos5-sell');
   if (!btn) return;
@@ -97,3 +127,12 @@ document.addEventListener('click', e => {
   e.stopImmediatePropagation();
   checkout();
 }, true);
+
+document.addEventListener('change', e => {
+  if (e.target?.id === 'sb-cpos5-payment' || e.target?.id === 'sb-cpos5-bundle') setTimeout(wirePaymentUI, 0);
+}, true);
+document.addEventListener('input', e => {
+  if (['sb-cpos5-payment','sb-cpos5-cash','sb-cpos5-qty'].includes(e.target?.id)) wirePaymentUI();
+}, true);
+new MutationObserver(() => wirePaymentUI()).observe(document.body, {childList:true,subtree:true});
+setTimeout(wirePaymentUI, 800);
