@@ -1,11 +1,11 @@
 {
   "name": "smallbiz-pos-v2-2",
   "private": true,
-  "version": "2.2.2",
+  "version": "2.2.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node apply-auth-singleton-fix.mjs && node apply-mobile-login-fix.mjs && vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
