@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node apply-auth-singleton-fix.mjs && node apply-mobile-login-fix.mjs && vite build",
+    "build": "node apply-auth-singleton-fix.mjs && node apply-mobile-login-fix.mjs && node apply-product-barcode-fix.mjs && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
