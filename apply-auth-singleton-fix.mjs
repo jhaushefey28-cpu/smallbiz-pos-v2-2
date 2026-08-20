@@ -2,20 +2,23 @@ import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 
 const INDEX = "index.html";
 const MAIN = "main.jsx";
-const marker = "SMALLBIZ_AUTH_SINGLETON_2026_08_20_V1";
+const marker = "SMALLBIZ_AUTH_SINGLETON_2026_08_20_V2";
 
-function replaceOnce(text, pattern, replacement, label) {
-  if (!pattern.test(text)) return text;
-  return text.replace(pattern, replacement);
-}
-
-// 1) Make main.jsx the first module so it creates the single browser auth client.
+// 1) Keep the core React entrypoint in index.html.
+// The previous build patch removed /main.jsx and only restored it when
+// /auth-recovery.js existed. That made the production build a blank shell
+// after auth-recovery.js was intentionally removed. Main must never be
+// removed from the document.
 let index = readFileSync(INDEX, "utf8");
 const mainTag = index.match(/<script type="module" src="\/main\.jsx[^>]*><\/script>/)?.[0];
-if (mainTag) {
-  index = index.replace(mainTag, "");
-  const moduleAnchor = '<script type="module" src="/auth-recovery.js?v=5"></script>';
-  index = index.replace(moduleAnchor, `${mainTag}${moduleAnchor}`);
+if (!mainTag) {
+  const mainWithQuery = '<script type="module" src="/main.jsx?v=20260820-auth-core-1"></script>';
+  const root = '<div id="root"></div>';
+  if (!index.includes("/main.jsx")) {
+    if (index.includes(root)) index = index.replace(root, `${root}${mainWithQuery}`);
+    else if (index.includes("</body>")) index = index.replace("</body>", `${mainWithQuery}</body>`);
+    else throw new Error("main.jsx entrypoint is missing and could not be restored safely.");
+  }
 }
 writeFileSync(INDEX, index, "utf8");
 
@@ -44,23 +47,19 @@ if (!main.includes(marker)) {
 }
 
 // 3) Reuse the main auth client in every browser module that creates another client.
-// Multiple auto-refreshing GoTrue clients sharing the same localStorage session can
-// race refresh-token rotation and flood /auth/v1/token, which is especially visible on mobile.
 const files = readdirSync(".").filter(name => /\.(js|jsx)$/.test(name) && !name.startsWith("apply-auth-singleton-fix"));
 for (const file of files) {
   if (file === MAIN) continue;
   let text = readFileSync(file, "utf8");
   const before = text;
 
-  // Common one-line client declarations used throughout the POS modules.
   text = text.replace(/const\s+(sb|supabase)\s*=\s*([^;\n]*createClient\([^;\n]*\));/g,
     'const $1 = window.__SMALLBIZ_SUPABASE__ || ($2);');
 
-  // auth-recovery.js lazily creates its own client; point it at the main client instead.
   text = text.replace(/sb=mod\.createClient\(SUPABASE_URL,SUPABASE_KEY\);/g,
     'sb=window.__SMALLBIZ_SUPABASE__ || mod.createClient(SUPABASE_URL,SUPABASE_KEY);');
 
   if (text !== before) writeFileSync(file, text, "utf8");
 }
 
-console.log(`Applied ${marker}: one browser Supabase auth client + idempotent tenant bootstrap.`);
+console.log(`Applied ${marker}: preserved React entrypoint + one browser Supabase auth client.`);
