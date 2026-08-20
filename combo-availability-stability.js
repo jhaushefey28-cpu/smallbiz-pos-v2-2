@@ -6,7 +6,7 @@ const sb = url && key ? createClient(url, key) : null;
 const money = v => new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(Number(v || 0));
 const esc = v => String(v ?? '').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));
 
-const withTimeout = (promise, ms=3500) => Promise.race([
+const withTimeout = (promise, ms=1200) => Promise.race([
   promise,
   new Promise((_, reject) => setTimeout(() => reject(new Error('Availability check timed out')), ms))
 ]);
@@ -26,34 +26,30 @@ async function directAvailability(bundleId){
   if(itemError) throw itemError;
   if(!items?.length) return {available_sets:0,limiting_component:'No components configured'};
 
-  let available = Infinity, limiting = '';
-  for(const item of items){
+  const checks = items.filter(item => Number(item.quantity || 0) > 0).map(async item => {
     const needed = Number(item.quantity || 0);
-    if(needed <= 0) continue;
-    let stock = 0, label = '';
     if(item.variation_id){
       const {data:v,error} = await sb.from('product_variations').select('name,stock').eq('id',item.variation_id).single();
       if(error) throw error;
-      stock = Number(v?.stock || 0); label = v?.name || 'Variation';
-    }else{
-      const {data:p,error} = await sb.from('products').select('name,stock').eq('id',item.product_id).single();
-      if(error) throw error;
-      stock = Number(p?.stock || 0); label = p?.name || 'Product';
+      return {sets:Math.floor(Number(v?.stock || 0) / needed),label:v?.name || 'Variation'};
     }
-    const sets = Math.floor(stock / needed);
-    if(sets < available){ available = sets; limiting = label; }
-  }
-  return {available_sets: Number.isFinite(available) ? available : 0, limiting_component:limiting};
+    const {data:p,error} = await sb.from('products').select('name,stock').eq('id',item.product_id).single();
+    if(error) throw error;
+    return {sets:Math.floor(Number(p?.stock || 0) / needed),label:p?.name || 'Product'};
+  });
+  const results = await Promise.all(checks);
+  const limiting = results.reduce((best,row) => row.sets < best.sets ? row : best, results[0]);
+  return {available_sets:Math.max(0,Number(limiting?.sets || 0)),limiting_component:limiting?.label || ''};
 }
 
 async function getAvailability(bundleId){
   try{
-    const {data,error} = await withTimeout(sb.rpc('get_product_bundle_availability',{p_bundle_id:bundleId}));
+    const {data,error} = await withTimeout(sb.rpc('get_product_bundle_availability',{p_bundle_id:bundleId}),800);
     if(error) throw error;
     const row = Array.isArray(data) ? data[0] : data;
     if(row) return {available_sets:Number(row.available_sets||0),limiting_component:row.limiting_component||''};
   }catch(e){
-    console.warn('[Combo Availability] RPC fallback:',e.message);
+    console.warn('[Combo Availability] Fast RPC fallback:',e.message);
   }
   return directAvailability(bundleId);
 }
@@ -72,7 +68,7 @@ async function renderStable(bundleId){
   if(!select || select.value!==bundleId) return;
   const details=replaceDetails();
   if(!details) return;
-  details.innerHTML='<div class="sb-cpos5-info">Checking stock safely...</div>';
+  details.innerHTML='<div class="sb-cpos5-info">Checking stock...</div>';
   try{
     const {data:bundle,error} = await sb.from('product_bundles').select('id,name,price,active,business_id').eq('id',bundleId).eq('active',true).single();
     if(error) throw error;
@@ -120,10 +116,9 @@ function watch(){
     if(!id) return;
     setTimeout(()=>{
       const d=document.getElementById('sb-cpos5-details');
-      if(d && /Checking available sets/i.test(d.textContent||'')) renderStable(id);
-    },3200);
+      if(d && /Checking available sets|Checking stock/i.test(d.textContent||'')) renderStable(id);
+    },150);
   });
 }
 new MutationObserver(watch).observe(document.body,{childList:true,subtree:true});
-setInterval(watch,1000);
 watch();
