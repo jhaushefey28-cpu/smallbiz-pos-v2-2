@@ -1,8 +1,12 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V2
+// SMALLBIZ_OWNER_MODULES_LOADER_V3
 // Vite-native, post-auth module loader. Optional modules never block login/core POS.
-// Employee/Attendance is loaded here so its existing sidebar + Kiosk remain available
-// on desktop and mobile without touching the core POS/auth path.
 let started = false;
+
+// Attendance styles are imported statically so Vite guarantees they are present before the
+// module renders. This prevents the modal from falling back to unstyled HTML at the bottom.
+import "./attendance-center.css";
+import "./attendance-log-enhancement.css";
+import "./employee-attendance.css";
 
 const MODULES = [
   () => import("./reprint-modal-fix.js"),
@@ -26,6 +30,7 @@ const MODULES = [
   () => import("./growth-center.jsx"),
   () => import("./growth-center-sidebar-fix.js"),
   () => import("./cashier-shift.jsx"),
+  () => import("./attendance-runtime-bridge.js"),
   () => import("./attendance-center.js"),
   () => import("./employee-attendance.js"),
   () => import("./attendance-sidebar-fix.js")
@@ -38,10 +43,7 @@ const STYLES = [
   "./reports-center.css",
   "./mobile-cart-float.css",
   "./business-controls-scroll-fix.css",
-  "./cashier-shift.css",
-  "./attendance-center.css",
-  "./attendance-log-enhancement.css",
-  "./employee-attendance.css"
+  "./cashier-shift.css"
 ];
 
 export function startOwnerModules() {
