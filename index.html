@@ -1,23 +1,52 @@
 <!doctype html>
-<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><meta name="theme-color" content="#ffffff"/><title>SmallBiz POS V2.2</title></head>
-<body><div id="root"></div>
-<script type="module" src="/main.jsx"></script>
-<link rel="stylesheet" href="/sidebar-fix.css"><link rel="stylesheet" href="/platform-channel-admin.css"><link rel="stylesheet" href="/responsive-pos.css"><link rel="stylesheet" href="/reports-center.css"><link rel="stylesheet" href="/mobile-cart-float.css"><link rel="stylesheet" href="/mobile-login-fix.css"><link rel="stylesheet" href="/business-controls-scroll-fix.css"><link rel="stylesheet" href="/cashier-shift.css"><style>.growth-center-persistent{width:100%;}</style>
-<script>
-(function(){
-  const modules=[
-    '/auth-recovery.js','/reprint-modal-fix.js','/void-reason-enhancement.js','/transaction-audit-enhancement.js',
-    '/team-management.js','/sales-channels.jsx','/product-channel-mapping.jsx','/order-management-shipment-hotfix.js',
-    '/order-management.jsx','/platform-channel-admin.js','/marketplace-connections.jsx','/marketplace-oauth-connect.js',
-    '/marketplace-sync-readiness.jsx','/marketplace-stock-reservation.jsx','/marketplace-fulfillment.jsx','/report-export-engine.js',
-    '/reports-center.js','/business-controls.jsx','/inventory-center.jsx','/growth-center.jsx','/growth-center-sidebar-fix.js','/cashier-shift.jsx',
-    '/mobile-cart-float.js'
-  ];
-  // Let the core React app mount and expose the login screen first. Enhancement
-  // modules are loaded afterward so a mobile enhancement cannot block login.
-  const load=()=>modules.forEach((src,i)=>setTimeout(()=>import(src).catch(()=>{}),i*35));
-  if(document.readyState==='loading')window.addEventListener('DOMContentLoaded',()=>setTimeout(load,700),{once:true});
-  else setTimeout(load,700);
-})();
-</script>
-</body></html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="theme-color" content="#ffffff"/>
+  <title>SmallBiz POS V2.2</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/main.jsx"></script>
+  <link rel="stylesheet" href="/sidebar-fix.css">
+  <link rel="stylesheet" href="/platform-channel-admin.css">
+  <link rel="stylesheet" href="/responsive-pos.css">
+  <link rel="stylesheet" href="/reports-center.css">
+  <link rel="stylesheet" href="/mobile-cart-float.css">
+  <link rel="stylesheet" href="/mobile-login-fix.css">
+  <link rel="stylesheet" href="/business-controls-scroll-fix.css">
+  <link rel="stylesheet" href="/cashier-shift.css">
+  <style>.growth-center-persistent{width:100%;}</style>
+  <script>
+  (function(){
+    const modules=[
+      '/auth-recovery.js','/reprint-modal-fix.js','/void-reason-enhancement.js','/transaction-audit-enhancement.js',
+      '/team-management.js','/sales-channels.jsx','/product-channel-mapping.jsx','/order-management-shipment-hotfix.js',
+      '/order-management.jsx','/platform-channel-admin.js','/marketplace-connections.jsx','/marketplace-oauth-connect.js',
+      '/marketplace-sync-readiness.jsx','/marketplace-stock-reservation.jsx','/marketplace-fulfillment.jsx','/report-export-engine.js',
+      '/reports-center.js','/business-controls.jsx','/inventory-center.jsx','/growth-center.jsx','/growth-center-sidebar-fix.js','/cashier-shift.jsx',
+      '/mobile-cart-float.js'
+    ];
+    let started=false;
+    const start=()=>{
+      if(started)return;
+      // Never load enhancement modules while the login screen is present.
+      // This keeps mobile authentication isolated from optional POS modules.
+      if(document.querySelector('.login-card'))return;
+      started=true;
+      modules.forEach((src,i)=>setTimeout(()=>import(src).catch(()=>{}),i*35));
+      observer.disconnect();
+    };
+    const observer=new MutationObserver(start);
+    const boot=()=>{
+      start();
+      observer.observe(document.getElementById('root')||document.body,{subtree:true,childList:true});
+      setTimeout(start,2500);
+    };
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});
+    else boot();
+  })();
+  </script>
+</body>
+</html>
