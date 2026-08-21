@@ -1,5 +1,7 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V1
+// SMALLBIZ_OWNER_MODULES_LOADER_V2
 // Vite-native, post-auth module loader. Optional modules never block login/core POS.
+// Employee/Attendance is loaded here so its existing sidebar + Kiosk remain available
+// on desktop and mobile without touching the core POS/auth path.
 let started = false;
 
 const MODULES = [
@@ -23,7 +25,10 @@ const MODULES = [
   () => import("./inventory-center.jsx"),
   () => import("./growth-center.jsx"),
   () => import("./growth-center-sidebar-fix.js"),
-  () => import("./cashier-shift.jsx")
+  () => import("./cashier-shift.jsx"),
+  // Existing Employee / Attendance + mobile-capable face-recognition Kiosk.
+  () => import("./attendance-center.js"),
+  () => import("./employee-attendance.js")
 ];
 
 const STYLES = [
@@ -33,7 +38,9 @@ const STYLES = [
   "./reports-center.css",
   "./mobile-cart-float.css",
   "./business-controls-scroll-fix.css",
-  "./cashier-shift.css"
+  "./cashier-shift.css",
+  "./attendance-center.css",
+  "./employee-attendance.css"
 ];
 
 export function startOwnerModules() {
