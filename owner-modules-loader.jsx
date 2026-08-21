@@ -1,0 +1,49 @@
+// SMALLBIZ_OWNER_MODULES_LOADER_V1
+// Vite-native, post-auth module loader. Optional modules never block login/core POS.
+let started = false;
+
+const MODULES = [
+  () => import("./reprint-modal-fix.js"),
+  () => import("./void-reason-enhancement.js"),
+  () => import("./transaction-audit-enhancement.js"),
+  () => import("./team-management.js"),
+  () => import("./sales-channels.jsx"),
+  () => import("./product-channel-mapping.jsx"),
+  () => import("./order-management-shipment-hotfix.js"),
+  () => import("./order-management.jsx"),
+  () => import("./platform-channel-admin.js"),
+  () => import("./marketplace-connections.jsx"),
+  () => import("./marketplace-oauth-connect.js"),
+  () => import("./marketplace-sync-readiness.jsx"),
+  () => import("./marketplace-stock-reservation.jsx"),
+  () => import("./marketplace-fulfillment.jsx"),
+  () => import("./report-export-engine.js"),
+  () => import("./reports-center.js"),
+  () => import("./business-controls.jsx"),
+  () => import("./inventory-center.jsx"),
+  () => import("./growth-center.jsx"),
+  () => import("./growth-center-sidebar-fix.js"),
+  () => import("./cashier-shift.jsx")
+];
+
+const STYLES = [
+  "./sidebar-fix.css",
+  "./platform-channel-admin.css",
+  "./responsive-pos.css",
+  "./reports-center.css",
+  "./mobile-cart-float.css",
+  "./business-controls-scroll-fix.css",
+  "./cashier-shift.css"
+];
+
+export function startOwnerModules() {
+  if (started) return;
+  started = true;
+  // Styles are non-blocking and Vite handles them as production CSS chunks.
+  STYLES.forEach(src => import(src).catch(() => {}));
+  Promise.allSettled(MODULES.map(load => load())).then(results => {
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed) console.warn(`[SmallBiz] ${failed} optional module(s) failed; core app remains active.`);
+    else console.info("[SmallBiz] Owner modules loaded through Vite after authentication.");
+  });
+}
