@@ -1,53 +1,85 @@
-// SMALLBIZ_POST_LOGIN_MODULES_V3
-// This file is imported by the core app, but it does NOT import optional modules
-// until the authenticated app shell exists. Optional-module failures are isolated.
+// SMALLBIZ_POST_LOGIN_MODULES_V4
+// Legacy UI modules are injected only after the authenticated React app-shell exists.
+// This keeps mobile authentication isolated while restoring the existing side-effect modules.
 
 let started = false;
 let observer = null;
 
-const OPTIONAL_MODULES = [
-  () => import("./order-management.jsx"),
-  () => import("./inventory-center.jsx"),
-  () => import("./growth-center.jsx"),
-  () => import("./marketplace-connections.jsx"),
-  () => import("./marketplace-fulfillment.jsx"),
-  () => import("./marketplace-stock-reservation.jsx"),
-  () => import("./marketplace-sync-readiness.jsx"),
-  () => import("./cashier-shift.jsx"),
-  () => import("./business-controls.jsx"),
-  () => import("./sales-channels.jsx"),
-  () => import("./product-channel-mapping.jsx"),
-  () => import("./platform-channel-admin.jsx"),
-  () => import("./team-management.js"),
-  () => import("./team-rbac-ui.js"),
-  () => import("./system-audit-center.js"),
-  () => import("./attendance-center.js"),
-  () => import("./employee-attendance.js")
+const MODULE_SCRIPTS = [
+  "/reprint-modal-fix.js",
+  "/void-reason-enhancement.js",
+  "/transaction-audit-enhancement.js",
+  "/team-management.js",
+  "/sales-channels.jsx",
+  "/product-channel-mapping.jsx",
+  "/order-management-shipment-hotfix.js",
+  "/order-management.jsx",
+  "/platform-channel-admin.js",
+  "/marketplace-connections.jsx",
+  "/marketplace-oauth-connect.js",
+  "/marketplace-sync-readiness.jsx",
+  "/marketplace-stock-reservation.jsx",
+  "/marketplace-fulfillment.jsx",
+  "/report-export-engine.js",
+  "/reports-center.js",
+  "/mobile-cart-float.js",
+  "/business-controls.jsx",
+  "/inventory-center.jsx",
+  "/growth-center.jsx",
+  "/growth-center-sidebar-fix.js",
+  "/cashier-shift.jsx"
 ];
 
-async function loadOptionalModules() {
-  if (started) return;
-  const shell = document.querySelector(".app-shell");
-  if (!shell) return;
+const STYLE_LINKS = [
+  "/sidebar-fix.css",
+  "/platform-channel-admin.css",
+  "/responsive-pos.css",
+  "/reports-center.css",
+  "/mobile-cart-float.css",
+  "/business-controls-scroll-fix.css",
+  "/cashier-shift.css"
+];
 
-  // Core app is already rendered. Optional modules can now load independently.
+function loadScript(src) {
+  return new Promise(resolve => {
+    if (document.querySelector(`script[data-smallbiz-module="${src}"]`)) return resolve();
+    const script = document.createElement("script");
+    script.type = "module";
+    script.src = `${src}?postLogin=20260821-v4`;
+    script.dataset.smallbizModule = src;
+    script.onload = resolve;
+    script.onerror = () => {
+      console.warn(`[SmallBiz] Optional module failed: ${src}`);
+      resolve();
+    };
+    document.body.appendChild(script);
+  });
+}
+
+function loadStyle(href) {
+  if (document.querySelector(`link[data-smallbiz-style="${href}"]`)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = `${href}?postLogin=20260821-v4`;
+  link.dataset.smallbizStyle = href;
+  document.head.appendChild(link);
+}
+
+async function loadOptionalModules() {
+  if (started || !document.querySelector(".app-shell")) return;
   started = true;
-  const results = await Promise.allSettled(OPTIONAL_MODULES.map(load => load()));
-  const failed = results.filter(r => r.status === "rejected");
-  if (failed.length) {
-    console.warn(`[SmallBiz] ${failed.length} optional module(s) failed to load; core app remains active.`);
-  }
+  STYLE_LINKS.forEach(loadStyle);
+  // Preserve the old side-effect execution order so sidebar/module registration is deterministic.
+  for (const src of MODULE_SCRIPTS) await loadScript(src);
+  console.info("[SmallBiz] Authenticated UI modules loaded.");
 }
 
 function start() {
   loadOptionalModules();
   if (observer) return;
-  observer = new MutationObserver(() => loadOptionalModules());
+  observer = new MutationObserver(loadOptionalModules);
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", start, { once: true });
-} else {
-  start();
-}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
+else start();
