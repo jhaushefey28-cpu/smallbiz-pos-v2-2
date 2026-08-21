@@ -1,8 +1,7 @@
-// SMALLBIZ_ATTENDANCE_SIDEBAR_FIX_V4
-// Reuses the native attendance button, places it inside the existing sidebar flow,
-// and never creates a second sidebar entry.
+// SMALLBIZ_ATTENDANCE_SIDEBAR_FIX_V5
+// Guarantees one Employee / Attendance entry in the existing sidebar without touching auth/POS.
 (function () {
-  const NATIVE_SELECTOR = '.sidebar-nav [data-smallbiz-attendance]';
+  const ID = 'smallbiz-attendance-sidebar-btn';
 
   function openAttendance(event) {
     event?.preventDefault?.();
@@ -13,34 +12,62 @@
     window.dispatchEvent(new CustomEvent('smallbiz:open-attendance'));
   }
 
+  function isAttendanceButton(el) {
+    return !!el && (
+      el.id === ID ||
+      el.matches?.('[data-smallbiz-attendance]') ||
+      /Employees?\s*\/\s*Attendance/i.test((el.textContent || '').trim())
+    );
+  }
+
+  function findAutoPrint(nav) {
+    const direct = Array.from(nav.children).find(el => /Auto Print/i.test(el.textContent || ''));
+    if (direct) return direct;
+    const candidate = Array.from(nav.querySelectorAll('button,a,[role="button"]')).find(el => /^\s*(🖨️?\s*)?Auto Print\b/i.test(el.textContent || ''));
+    return candidate?.parentElement === nav ? candidate : null;
+  }
+
   function install() {
     const nav = document.querySelector('.sidebar-nav');
     if (!nav) return false;
 
-    // Remove only legacy injected duplicates; preserve the native module button.
-    document.getElementById('smallbiz-attendance-sidebar-btn')?.remove();
-    nav.querySelectorAll('[data-smallbiz-attendance-legacy]').forEach(el => el.remove());
+    // Prefer an existing native attendance entry if one exists.
+    let button = nav.querySelector('[data-smallbiz-attendance]');
 
-    const button = nav.querySelector(NATIVE_SELECTOR);
-    if (!button) return false;
+    // Otherwise create exactly one entry. Previous V4 relied on a selector that
+    // the current attendance module does not actually emit, which made the item vanish.
+    if (!button) {
+      button = nav.querySelector('#' + ID);
+    }
+    if (!button) {
+      button = document.createElement('button');
+      button.id = ID;
+      button.type = 'button';
+      button.innerHTML = '<span aria-hidden="true">👥</span><b>Employees / Attendance</b>';
+      button.setAttribute('aria-label', 'Open Employee and Attendance');
+      button.dataset.smallbizAttendance = '1';
+      button.style.width = '100%';
+      button.style.textAlign = 'left';
+      button.style.cursor = 'pointer';
+      button.style.pointerEvents = 'auto';
+      button.style.position = 'relative';
+      button.style.zIndex = '2';
+
+      const autoPrint = findAutoPrint(nav);
+      if (autoPrint) nav.insertBefore(button, autoPrint);
+      else nav.appendChild(button);
+    }
+
+    // Remove only additional legacy duplicates; never remove the canonical button.
+    nav.querySelectorAll('#' + ID + '~ #' + ID).forEach(el => el.remove());
+    nav.querySelectorAll('[data-smallbiz-attendance-legacy]').forEach(el => el.remove());
 
     button.type = 'button';
     button.style.pointerEvents = 'auto';
     button.style.cursor = 'pointer';
     button.removeAttribute('disabled');
-
-    // Put Employee / Attendance before Auto Print (the last utility control),
-    // instead of appending it after the whole sidebar.
-    const autoPrint = Array.from(nav.children).find(el => /Auto Print/i.test(el.textContent || ''));
-    if (autoPrint && button.parentElement === nav && button !== autoPrint.previousElementSibling) {
-      nav.insertBefore(button, autoPrint);
-    }
-
-    if (button.dataset.smallbizSidebarFix !== 'v4') {
-      button.onclick = openAttendance;
-      button.dataset.smallbizSidebarFix = 'v4';
-      button.setAttribute('aria-label', 'Open Employee and Attendance');
-    }
+    button.onclick = openAttendance;
+    button.dataset.smallbizSidebarFix = 'v5';
     return true;
   }
 
