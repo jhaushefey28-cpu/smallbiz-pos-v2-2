@@ -1,6 +1,6 @@
-// SMALLBIZ_POST_LOGIN_MODULES_V4
-// Legacy UI modules are injected only after the authenticated React app-shell exists.
-// This keeps mobile authentication isolated while restoring the existing side-effect modules.
+// SMALLBIZ_POST_LOGIN_MODULES_V5
+// Optional UI modules start only after the authenticated React app-shell exists.
+// Authentication remains completely independent from module failures.
 
 let started = false;
 let observer = null;
@@ -22,7 +22,6 @@ const MODULE_SCRIPTS = [
   "/marketplace-fulfillment.jsx",
   "/report-export-engine.js",
   "/reports-center.js",
-  "/mobile-cart-float.js",
   "/business-controls.jsx",
   "/inventory-center.jsx",
   "/growth-center.jsx",
@@ -45,7 +44,7 @@ function loadScript(src) {
     if (document.querySelector(`script[data-smallbiz-module="${src}"]`)) return resolve();
     const script = document.createElement("script");
     script.type = "module";
-    script.src = `${src}?postLogin=20260821-v4`;
+    script.src = `${src}?postLogin=20260821-v5`;
     script.dataset.smallbizModule = src;
     script.onload = resolve;
     script.onerror = () => {
@@ -60,7 +59,7 @@ function loadStyle(href) {
   if (document.querySelector(`link[data-smallbiz-style="${href}"]`)) return;
   const link = document.createElement("link");
   link.rel = "stylesheet";
-  link.href = `${href}?postLogin=20260821-v4`;
+  link.href = `${href}?postLogin=20260821-v5`;
   link.dataset.smallbizStyle = href;
   document.head.appendChild(link);
 }
@@ -69,9 +68,8 @@ async function loadOptionalModules() {
   if (started || !document.querySelector(".app-shell")) return;
   started = true;
   STYLE_LINKS.forEach(loadStyle);
-  // Preserve the old side-effect execution order so sidebar/module registration is deterministic.
   for (const src of MODULE_SCRIPTS) await loadScript(src);
-  console.info("[SmallBiz] Authenticated UI modules loaded.");
+  console.info("[SmallBiz] Authenticated UI modules loaded safely.");
 }
 
 function start() {
@@ -79,6 +77,9 @@ function start() {
   if (observer) return;
   observer = new MutationObserver(loadOptionalModules);
   observer.observe(document.body, { childList: true, subtree: true });
+  setTimeout(loadOptionalModules, 250);
+  setTimeout(loadOptionalModules, 1000);
+  setTimeout(loadOptionalModules, 2500);
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
