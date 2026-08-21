@@ -1,55 +1,25 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
-  <meta name="theme-color" content="#ffffff"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#ffffff">
   <title>SmallBiz POS V2.2</title>
-  <!-- Protected pre-auth layer: must load before the React/Supabase entrypoint. -->
-  <script src="/auth-bootstrap.js"></script>
-  <!-- Login CSS is intentionally the ONLY optional stylesheet loaded before authentication. -->
-  <link rel="stylesheet" href="/mobile-login-fix.css">
+  <style>
+    html,body,#root{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+    html,body{margin:0;overflow-x:hidden}
+    *,*:before,*:after{box-sizing:border-box}
+    .auth{position:fixed;inset:0;width:100%;height:100dvh;min-height:100vh;display:grid;place-items:center;padding:8px;overflow:auto;z-index:999999;touch-action:manipulation}
+    .login-card{position:relative;width:min(380px,100%);max-width:380px;margin:auto;overflow:auto;pointer-events:auto}
+    .login-card input,.login-card button{width:100%;min-height:48px;pointer-events:auto;touch-action:manipulation}
+  </style>
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="/main.jsx"></script>
-  <script>
-  (function(){
-    const styles=[
-      '/sidebar-fix.css','/platform-channel-admin.css','/responsive-pos.css','/reports-center.css',
-      '/mobile-cart-float.css','/business-controls-scroll-fix.css','/cashier-shift.css'
-    ];
-    const modules=[
-      '/auth-recovery.js','/reprint-modal-fix.js','/void-reason-enhancement.js','/transaction-audit-enhancement.js',
-      '/team-management.js','/sales-channels.jsx','/product-channel-mapping.jsx','/order-management-shipment-hotfix.js',
-      '/order-management.jsx','/platform-channel-admin.js','/marketplace-connections.jsx','/marketplace-oauth-connect.js',
-      '/marketplace-sync-readiness.jsx','/marketplace-stock-reservation.jsx','/marketplace-fulfillment.jsx','/report-export-engine.js',
-      '/reports-center.js','/business-controls.jsx','/inventory-center.jsx','/growth-center.jsx','/growth-center-sidebar-fix.js','/cashier-shift.jsx',
-      '/mobile-cart-float.js'
-    ];
-    let started=false;
-    function loadEnhancements(){
-      if(started || document.querySelector('.login-card')) return;
-      started=true;
-      styles.forEach(href=>{
-        if(!document.querySelector('link[data-smallbiz-enhancement="'+href+'"]')){
-          const link=document.createElement('link');
-          link.rel='stylesheet'; link.href=href; link.dataset.smallbizEnhancement=href;
-          document.head.appendChild(link);
-        }
-      });
-      modules.forEach((src,i)=>setTimeout(()=>import(src).catch(()=>{}),i*35));
-      observer.disconnect();
-    }
-    const observer=new MutationObserver(loadEnhancements);
-    function boot(){
-      loadEnhancements();
-      observer.observe(document.getElementById('root')||document.body,{subtree:true,childList:true});
-      setTimeout(loadEnhancements,3000);
-    }
-    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});
-    else boot();
-  })();
-  </script>
+  <!-- Protected core: the React/Supabase app is the only executable entrypoint before login. -->
+  <script type="module" src="/main.jsx?v=20260821-core"></script>
+  <!-- Optional sidebar/OMS/marketplace/report/cart modules start only after login. -->
+  <script type="module" src="/post-login-modules.js?v=20260821-post-login"></script>
 </body>
 </html>
