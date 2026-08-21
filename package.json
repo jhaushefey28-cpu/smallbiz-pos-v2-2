@@ -1,11 +1,11 @@
 {
   "name": "smallbiz-pos-v2-2",
   "private": true,
-  "version": "2.2.7",
+  "version": "2.2.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node apply-stock-edit-protection.mjs && vite build",
+    "build": "node apply-stock-edit-protection.mjs && node apply-pos-stability-fix.mjs && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
