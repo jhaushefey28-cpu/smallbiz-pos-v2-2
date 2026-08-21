@@ -26,7 +26,6 @@ const MODULES = [
   () => import("./growth-center.jsx"),
   () => import("./growth-center-sidebar-fix.js"),
   () => import("./cashier-shift.jsx"),
-  // Existing Employee / Attendance + mobile-capable face-recognition Kiosk.
   () => import("./attendance-center.js"),
   () => import("./employee-attendance.js")
 ];
@@ -40,13 +39,13 @@ const STYLES = [
   "./business-controls-scroll-fix.css",
   "./cashier-shift.css",
   "./attendance-center.css",
+  "./attendance-log-enhancement.css",
   "./employee-attendance.css"
 ];
 
 export function startOwnerModules() {
   if (started) return;
   started = true;
-  // Styles are non-blocking and Vite handles them as production CSS chunks.
   STYLES.forEach(src => import(src).catch(() => {}));
   Promise.allSettled(MODULES.map(load => load())).then(results => {
     const failed = results.filter(r => r.status === "rejected").length;
