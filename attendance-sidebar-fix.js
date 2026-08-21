@@ -1,51 +1,46 @@
-// SMALLBIZ_ATTENDANCE_SIDEBAR_FIX_V2
-// Connects the existing Employee / Attendance sidebar entry to the existing
-// attendance-center module without touching auth, POS, barcode, cart, or routing.
+// SMALLBIZ_ATTENDANCE_SIDEBAR_FIX_V3
+// Uses the sidebar entry created by attendance-center.js instead of creating a second button.
+// This keeps the existing sidebar architecture intact and does not touch auth/POS.
 (function () {
-  const BUTTON_ID = "smallbiz-attendance-sidebar-btn";
+  const NATIVE_SELECTOR = '.sidebar-nav [data-smallbiz-attendance]';
 
   async function openAttendance(event) {
     event?.preventDefault?.();
-    event?.stopPropagation?.();
     try {
-      if (typeof window.__smallbizOpenAttendance === "function") {
+      if (typeof window.__smallbizOpenAttendance === 'function') {
         window.__smallbizOpenAttendance();
         return;
       }
-      // The attendance module may still be finishing its post-auth load.
-      await import("./attendance-center.js");
-      if (typeof window.__smallbizOpenAttendance === "function") {
+      await import('./attendance-center.js');
+      if (typeof window.__smallbizOpenAttendance === 'function') {
         window.__smallbizOpenAttendance();
         return;
       }
-      window.dispatchEvent(new CustomEvent("smallbiz:open-attendance"));
+      window.dispatchEvent(new CustomEvent('smallbiz:open-attendance'));
     } catch (error) {
-      console.error("[SmallBiz] Unable to open Employee / Attendance:", error);
+      console.error('[SmallBiz] Unable to open Employee / Attendance:', error);
     }
   }
 
   function install() {
-    const nav = document.querySelector(".sidebar-nav");
+    const nav = document.querySelector('.sidebar-nav');
     if (!nav) return false;
 
-    let button = document.getElementById(BUTTON_ID);
-    if (!button) {
-      button = document.createElement("button");
-      button.id = BUTTON_ID;
-      button.type = "button";
-      button.className = "nav-item";
-      button.innerHTML = "<span>👥</span><b>Employee / Attendance</b>";
-      nav.appendChild(button);
-    }
+    // Remove the old injected duplicate from V2 if it exists.
+    document.getElementById('smallbiz-attendance-sidebar-btn')?.remove();
 
-    button.style.pointerEvents = "auto";
-    button.style.position = "relative";
-    button.style.zIndex = "5";
-    button.style.cursor = "pointer";
+    // attendance-center.js already creates the correct native sidebar entry.
+    const button = nav.querySelector(NATIVE_SELECTOR);
+    if (!button) return false;
 
-    if (button.dataset.smallbizBound !== "1") {
-      button.addEventListener("click", openAttendance, true);
-      button.dataset.smallbizBound = "1";
+    button.type = 'button';
+    button.style.pointerEvents = 'auto';
+    button.style.cursor = 'pointer';
+    button.removeAttribute('disabled');
+
+    if (button.dataset.smallbizSidebarFix !== 'v3') {
+      button.onclick = openAttendance;
+      button.dataset.smallbizSidebarFix = 'v3';
     }
     return true;
   }
@@ -56,11 +51,11 @@
       if (install()) observer.disconnect();
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
-    setTimeout(() => observer.disconnect(), 15000);
+    setTimeout(() => observer.disconnect(), 20000);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", waitForSidebar, { once: true });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', waitForSidebar, { once: true });
   } else {
     waitForSidebar();
   }
