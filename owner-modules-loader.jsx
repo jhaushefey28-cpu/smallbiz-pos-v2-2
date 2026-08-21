@@ -27,7 +27,8 @@ const MODULES = [
   () => import("./growth-center-sidebar-fix.js"),
   () => import("./cashier-shift.jsx"),
   () => import("./attendance-center.js"),
-  () => import("./employee-attendance.js")
+  () => import("./employee-attendance.js"),
+  () => import("./attendance-sidebar-fix.js")
 ];
 
 const STYLES = [
