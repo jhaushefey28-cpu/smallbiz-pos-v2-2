@@ -1,4 +1,4 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V3
+// SMALLBIZ_OWNER_MODULES_LOADER_V4
 // Vite-native, post-auth module loader. Optional modules never block login/core POS.
 let started = false;
 
@@ -30,10 +30,13 @@ const MODULES = [
   () => import("./growth-center.jsx"),
   () => import("./growth-center-sidebar-fix.js"),
   () => import("./cashier-shift.jsx"),
-  () => import("./attendance-runtime-bridge.js"),
-  () => import("./attendance-center.js"),
-  () => import("./employee-attendance.js"),
-  () => import("./attendance-sidebar-fix.js")
+  // Attendance runtime dependencies must be initialized in order.
+  async () => {
+    await import("./attendance-runtime-bridge.js");
+    await import("./attendance-center.js");
+    await import("./employee-attendance.js");
+    await import("./attendance-sidebar-fix.js");
+  }
 ];
 
 const STYLES = [
