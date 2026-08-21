@@ -1,35 +1,26 @@
-// SMALLBIZ_ATTENDANCE_SIDEBAR_FIX_V3
-// Uses the sidebar entry created by attendance-center.js instead of creating a second button.
-// This keeps the existing sidebar architecture intact and does not touch auth/POS.
+// SMALLBIZ_ATTENDANCE_SIDEBAR_FIX_V4
+// Reuses the native attendance button, places it inside the existing sidebar flow,
+// and never creates a second sidebar entry.
 (function () {
   const NATIVE_SELECTOR = '.sidebar-nav [data-smallbiz-attendance]';
 
-  async function openAttendance(event) {
+  function openAttendance(event) {
     event?.preventDefault?.();
-    try {
-      if (typeof window.__smallbizOpenAttendance === 'function') {
-        window.__smallbizOpenAttendance();
-        return;
-      }
-      await import('./attendance-center.js');
-      if (typeof window.__smallbizOpenAttendance === 'function') {
-        window.__smallbizOpenAttendance();
-        return;
-      }
-      window.dispatchEvent(new CustomEvent('smallbiz:open-attendance'));
-    } catch (error) {
-      console.error('[SmallBiz] Unable to open Employee / Attendance:', error);
+    if (typeof window.__smallbizOpenAttendance === 'function') {
+      window.__smallbizOpenAttendance();
+      return;
     }
+    window.dispatchEvent(new CustomEvent('smallbiz:open-attendance'));
   }
 
   function install() {
     const nav = document.querySelector('.sidebar-nav');
     if (!nav) return false;
 
-    // Remove the old injected duplicate from V2 if it exists.
+    // Remove only legacy injected duplicates; preserve the native module button.
     document.getElementById('smallbiz-attendance-sidebar-btn')?.remove();
+    nav.querySelectorAll('[data-smallbiz-attendance-legacy]').forEach(el => el.remove());
 
-    // attendance-center.js already creates the correct native sidebar entry.
     const button = nav.querySelector(NATIVE_SELECTOR);
     if (!button) return false;
 
@@ -38,9 +29,17 @@
     button.style.cursor = 'pointer';
     button.removeAttribute('disabled');
 
-    if (button.dataset.smallbizSidebarFix !== 'v3') {
+    // Put Employee / Attendance before Auto Print (the last utility control),
+    // instead of appending it after the whole sidebar.
+    const autoPrint = Array.from(nav.children).find(el => /Auto Print/i.test(el.textContent || ''));
+    if (autoPrint && button.parentElement === nav && button !== autoPrint.previousElementSibling) {
+      nav.insertBefore(button, autoPrint);
+    }
+
+    if (button.dataset.smallbizSidebarFix !== 'v4') {
       button.onclick = openAttendance;
-      button.dataset.smallbizSidebarFix = 'v3';
+      button.dataset.smallbizSidebarFix = 'v4';
+      button.setAttribute('aria-label', 'Open Employee and Attendance');
     }
     return true;
   }
