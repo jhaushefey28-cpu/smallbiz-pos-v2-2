@@ -1,6 +1,6 @@
-// SMALLBIZ_ATTENDANCE_RUNTIME_BRIDGE_V2
+// SMALLBIZ_ATTENDANCE_RUNTIME_BRIDGE_V3
 // Provides the existing attendance module with the browser Supabase client contract it expects.
-// This bridge is isolated from the core App/auth implementation.
+// Deployment trigger only: runtime behavior is intentionally unchanged from V2.
 import { createClient } from "@supabase/supabase-js";
 
 const url = import.meta.env.VITE_SUPABASE_URL || "https://fnuncwcsliojhgkmmhwo.supabase.co";
@@ -17,4 +17,4 @@ if (url && key) {
   }
 }
 
-console.info("[SmallBiz] Attendance runtime bridge V2 ready.");
+console.info("[SmallBiz] Attendance runtime bridge V3 ready.");
