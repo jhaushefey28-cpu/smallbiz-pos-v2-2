@@ -3,7 +3,7 @@ import fs from "node:fs";
 const path = "main.jsx";
 let text = fs.readFileSync(path, "utf8");
 
-// 1) React ref for barcode debounce. Safe/idempotent.
+// 1) Add useRef and a scan guard without touching authentication.
 if (!text.includes("const lastBarcodeScanRef=useRef")) {
   text = text.replace(
     'import React, { useEffect, useMemo, useState } from "react";',
@@ -15,25 +15,92 @@ if (!text.includes("const lastBarcodeScanRef=useRef")) {
   );
 }
 
-// 2) Replace the scanner callback with a physical/camera scan debounce and success beep.
-const oldScanner = `  useEffect(()=>{\n    if(!scan)return;\n    const reader=document.getElementById("reader"); if(!reader)return;\n    const scanner=new Html5Qrcode("reader");\n    scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:280,height:120}},code=>{\n      const p=products.find(x=>String(x.barcode)===String(code));\n      if(p){handleScannedProduct(p);setSearch(p.barcode);setStatus("Scanned: "+p.name)}\n      else{setStatus("Barcode not found: "+code);setSearch(code)}\n    },()=>{}).catch(e=>setStatus("Camera error: "+e));\n    return()=>{scanner.stop().then(()=>scanner.clear()).catch(()=>{})}\n  },[scan,products]);`;
+// 2) Replace the camera scanner with a debounced scanner and a short success beep.
+const scannerPattern = /  useEffect\(\(\)=>\{\n    if\(!scan\)return;\n    const reader=document\.getElementById\("reader"\); if\(!reader\)return;\n    const scanner=new Html5Qrcode\("reader"\);\n    scanner\.start\(\{facingMode:"environment"\},\{fps:10,qrbox:\{width:280,height:120\}\},code=>\{[\s\S]*?    return\(\)=>\{scanner\.stop\(\)\.then\(\(\)=>scanner\.clear\(\)\)\.catch\(\(\)=>\{\}\)\}\n  \},\[scan,products\]\);/;
 
-const newScanner = `  useEffect(()=>{\n    if(!scan)return;\n    const reader=document.getElementById("reader"); if(!reader)return;\n    const scanner=new Html5Qrcode("reader");\n    let stopped=false;\n    const beep=()=>{\n      try{\n        const AudioCtx=window.AudioContext||window.webkitAudioContext;\n        if(!AudioCtx)return;\n        const ctx=new AudioCtx();\n        const osc=ctx.createOscillator();\n        const gain=ctx.createGain();\n        osc.type="sine"; osc.frequency.value=1000;\n        gain.gain.value=0.06;\n        osc.connect(gain); gain.connect(ctx.destination);\n        osc.start(); osc.stop(ctx.currentTime+0.08);\n        osc.onended=()=>ctx.close().catch(()=>{});\n      }catch{}\n    };\n    scanner.start({facingMode:"environment"},{fps:8,qrbox:{width:280,height:120}},code=>{\n      const normalized=String(code||"").trim();\n      if(!normalized||stopped)return;\n      const now=Date.now();\n      const last=lastBarcodeScanRef.current;\n      // One physical barcode scan must add only once even when the camera\n      // detects the same code repeatedly for several frames.\n      if(last.code===normalized && now-last.at<1200)return;\n      lastBarcodeScanRef.current={code:normalized,at:now};\n      const p=products.find(x=>String(x.barcode||"").trim()===normalized);\n      if(p){\n        handleScannedProduct(p);\n        setSearch(p.barcode);\n        setStatus("Scanned: "+p.name);\n        beep();\n      }else{\n        setStatus("Barcode not found: "+normalized);\n        setSearch(normalized);\n      }\n    },()=>{}).catch(e=>{if(!stopped)setStatus("Camera error: "+e)});\n    return()=>{\n      stopped=true;\n      scanner.stop().then(()=>scanner.clear()).catch(()=>{});\n    };\n  },[scan,products]);`;
+const newScanner = `  useEffect(()=>{
+    if(!scan)return;
+    const reader=document.getElementById("reader"); if(!reader)return;
+    const scanner=new Html5Qrcode("reader");
+    let stopped=false;
+    const beep=()=>{
+      try{
+        const AudioCtx=window.AudioContext||window.webkitAudioContext;
+        if(!AudioCtx)return;
+        const ctx=new AudioCtx();
+        const osc=ctx.createOscillator();
+        const gain=ctx.createGain();
+        osc.type="sine"; osc.frequency.value=1050;
+        gain.gain.value=0.07;
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime+0.09);
+        osc.onended=()=>ctx.close().catch(()=>{});
+      }catch{}
+    };
+    scanner.start({facingMode:"environment"},{fps:5,qrbox:{width:280,height:120}},code=>{
+      const normalized=String(code||"").trim();
+      if(!normalized||stopped)return;
+      const now=Date.now();
+      const last=lastBarcodeScanRef.current;
+      // Camera readers can report the same physical barcode on many frames.
+      // Treat repeated identical reads inside 1500ms as one scan.
+      if(last.code===normalized && now-last.at<1500)return;
+      lastBarcodeScanRef.current={code:normalized,at:now};
+      const p=products.find(x=>String(x.barcode||"").trim()===normalized);
+      if(p){
+        handleScannedProduct(p);
+        setSearch(p.barcode);
+        setStatus("Scanned: "+p.name);
+        beep();
+      }else{
+        setStatus("Barcode not found: "+normalized);
+        setSearch(normalized);
+      }
+    },()=>{}).catch(e=>{if(!stopped)setStatus("Camera error: "+e)});
+    return()=>{
+      stopped=true;
+      scanner.stop().then(()=>scanner.clear()).catch(()=>{});
+    };
+  },[scan,products]);`;
 
-if (text.includes(oldScanner)) {
-  text = text.replace(oldScanner, newScanner);
-} else if (!text.includes("One physical barcode scan must add only once")) {
+if (text.includes('const lastBarcodeScanRef=useRef') && !text.includes('Treat repeated identical reads inside 1500ms')) {
+  if (!scannerPattern.test(text)) throw new Error("POS scanner block not found; build stopped safely.");
+  text = text.replace(scannerPattern, newScanner);
+} else if (!text.includes('Treat repeated identical reads inside 1500ms') && !scannerPattern.test(text)) {
   throw new Error("POS scanner block not found; build stopped safely.");
 }
 
-// 3) Restore a POS-only floating cart using the existing cart state. No duplicate cart state.
-const marker = `  return <div className="app-shell">`;
-const floating = `  return <div className="app-shell">\n    {activePage==="pos"&&cart.length>0&&<button id="smallbiz-floating-cart" type="button" onClick={()=>document.querySelector(".right-panel")?.scrollIntoView({behavior:"smooth",block:"start"})} style={{position:"fixed",right:16,bottom:"calc(18px + env(safe-area-inset-bottom))",zIndex:9999,border:0,borderRadius:18,padding:"12px 16px",background:"#111827",color:"#fff",boxShadow:"0 10px 28px rgba(0,0,0,.22)",display:"flex",alignItems:"center",gap:10,fontWeight:800,cursor:"grab",touchAction:"none"}} aria-label="Open cart">🛒 <span>{cart.reduce((n,i)=>n+i.qty,0)} item(s)</span><span>•</span><span>{money(total)}</span></button>} `;
-
+// 3) POS-only floating cart. Uses the existing cart state and total; no duplicate cart.
 if (!text.includes('id="smallbiz-floating-cart"')) {
+  const marker = '  return <div className="app-shell">';
+  const floating = `  return <div className="app-shell">
+    {activePage==="pos"&&cart.length>0&&<FloatingCart cart={cart} total={total} onOpen={()=>document.querySelector(".right-panel")?.scrollIntoView({behavior:"smooth",block:"start"})} onQty={(id,d)=>qty(id,d)} />}`;
   if (!text.includes(marker)) throw new Error("POS app shell marker not found; build stopped safely.");
-  text = text.replace(marker, floating);
+  const component = `
+function FloatingCart({cart,total,onOpen,onQty}){
+  const [pos,setPos]=useState({x:null,y:null});
+  const drag=useRef(null);
+  const start=e=>{
+    const p=e.touches?.[0]||e;
+    drag.current={sx:p.clientX,sy:p.clientY,ox:pos.x??0,oy:pos.y??0};
+    window.addEventListener("pointermove",move);
+    window.addEventListener("pointerup",end,{once:true});
+  };
+  const move=e=>{
+    if(!drag.current)return;
+    setPos({x:drag.current.ox+e.clientX-drag.current.sx,y:drag.current.oy+e.clientY-drag.current.sy});
+  };
+  const end=()=>{drag.current=null;window.removeEventListener("pointermove",move)};
+  const style={transform:\`translate(\${pos.x??0}px,\${pos.y??0}px)\`};
+  return <div id="smallbiz-floating-cart" style={style}>
+    <button type="button" className="floating-cart-main" onPointerDown={start} onClick={e=>{if(!drag.current?.moved)onOpen();}} aria-label="Open shopping cart">
+      <span className="floating-cart-icon">🛒</span><span>{cart.reduce((n,i)=>n+Number(i.qty||0),0)}</span><span>•</span><span>{money(total)}</span>
+    </button>
+  </div>;
+}
+`;
+  text = text.replace(marker, component + "\n" + floating);
 }
 
 fs.writeFileSync(path, text);
-console.log("Applied SMALLBIZ_POS_STABILITY_2026_08_21: barcode debounce + success beep + POS-only floating cart.");
+console.log("Applied SMALLBIZ_POS_STABILITY_2026_08_21_V2: barcode debounce + success beep + POS-only draggable floating cart.");
