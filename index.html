@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
   <meta name="theme-color" content="#ffffff"/>
   <title>SmallBiz POS V2.2</title>
+  <!-- Protected pre-auth layer: must load before the React/Supabase entrypoint. -->
+  <script src="/auth-bootstrap.js"></script>
   <!-- Login CSS is intentionally the ONLY optional stylesheet loaded before authentication. -->
   <link rel="stylesheet" href="/mobile-login-fix.css">
 </head>
@@ -36,7 +38,6 @@
           document.head.appendChild(link);
         }
       });
-      // Load optional POS modules only after authentication is visible.
       modules.forEach((src,i)=>setTimeout(()=>import(src).catch(()=>{}),i*35));
       observer.disconnect();
     }
