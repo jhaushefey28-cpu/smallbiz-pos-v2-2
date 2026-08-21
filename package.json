@@ -1,11 +1,11 @@
 {
   "name": "smallbiz-pos-v2-2",
   "private": true,
-  "version": "2.2.9",
+  "version": "2.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node apply-stock-edit-protection.mjs && node apply-pos-stability-fix.mjs && node apply-owner-module-stability.mjs && vite build",
+    "build": "node apply-stock-edit-protection.mjs && node apply-pos-stability-fix.mjs && node apply-owner-module-stability.mjs && node apply-pos-barcode-fix.mjs && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -13,7 +13,7 @@
     "html5-qrcode": "^2.3.8",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.0"
   },
   "devDependencies": {
     "vite": "^7.3.6"
