@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node apply-stock-edit-protection.mjs && node apply-pos-stability-fix.mjs && node apply-owner-module-stability.mjs && node apply-owner-modules-loader.mjs && node apply-attendance-sidebar-stability.mjs && vite build",
+    "build": "node apply-stock-edit-protection.mjs && node apply-pos-stability-fix.mjs && node apply-owner-module-stability.mjs && node apply-owner-modules-loader.mjs && node apply-attendance-sidebar-stability.mjs && node apply-sidebar-layout-stability.mjs && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
