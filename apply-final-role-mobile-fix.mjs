@@ -9,6 +9,12 @@ if (main.includes(cssAnchor) && !main.includes('import "./sidebar-fix.css";')) {
   main = main.replace(cssAnchor, cssImports);
 }
 
+const profileAnchor = '<div className="profile-box">';
+const profileReplacement = '<div className="profile-box" data-role={role}>';
+if (main.includes(profileAnchor) && !main.includes('className="profile-box" data-role={role}')) {
+  main = main.replace(profileAnchor, profileReplacement);
+}
+
 const navNeedle = '["movements","🔄","Stock History",canManageInventory]]';
 const navReplacement = '["attendance","👥","Employees / Attendance",true],["movements","🔄","Stock History",canManageInventory]]';
 if (main.includes(navNeedle) && !main.includes('["attendance","👥","Employees / Attendance",true]')) {
@@ -22,8 +28,9 @@ if (main.includes(clickNeedle) && !main.includes('key==="attendance"')) {
 }
 
 if (!main.includes('import "./sidebar-fix.css";')) throw new Error("Final mobile CSS imports were not inserted safely.");
+if (!main.includes('className="profile-box" data-role={role}')) throw new Error("Deterministic role marker was not inserted safely.");
 if (!main.includes('["attendance","👥","Employees / Attendance",true]')) throw new Error("Employee / Attendance sidebar entry was not inserted safely.");
 if (!main.includes('key==="attendance"')) throw new Error("Employee / Attendance click handler was not inserted safely.");
 
 fs.writeFileSync(mainPath, main);
-console.log("Applied SMALLBIZ_FINAL_ROLE_MOBILE_FIX_V1: deterministic mobile sidebar CSS + native Employee/Attendance entry.");
+console.log("Applied SMALLBIZ_FINAL_ROLE_MOBILE_FIX_V2: deterministic role marker + mobile sidebar CSS + native Employee/Attendance entry.");
