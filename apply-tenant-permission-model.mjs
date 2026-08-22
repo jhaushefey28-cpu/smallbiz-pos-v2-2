@@ -11,57 +11,25 @@ const profileEffectAnchor = 'useEffect(()=>{if(profile?.business_id)loadSaleItem
 const permissionEffect = '\n  useEffect(()=>{\n    if(!profile?.id||!profile?.business_id)return;\n    loadEffectivePermissions(profile).catch(error=>console.warn("[SmallBiz] Permission load failed.",error));\n  },[profile?.id,profile?.business_id]);\n\n  useEffect(()=>{\n    window.__smallbizPermissionsReady=permissionsReady;\n    window.__smallbizIsTenantSuperAdmin=isTenantSuperAdmin;\n    window.__smallbizHasPermission=(code)=>isTenantSuperAdmin||permissionCodes.has(String(code||""));\n    if(permissionsReady)window.dispatchEvent(new Event("smallbiz:permissions-ready"));\n  },[permissionsReady,isTenantSuperAdmin,permissionCodes]);\n';
 if (main.includes(profileEffectAnchor) && !main.includes("loadEffectivePermissions(profile)")) main = main.replace(profileEffectAnchor, profileEffectAnchor + permissionEffect);
 
-const roleBlock = 'const role=String(profile?.role||"owner").toLowerCase();\n  const isOwner=isTenantSuperAdmin;\n  const canSell=isOwner||role==="manager"||role==="cashier";\n  const canViewReports=isOwner||role==="manager";\n  const canManageInventory=isOwner||role==="manager";\n  const canManagePurchasing=isOwner||role==="manager";\n  const canManageMasters=isOwner||role==="manager";';
-if (!main.includes(roleBlock)) throw new Error("Expected permission role block not found; build stopped safely.");
-
-const newPermissionBlock = `const role=String(profile?.role||"cashier").toLowerCase();
-  const hasPermission=code=>isTenantSuperAdmin||permissionCodes.has(String(code||""));
-  const isOwner=isTenantSuperAdmin;
-  const canSell=hasPermission("pos.use");
-  const canViewReports=hasPermission("reports.view");
-  const canManageInventory=hasPermission("products.manage")||hasPermission("inventory.adjust");
-  const canManagePurchasing=hasPermission("inventory.purchase");
-  const canManageMasters=hasPermission("products.manage")||hasPermission("settings.manage");`;
-main = main.replace(roleBlock, newPermissionBlock);
+const roleBlock = 'const role=String(profile?.role||"owner").toLowerCase();\n  const isOwner=role==="super_admin"||role==="owner"||role==="admin";\n  const canSell=isOwner||role==="manager"||role==="cashier";\n  const canViewReports=isOwner||role==="manager";\n  const canManageInventory=isOwner||role==="manager";\n  const canManagePurchasing=isOwner||role==="manager";\n  const canManageMasters=isOwner||role==="manager";';
+const roleBlockAlt = 'const role=String(profile?.role||"cashier").toLowerCase();\n  const hasPermission=code=>isTenantSuperAdmin||permissionCodes.has(String(code||""));\n  const isOwner=isTenantSuperAdmin;\n  const canSell=hasPermission("pos.use");\n  const canViewReports=hasPermission("reports.view");\n  const canManageInventory=hasPermission("products.manage")||hasPermission("inventory.adjust");\n  const canManagePurchasing=hasPermission("inventory.purchase");\n  const canManageMasters=hasPermission("products.manage")||hasPermission("settings.manage");';
+const newPermissionBlock = 'const role=String(profile?.role||"cashier").toLowerCase();\n  const hasPermission=code=>isTenantSuperAdmin||permissionCodes.has(String(code||""));\n  const isOwner=isTenantSuperAdmin;\n  const canSell=hasPermission("pos.use");\n  const canViewReports=hasPermission("reports.view");\n  const canManageInventory=hasPermission("products.manage")||hasPermission("inventory.adjust");\n  const canManagePurchasing=hasPermission("inventory.purchase");\n  const canManageMasters=hasPermission("products.manage")||hasPermission("settings.manage");';
+if (main.includes(roleBlock)) main = main.replace(roleBlock, newPermissionBlock);
+else if (!main.includes(roleBlockAlt)) throw new Error("Expected permission role block not found; build stopped safely.");
 
 const helperAnchor = '  function paymentLabel(m){return m==="gcash"?"GCash":m==="card"?"Card":"Cash"}\n';
-const helper = `
-  async function loadEffectivePermissions(p){
-    if(!supabase||!p?.id||!p?.business_id)return;
-    const [{data:tenantAdmin,error:tenantError},{data:roleRows,error:roleError},{data:userRows,error:userError},{data:allPermissions,error:allError}]=await Promise.all([
-      supabase.from("tenant_superadmins").select("business_id,user_id").eq("business_id",p.business_id).eq("user_id",p.id).maybeSingle(),
-      supabase.from("role_permissions").select("role,permission_id,allowed").eq("role",p.role),
-      supabase.from("user_permissions").select("permission_id,allowed").eq("user_id",p.id),
-      supabase.from("permissions").select("id,code")
-    ]);
-    if(tenantError||roleError||userError||allError)throw new Error(tenantError?.message||roleError?.message||userError?.message||allError?.message||"Unable to load permissions.");
-    const superAdmin=Boolean(tenantAdmin?.user_id===p.id&&tenantAdmin?.business_id===p.business_id);
-    const codesById=new Map((allPermissions||[]).map(x=>[x.id,x.code]));
-    const effective=new Map();
-    const baseRole=p.role==="owner"&&!superAdmin?"cashier":p.role;
-    if(baseRole==="cashier"&&!superAdmin && p.role==="owner"){
-      effective.set("pos.use",true);
-      effective.set("attendance.view",true);
-    }else{
-      (roleRows||[]).forEach(row=>{const code=codesById.get(row.permission_id);if(code)effective.set(code,row.allowed!==false);});
-    }
-    (userRows||[]).forEach(row=>{const code=codesById.get(row.permission_id);if(code)effective.set(code,row.allowed===true);});
-    if(superAdmin)(allPermissions||[]).forEach(row=>effective.set(row.code,true));
-    setIsTenantSuperAdmin(superAdmin);
-    setPermissionCodes(new Set(Array.from(effective.entries()).filter(([,allowed])=>allowed).map(([code])=>code)));
-    setPermissionsReady(true);
-  }
-
-`;
+const helper = '\n  async function loadEffectivePermissions(p){\n    if(!supabase||!p?.id||!p?.business_id)return;\n    const {data:tenantAdmin,error:tenantError}=await supabase.from("tenant_superadmins").select("business_id,user_id").eq("business_id",p.business_id).eq("user_id",p.id).maybeSingle();\n    if(tenantError)throw new Error(tenantError.message);\n    const superAdmin=Boolean(tenantAdmin?.user_id===p.id&&tenantAdmin?.business_id===p.business_id);\n    const baseRole=(!superAdmin&&String(p.role||"").toLowerCase()==="owner")?"cashier":String(p.role||"cashier").toLowerCase();\n    const [{data:roleRows,error:roleError},{data:userRows,error:userError},{data:allPermissions,error:allError}]=await Promise.all([\n      supabase.from("role_permissions").select("role,permission_id,allowed").eq("role",baseRole),\n      supabase.from("user_permissions").select("permission_id,allowed").eq("user_id",p.id),\n      supabase.from("permissions").select("id,code")\n    ]);\n    if(roleError||userError||allError)throw new Error(roleError?.message||userError?.message||allError?.message||"Unable to load permissions.");\n    const codesById=new Map((allPermissions||[]).map(x=>[x.id,x.code]));\n    const effective=new Map();\n    (roleRows||[]).forEach(row=>{const code=codesById.get(row.permission_id);if(code)effective.set(code,row.allowed!==false);});\n    (userRows||[]).forEach(row=>{const code=codesById.get(row.permission_id);if(code)effective.set(code,row.allowed===true);});\n    if(superAdmin)(allPermissions||[]).forEach(row=>effective.set(row.code,true));\n    setIsTenantSuperAdmin(superAdmin);\n    setPermissionCodes(new Set(Array.from(effective.entries()).filter(([,allowed])=>allowed).map(([code])=>code)));\n    setPermissionsReady(true);\n  }\n\n';
 if (main.includes(helperAnchor) && !main.includes("async function loadEffectivePermissions")) main = main.replace(helperAnchor, helperAnchor + helper);
 
 const sidebarNeedle = '{[["pos","🛒","POS",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["products","📦","Products",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>';
-const sidebarReplacement = '{[["pos","🛒","POS",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["products","📦","Products",hasPermission("products.view")],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canSell],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManagePurchasing],["attendance","👥","Employees / Attendance",hasPermission("attendance.view")],["movements","🔄","Stock History",hasPermission("inventory.view")]].filter(x=>x[3]).map(([key,icon,label])=>';
+const sidebarNeedleAlt = '{[["pos","🛒","POS",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["products","📦","Products",hasPermission("products.view")],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canSell],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManagePurchasing],["attendance","👥","Employees / Attendance",hasPermission("attendance.view")],["movements","🔄","Stock History",hasPermission("inventory.view")]].filter(x=>x[3]).map(([key,icon,label])=>';
+const sidebarReplacement = '{[["pos","🛒","POS",hasPermission("pos.use")],["dashboard","📈","Dashboard",hasPermission("reports.view")],["transactions","📋","Transactions",hasPermission("pos.use")],["reports","📊","Reports",hasPermission("reports.view")],["products","📦","Products",hasPermission("products.view")],["categories","🏷️","Categories",hasPermission("products.manage")],["customers","👥","Customers",hasPermission("products.view")],["purchases","🚚","Purchasing",hasPermission("inventory.purchase")],["suppliers","🏢","Suppliers",hasPermission("inventory.purchase")],["attendance","👥","Employees / Attendance",hasPermission("attendance.view")],["movements","🔄","Stock History",hasPermission("inventory.view")]].filter(x=>x[3]).map(([key,icon,label])=>';
 if (main.includes(sidebarNeedle)) main = main.replace(sidebarNeedle, sidebarReplacement);
+else if (main.includes(sidebarNeedleAlt)) main = main.replace(sidebarNeedleAlt, sidebarReplacement);
 
 if (!main.includes("window.__smallbizHasPermission")) throw new Error("Permission bridge was not inserted safely.");
-if (!main.includes("hasPermission(\"pos.use\")")) throw new Error("Permission-based POS access was not inserted safely.");
+if (!main.includes("const canSell=hasPermission(\"pos.use\")")) throw new Error("Permission-based POS access was not inserted safely.");
 if (!main.includes("hasPermission(\"attendance.view\")")) throw new Error("Permission-based Attendance access was not inserted safely.");
 
 fs.writeFileSync(mainPath, main);
-console.log("Applied SMALLBIZ_TENANT_PERMISSION_MODEL_V2: tenant super-admin full access + owner-as-cashier default + per-user permission overrides.");
+console.log("Applied SMALLBIZ_TENANT_PERMISSION_MODEL_V3: tenant super-admin full access + owner defaults to cashier permissions + tenant-managed overrides.");
