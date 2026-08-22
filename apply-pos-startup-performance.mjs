@@ -9,39 +9,41 @@ const newBlock = `    // POS-first startup: only products/categories are needed 
     await loadCategories(p.business_id);`;
 
 const effectMarker = "// SMALLBIZ_LAZY_PAGE_DATA_V1";
-const effect = `
-  ${effectMarker}
-  useEffect(()=>{
-    const b=profile?.business_id;
-    if(!b)return;
-    const key=String(b)+":"+String(activePage);
-    if(window.__smallbizLazyPageLoads?.has(key))return;
-    window.__smallbizLazyPageLoads=window.__smallbizLazyPageLoads||new Set();
-    window.__smallbizLazyPageLoads.add(key);
-    const run=async()=>{
-      try{
-        if(activePage==="dashboard"||activePage==="transactions") await loadSalesHistory(b);
-        else if(activePage==="reports") await Promise.all([loadSalesHistory(b),loadPurchaseHistory(b)]);
-        else if(activePage==="movements") await loadMovements(b);
-        else if(activePage==="customers") await loadCustomers(b);
-        else if(activePage==="purchases") await Promise.all([loadSuppliers(b),loadPurchaseHistory(b)]);
-        else if(activePage==="suppliers") await loadSuppliers(b);
-        else if(activePage==="categories"||activePage==="products") await loadCategories(b);
-      }catch(error){console.warn("[SmallBiz] Lazy page data failed.",error);window.__smallbizLazyPageLoads.delete(key);}
-    };
-    if(activePage!=="pos")run();
-  },[activePage,profile?.business_id]);
-
-  useEffect(()=>{
-    if(!paymentOpen||!profile?.business_id)return;
-    const b=profile.business_id;
-    const key=String(b)+":customers-payment";
-    window.__smallbizLazyPageLoads=window.__smallbizLazyPageLoads||new Set();
-    if(window.__smallbizLazyPageLoads.has(key))return;
-    window.__smallbizLazyPageLoads.add(key);
-    loadCustomers(b).catch(()=>window.__smallbizLazyPageLoads.delete(key));
-  },[paymentOpen,profile?.business_id]);
-`;
+const effect = [
+  "",
+  "  // SMALLBIZ_LAZY_PAGE_DATA_V1",
+  "  useEffect(()=>{",
+  "    const b=profile?.business_id;",
+  "    if(!b)return;",
+  "    const key=String(b)+\":\"+String(activePage);",
+  "    if(window.__smallbizLazyPageLoads?.has(key))return;",
+  "    window.__smallbizLazyPageLoads=window.__smallbizLazyPageLoads||new Set();",
+  "    window.__smallbizLazyPageLoads.add(key);",
+  "    const run=async()=>{",
+  "      try{",
+  "        if(activePage===\"dashboard\"||activePage===\"transactions\") await loadSalesHistory(b);",
+  "        else if(activePage===\"reports\") await Promise.all([loadSalesHistory(b),loadPurchaseHistory(b)]);",
+  "        else if(activePage===\"movements\") await loadMovements(b);",
+  "        else if(activePage===\"customers\") await loadCustomers(b);",
+  "        else if(activePage===\"purchases\") await Promise.all([loadSuppliers(b),loadPurchaseHistory(b)]);",
+  "        else if(activePage===\"suppliers\") await loadSuppliers(b);",
+  "        else if(activePage===\"categories\"||activePage===\"products\") await loadCategories(b);",
+  "      }catch(error){console.warn(\"[SmallBiz] Lazy page data failed.\",error);window.__smallbizLazyPageLoads.delete(key);}",
+  "    };",
+  "    if(activePage!==\"pos\")run();",
+  "  },[activePage,profile?.business_id]);",
+  "",
+  "  useEffect(()=>{",
+  "    if(!paymentOpen||!profile?.business_id)return;",
+  "    const b=profile.business_id;",
+  "    const key=String(b)+\":customers-payment\";",
+  "    window.__smallbizLazyPageLoads=window.__smallbizLazyPageLoads||new Set();",
+  "    if(window.__smallbizLazyPageLoads.has(key))return;",
+  "    window.__smallbizLazyPageLoads.add(key);",
+  "    loadCustomers(b).catch(()=>window.__smallbizLazyPageLoads.delete(key));",
+  "  },[paymentOpen,profile?.business_id]);",
+  ""
+].join("\n");
 
 if (!text.includes(oldBlock) && !text.includes(effectMarker)) {
   throw new Error("POS startup data block not found; performance patch stopped safely.");
@@ -55,4 +57,4 @@ if (!text.includes(effectMarker)) {
 }
 
 fs.writeFileSync(path, text);
-console.log("Applied SMALLBIZ_POS_STARTUP_PERFORMANCE_V2: defer secondary POS data queries until their page is opened.");
+console.log("Applied SMALLBIZ_POS_STARTUP_PERFORMANCE_V3: defer secondary POS data queries until their page is opened.");
