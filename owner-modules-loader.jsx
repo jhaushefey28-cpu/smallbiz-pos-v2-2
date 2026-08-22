@@ -1,5 +1,6 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V4
+// SMALLBIZ_OWNER_MODULES_LOADER_V5
 // Vite-native, post-auth module loader. Optional modules never block login/core POS.
+// Modules are staged to keep the POS responsive while preserving the full sidebar.
 let started = false;
 
 // Attendance styles are imported statically so Vite guarantees they are present before the
@@ -29,14 +30,7 @@ const MODULES = [
   () => import("./inventory-center.jsx"),
   () => import("./growth-center.jsx"),
   () => import("./growth-center-sidebar-fix.js"),
-  () => import("./cashier-shift.jsx"),
-  // Attendance runtime dependencies must be initialized in order.
-  async () => {
-    await import("./attendance-runtime-bridge.js");
-    await import("./attendance-center.js");
-    await import("./employee-attendance.js");
-    await import("./attendance-sidebar-fix.js");
-  }
+  () => import("./cashier-shift.jsx")
 ];
 
 const STYLES = [
@@ -49,13 +43,58 @@ const STYLES = [
   "./cashier-shift.css"
 ];
 
+const yieldToBrowser = (callback) => {
+  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+    window.requestIdleCallback(callback, { timeout: 250 });
+  } else {
+    setTimeout(callback, 0);
+  }
+};
+
+async function loadAttendanceFirst() {
+  try {
+    await import("./attendance-runtime-bridge.js");
+    await import("./attendance-center.js");
+    await import("./employee-attendance.js");
+    await import("./attendance-sidebar-fix.js");
+  } catch (error) {
+    console.warn("[SmallBiz] Attendance module failed; core app remains active.", error);
+  }
+}
+
+function loadRemainingModulesInBatches() {
+  let index = 0;
+  let failed = 0;
+  const batchSize = 3;
+
+  const next = () => {
+    if (index >= MODULES.length) {
+      if (failed) console.warn(`[SmallBiz] ${failed} optional module(s) failed; core app remains active.`);
+      else console.info("[SmallBiz] Owner modules loaded through staged Vite authentication loader.");
+      return;
+    }
+
+    const batch = MODULES.slice(index, index + batchSize);
+    index += batch.length;
+
+    yieldToBrowser(async () => {
+      const results = await Promise.allSettled(batch.map(load => load()));
+      failed += results.filter(result => result.status === "rejected").length;
+      yieldToBrowser(next);
+    });
+  };
+
+  next();
+}
+
 export function startOwnerModules() {
   if (started) return;
   started = true;
+
+  // CSS is cheap and needed immediately for the independent sidebar scroll layout.
   STYLES.forEach(src => import(src).catch(() => {}));
-  Promise.allSettled(MODULES.map(load => load())).then(results => {
-    const failed = results.filter(r => r.status === "rejected").length;
-    if (failed) console.warn(`[SmallBiz] ${failed} optional module(s) failed; core app remains active.`);
-    else console.info("[SmallBiz] Owner modules loaded through Vite after authentication.");
-  });
+
+  // Attendance gets first priority so its sidebar entry is available without waiting for
+  // marketplace/report/inventory modules. Everything else yields to the browser in small batches.
+  loadAttendanceFirst().finally(loadRemainingModulesInBatches);
 }
