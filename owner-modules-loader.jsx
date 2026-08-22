@@ -1,100 +1,122 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V5
-// Vite-native, post-auth module loader. Optional modules never block login/core POS.
-// Modules are staged to keep the POS responsive while preserving the full sidebar.
+// SMALLBIZ_OWNER_MODULES_LOADER_V6
+// Lazy owner-module loader. Sidebar entries render immediately; heavy modules load only on click.
+// Core POS/auth is never blocked by optional owner modules.
 let started = false;
 
-// Attendance styles are imported statically so Vite guarantees they are present before the
-// module renders. This prevents the modal from falling back to unstyled HTML at the bottom.
 import "./attendance-center.css";
 import "./attendance-log-enhancement.css";
 import "./employee-attendance.css";
 
-const MODULES = [
+const SUPPORT_MODULES = [
   () => import("./reprint-modal-fix.js"),
   () => import("./void-reason-enhancement.js"),
-  () => import("./transaction-audit-enhancement.js"),
-  () => import("./team-management.js"),
-  () => import("./sales-channels.jsx"),
-  () => import("./product-channel-mapping.jsx"),
-  () => import("./order-management-shipment-hotfix.js"),
-  () => import("./order-management.jsx"),
-  () => import("./platform-channel-admin.js"),
-  () => import("./marketplace-connections.jsx"),
-  () => import("./marketplace-oauth-connect.js"),
-  () => import("./marketplace-sync-readiness.jsx"),
-  () => import("./marketplace-stock-reservation.jsx"),
-  () => import("./marketplace-fulfillment.jsx"),
-  () => import("./report-export-engine.js"),
-  () => import("./reports-center.js"),
-  () => import("./business-controls.jsx"),
-  () => import("./inventory-center.jsx"),
-  () => import("./growth-center.jsx"),
-  () => import("./growth-center-sidebar-fix.js"),
-  () => import("./cashier-shift.jsx")
+  () => import("./transaction-audit-enhancement.js")
 ];
 
-const STYLES = [
-  "./sidebar-fix.css",
-  "./platform-channel-admin.css",
-  "./responsive-pos.css",
-  "./reports-center.css",
-  "./mobile-cart-float.css",
-  "./business-controls-scroll-fix.css",
-  "./cashier-shift.css"
+const OWNER_MENU = [
+  { key: "team", icon: "👥", label: "Team", patterns: [/^Team$/i], load: () => import("./team-management.js") },
+  { key: "channels", icon: "🌐", label: "Online Channels", patterns: [/Online Channels/i], load: () => import("./sales-channels.jsx") },
+  { key: "marketplace-connections", icon: "🔌", label: "Marketplace Connections", patterns: [/Marketplace Connections/i], load: () => import("./marketplace-connections.jsx") },
+  { key: "marketplace-stock", icon: "📦", label: "Marketplace Stock", patterns: [/Marketplace Stock/i], load: () => import("./marketplace-stock-reservation.jsx") },
+  { key: "marketplace-fulfillment", icon: "🚚", label: "Marketplace Fulfillment", patterns: [/Marketplace Fulfillment/i], load: () => import("./marketplace-fulfillment.jsx") },
+  { key: "reports", icon: "📊", label: "Reports", patterns: [/^Reports$/i], load: () => import("./reports-center.js") },
+  { key: "business-controls", icon: "⚙️", label: "Business Controls", patterns: [/Business Controls/i], load: () => import("./business-controls.jsx") },
+  { key: "inventory", icon: "📦", label: "Inventory", patterns: [/^Inventory$/i], load: () => import("./inventory-center.jsx") },
+  { key: "growth", icon: "📈", label: "Growth", patterns: [/^Growth$/i], load: () => import("./growth-center.jsx") },
+  { key: "cashier-shift", icon: "💵", label: "Cashier Shift", patterns: [/Cashier Shift/i], load: () => import("./cashier-shift.jsx") }
 ];
+
+const loaded = new Set();
+const loading = new Set();
 
 const yieldToBrowser = (callback) => {
   if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-    window.requestIdleCallback(callback, { timeout: 250 });
+    window.requestIdleCallback(callback, { timeout: 300 });
   } else {
     setTimeout(callback, 0);
   }
 };
 
-async function loadAttendanceFirst() {
+function nav() { return document.querySelector(".sidebar-nav"); }
+function textOf(el) { return String(el?.textContent || "").replace(/\s+/g, " ").trim(); }
+
+function findNativeButton(item) {
+  const root = nav();
+  if (!root) return null;
+  return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el => {
+    if (el.dataset?.smallbizLazyOwner) return false;
+    const text = textOf(el);
+    return item.patterns.some(pattern => pattern.test(text));
+  }) || null;
+}
+
+function openLoadedModule(item) {
+  const native = findNativeButton(item);
+  if (native) { native.click(); return; }
+  window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));
+}
+
+async function loadOwnerModule(item, placeholder) {
+  if (loading.has(item.key)) return;
+  if (loaded.has(item.key)) { openLoadedModule(item); return; }
+  loading.add(item.key);
+  placeholder.dataset.loading = "1";
+  placeholder.querySelector("b")?.replaceChildren(document.createTextNode(`${item.label}…`));
+  try {
+    await item.load();
+    loaded.add(item.key);
+    placeholder.remove();
+    setTimeout(() => openLoadedModule(item), 40);
+  } catch (error) {
+    console.warn(`[SmallBiz] ${item.label} failed to load.`, error);
+    placeholder.dataset.loading = "0";
+    placeholder.querySelector("b")?.replaceChildren(document.createTextNode(item.label));
+  } finally { loading.delete(item.key); }
+}
+
+function ensureOwnerMenu() {
+  const root = nav();
+  if (!root) return false;
+  OWNER_MENU.forEach(item => {
+    if (findNativeButton(item)) return;
+    if (root.querySelector(`[data-smallbiz-lazy-owner='${item.key}']`)) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "nav-item";
+    button.dataset.smallbizLazyOwner = item.key;
+    button.innerHTML = `<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;
+    button.setAttribute("aria-label", item.label);
+    button.addEventListener("click", () => loadOwnerModule(item, button));
+    root.appendChild(button);
+  });
+  return true;
+}
+
+async function loadAttendance() {
   try {
     await import("./attendance-runtime-bridge.js");
     await import("./attendance-center.js");
     await import("./employee-attendance.js");
     await import("./attendance-sidebar-fix.js");
-  } catch (error) {
-    console.warn("[SmallBiz] Attendance module failed; core app remains active.", error);
-  }
+  } catch (error) { console.warn("[SmallBiz] Attendance module failed; core app remains active.", error); }
 }
 
-function loadRemainingModulesInBatches() {
-  let index = 0;
-  let failed = 0;
-  const batchSize = 3;
-
-  const next = () => {
-    if (index >= MODULES.length) {
-      if (failed) console.warn(`[SmallBiz] ${failed} optional module(s) failed; core app remains active.`);
-      else console.info("[SmallBiz] Owner modules loaded through staged Vite authentication loader.");
-      return;
-    }
-
-    const batch = MODULES.slice(index, index + batchSize);
-    index += batch.length;
-
-    yieldToBrowser(async () => {
-      const results = await Promise.allSettled(batch.map(load => load()));
-      failed += results.filter(result => result.status === "rejected").length;
-      yieldToBrowser(next);
-    });
-  };
-
-  next();
+function observeSidebarOnce() {
+  if (ensureOwnerMenu()) return;
+  const observer = new MutationObserver(() => { if (ensureOwnerMenu()) observer.disconnect(); });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  setTimeout(() => observer.disconnect(), 15000);
 }
 
 export function startOwnerModules() {
   if (started) return;
   started = true;
-
-  // CSS is cheap and needed immediately for the independent sidebar scroll layout.
-  STYLES.forEach(src => import(src).catch(() => {}));
-
-  // Attendance gets first priority so its sidebar entry is available without waiting for
-  // marketplace/report/inventory modules. Everything else yields to the browser in small batches.
-  loadAttendanceFirst().finally(loadRemainingModulesInBatches);
+  observeSidebarOnce();
+  loadAttendance();
+  yieldToBrowser(async () => {
+    for (const load of SUPPORT_MODULES) {
+      try { await load(); } catch (error) { console.warn("[SmallBiz] Optional POS enhancement failed.", error); }
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  });
 }
