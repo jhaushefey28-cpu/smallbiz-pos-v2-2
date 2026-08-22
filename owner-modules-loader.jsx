@@ -1,6 +1,6 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V7
+// SMALLBIZ_OWNER_MODULES_LOADER_V8
 // Complete owner/admin sidebar registry. Heavy modules load only when clicked.
-// Cashiers never receive owner/admin modules. Core POS/auth is never blocked.
+// Cashiers never receive owner/admin modules. Core POS/auth and attendance remain independent.
 let started = false;
 
 import "./attendance-center.css";
@@ -45,8 +45,11 @@ function nav() { return document.querySelector(".sidebar-nav"); }
 function textOf(el) { return String(el?.textContent || "").replace(/\s+/g, " ").trim(); }
 
 function currentRole() {
-  const root = document.querySelector(".profile-box");
-  const smalls = root ? Array.from(root.querySelectorAll("small")) : [];
+  const sidebar = document.querySelector(".sidebar");
+  const explicit = sidebar?.dataset?.role;
+  if (explicit) return String(explicit).trim().toLowerCase();
+  const profile = document.querySelector(".profile-box");
+  const smalls = profile ? Array.from(profile.querySelectorAll("small")) : [];
   return String(smalls.find(el => !el.classList.contains("online"))?.textContent || "").trim().toLowerCase();
 }
 
@@ -72,6 +75,7 @@ function openLoadedModule(item) {
 }
 
 async function loadOwnerModule(item, placeholder) {
+  if (!isOwnerAdminRole()) return;
   if (loading.has(item.key)) return;
   if (loaded.has(item.key)) { openLoadedModule(item); return; }
   loading.add(item.key);
@@ -94,7 +98,6 @@ function ensureOwnerMenu() {
   const root = nav();
   if (!root) return false;
 
-  // Never expose owner/admin modules to cashiers or other non-owner roles.
   if (!isOwnerAdminRole()) {
     root.querySelectorAll("[data-smallbiz-lazy-owner]").forEach(el => el.remove());
     return true;
