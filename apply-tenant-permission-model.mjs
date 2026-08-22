@@ -38,7 +38,13 @@ const helper = `
     const superAdmin=Boolean(tenantAdmin?.user_id===p.id&&tenantAdmin?.business_id===p.business_id);
     const codesById=new Map((allPermissions||[]).map(x=>[x.id,x.code]));
     const effective=new Map();
-    (roleRows||[]).forEach(row=>{const code=codesById.get(row.permission_id);if(code)effective.set(code,row.allowed!==false);});
+    const baseRole=p.role==="owner"&&!superAdmin?"cashier":p.role;
+    if(baseRole==="cashier"&&!superAdmin && p.role==="owner"){
+      effective.set("pos.use",true);
+      effective.set("attendance.view",true);
+    }else{
+      (roleRows||[]).forEach(row=>{const code=codesById.get(row.permission_id);if(code)effective.set(code,row.allowed!==false);});
+    }
     (userRows||[]).forEach(row=>{const code=codesById.get(row.permission_id);if(code)effective.set(code,row.allowed===true);});
     if(superAdmin)(allPermissions||[]).forEach(row=>effective.set(row.code,true));
     setIsTenantSuperAdmin(superAdmin);
@@ -58,4 +64,4 @@ if (!main.includes("hasPermission(\"pos.use\")")) throw new Error("Permission-ba
 if (!main.includes("hasPermission(\"attendance.view\")")) throw new Error("Permission-based Attendance access was not inserted safely.");
 
 fs.writeFileSync(mainPath, main);
-console.log("Applied SMALLBIZ_TENANT_PERMISSION_MODEL_V1: tenant super-admin full access + per-user permission overrides.");
+console.log("Applied SMALLBIZ_TENANT_PERMISSION_MODEL_V2: tenant super-admin full access + owner-as-cashier default + per-user permission overrides.");
