@@ -1,0 +1,86 @@
+/* SMALLBIZ SIDEBAR LAYOUT STABILITY
+   Sidebar owns its own scroll area. POS/main content owns page scroll.
+   This prevents dragging/scrolling the product area from moving the sidebar. */
+
+.app-shell {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.sidebar {
+  flex: 0 0 250px;
+  height: 100dvh;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.sidebar-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  width: 7px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: #3a4658;
+  border-radius: 999px;
+}
+
+.sidebar-bottom {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+.main-area {
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Keep product/card dragging and scrolling inside the POS area. */
+.pos-layout,
+.products-panel {
+  min-height: 0;
+}
+
+.products-panel,
+.products-grid {
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  .sidebar {
+    height: 100dvh;
+  }
+
+  .sidebar-nav {
+    max-height: none;
+  }
+
+  .main-area {
+    height: 100dvh;
+  }
+}
