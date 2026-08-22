@@ -1,1 +1,1 @@
-SmallBiz POS production deployment trigger.
+SmallBiz POS production deployment trigger — retry after Vercel build-rate-limit reset.
