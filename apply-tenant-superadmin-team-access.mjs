@@ -14,12 +14,12 @@ if(text.includes(stateOld)&&!text.includes("isTenantSuperAdmin")) {
 if(!text.includes("state.isTenantSuperAdmin")) {
   const marker='state.profile = profile;';
   if(!text.includes(marker)) throw new Error("Tenant Super Admin team access patch failed safely: profile context marker not found.");
-  const injected='''const { data: tenantAdmin } = await sb.from("tenant_superadmins").select("business_id,user_id").eq("business_id", profile.business_id).eq("user_id", profile.id).maybeSingle();
+  const injected=`const { data: tenantAdmin } = await sb.from("tenant_superadmins").select("business_id,user_id").eq("business_id", profile.business_id).eq("user_id", profile.id).maybeSingle();
   state.isTenantSuperAdmin = Boolean(tenantAdmin?.user_id===profile.id && tenantAdmin?.business_id===profile.business_id);
-  ''';
+  `;
   text=text.replace(marker, injected + marker);
 }
 
 if(!text.includes("state.isTenantSuperAdmin")) throw new Error("Tenant Super Admin team access patch failed safely.");
 fs.writeFileSync(path,text);
-console.log("Applied SMALLBIZ_TENANT_SUPERADMIN_TEAM_ACCESS_V2: tenant super-admin marker is applied without relying on obsolete loader source.");
+console.log("Applied SMALLBIZ_TENANT_SUPERADMIN_TEAM_ACCESS_V3: safe template literal for tenant super-admin marker injection.");
