@@ -39,14 +39,17 @@ if (!main.includes("mobileSidebarOpen")) {
   main = main.replace(stateNeedle, `${stateNeedle}\n  const [mobileSidebarOpen,setMobileSidebarOpen]=useState(false);`);
 }
 
-const appNeedle = 'return <div className="app-shell">\n    <aside className="sidebar">';
-const appReplacement = `return <div className="app-shell">\n    <button type="button" className="mobile-sidebar-toggle" aria-label="Open navigation" onClick={()=>setMobileSidebarOpen(true)}>☰</button>\n    {mobileSidebarOpen&&<button type="button" className="mobile-sidebar-backdrop" aria-label="Close navigation" onClick={()=>setMobileSidebarOpen(false)} />}\n    <aside className={mobileSidebarOpen?"sidebar mobile-sidebar-open":"sidebar"}>`;
+const sidebarMarkupNeedle = '<aside className="sidebar">';
+const sidebarMarkupReplacement = '<aside className={mobileSidebarOpen?"sidebar mobile-sidebar-open":"sidebar"}>';
 if (!main.includes('mobile-sidebar-toggle')) {
-  if (!main.includes(appNeedle)) throw new Error("Final mobile layout sidebar insertion failed safely.");
-  main = main.replace(appNeedle, appReplacement);
+  if (!main.includes(sidebarMarkupNeedle)) throw new Error("Final mobile layout sidebar insertion failed safely: sidebar markup anchor not found.");
+  main = main.replace(sidebarMarkupNeedle, sidebarMarkupReplacement);
+  const appShellNeedle = 'return <div className="app-shell">';
+  const appShellReplacement = `return <div className="app-shell">\n    <button type="button" className="mobile-sidebar-toggle" aria-label="Open navigation" onClick={()=>setMobileSidebarOpen(true)}>☰</button>\n    {mobileSidebarOpen&&<button type="button" className="mobile-sidebar-backdrop" aria-label="Close navigation" onClick={()=>setMobileSidebarOpen(false)} />}`;
+  if (!main.includes(appShellNeedle)) throw new Error("Final mobile layout sidebar insertion failed safely: app shell anchor not found.");
+  main = main.replace(appShellNeedle, appShellReplacement);
 }
 
-const navNeedle = 'className={activePage==="'+"key"+'"?"nav-item active":"nav-item"} onClick=';
 const navNeedleExact = 'className={activePage===key?"nav-item active":"nav-item"} onClick=';
 const navReplacement = 'className={activePage===key?"nav-item active":"nav-item"} onClickCapture={()=>setMobileSidebarOpen(false)} onClick=';
 if (!main.includes('onClickCapture={()=>setMobileSidebarOpen(false)}')) {
@@ -59,4 +62,4 @@ if (!main.includes('className="profile-box" data-role={role}')) throw new Error(
 if (!main.includes('mobile-sidebar-toggle')) throw new Error("Mobile sidebar toggle was not inserted safely.");
 
 fs.writeFileSync(mainPath, main);
-console.log("Applied SMALLBIZ_FINAL_ROLE_MOBILE_FIX_V4: deterministic role marker + permission-gated Attendance + full off-canvas mobile sidebar + isolated POS scrolling.");
+console.log("Applied SMALLBIZ_FINAL_ROLE_MOBILE_FIX_V5: deterministic role marker + permission-gated Attendance + full off-canvas mobile sidebar + isolated POS scrolling.");
