@@ -4,33 +4,22 @@ const path="team-management.js";
 let text=fs.readFileSync(path,"utf8");
 
 const stateOld='const state = { session: null, profile: null, settings: null, members: [], busy: false };';
-const stateNew='const state = { session: null, profile: null, settings: null, members: [], busy: false, isTenantSuperAdmin: false };';
-if(text.includes(stateOld)&&!text.includes("isTenantSuperAdmin: false"))text=text.replace(stateOld,stateNew);
+if(text.includes(stateOld)&&!text.includes("isTenantSuperAdmin")) {
+  text=text.replace(stateOld,'const state = { session: null, profile: null, settings: null, members: [], busy: false, isTenantSuperAdmin: false };');
+}
 
-const old=`async function loadContext() {
-  if (!sb) return false;
-  const { data: sessionData } = await sb.auth.getSession();
-  state.session = sessionData?.session || null;
-  if (!state.session?.user) return false;
-  const { data: profile, error } = await sb.from("profiles").select("id,business_id,full_name,role,active").eq("id", state.session.user.id).maybeSingle();
-  if (error || !profile) return false;
-  state.profile = profile;
-  return isAdminRole(profile.role) && profile.active !== false;
-}`;
-const replacement=`async function loadContext() {
-  if (!sb) return false;
-  const { data: sessionData } = await sb.auth.getSession();
-  state.session = sessionData?.session || null;
-  if (!state.session?.user) return false;
-  const { data: profile, error } = await sb.from("profiles").select("id,business_id,full_name,role,active").eq("id", state.session.user.id).maybeSingle();
-  if (error || !profile) return false;
-  const { data: tenantAdmin } = await sb.from("tenant_superadmins").select("business_id,user_id").eq("business_id", profile.business_id).eq("user_id", profile.id).maybeSingle();
-  state.profile = profile;
+// The permission model may already have changed the Team module's loadContext implementation.
+// Do not depend on an obsolete exact source block. Instead, augment the current context loader
+// only when the tenant-super-admin marker/query is not already present.
+if(!text.includes("state.isTenantSuperAdmin")) {
+  const marker='state.profile = profile;';
+  if(!text.includes(marker)) throw new Error("Tenant Super Admin team access patch failed safely: profile context marker not found.");
+  const injected='''const { data: tenantAdmin } = await sb.from("tenant_superadmins").select("business_id,user_id").eq("business_id", profile.business_id).eq("user_id", profile.id).maybeSingle();
   state.isTenantSuperAdmin = Boolean(tenantAdmin?.user_id===profile.id && tenantAdmin?.business_id===profile.business_id);
-  return (state.isTenantSuperAdmin || isAdminRole(profile.role)) && profile.active !== false;
-}`;
-if(text.includes(old))text=text.replace(old,replacement);
+  ''';
+  text=text.replace(marker, injected + marker);
+}
 
-if(!text.includes("state.isTenantSuperAdmin"))throw new Error("Tenant Super Admin team access patch failed safely.");
+if(!text.includes("state.isTenantSuperAdmin")) throw new Error("Tenant Super Admin team access patch failed safely.");
 fs.writeFileSync(path,text);
-console.log("Applied SMALLBIZ_TENANT_SUPERADMIN_TEAM_ACCESS_V1: tenant super-admin access is independent of profile role.");
+console.log("Applied SMALLBIZ_TENANT_SUPERADMIN_TEAM_ACCESS_V2: tenant super-admin marker is applied without relying on obsolete loader source.");
