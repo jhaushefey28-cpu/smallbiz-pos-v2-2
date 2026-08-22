@@ -1,6 +1,6 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V8
-// Complete owner/admin sidebar registry. Heavy modules load only when clicked.
-// Cashiers never receive owner/admin modules. Core POS/auth and attendance remain independent.
+// SMALLBIZ_OWNER_MODULES_LOADER_V9
+// Tenant-aware lazy owner-module loader. Sidebar entries render only when the current user has permission.
+// Tenant super-admins have full access. Core POS/auth and attendance remain independent.
 let started = false;
 
 import "./attendance-center.css";
@@ -14,20 +14,20 @@ const SUPPORT_MODULES = [
 ];
 
 const OWNER_MENU = [
-  { key: "team", icon: "👥", label: "Team", patterns: [/^Team$/i], load: () => import("./team-management.js") },
-  { key: "channels", icon: "🌐", label: "Online Channels", patterns: [/Online Channels/i], load: () => import("./sales-channels.jsx") },
-  { key: "marketplace-connections", icon: "🔌", label: "Marketplace Connections", patterns: [/Marketplace Connections/i], load: () => import("./marketplace-connections.jsx") },
-  { key: "marketplace-stock", icon: "📦", label: "Marketplace Stock", patterns: [/Marketplace Stock/i], load: () => import("./marketplace-stock-reservation.jsx") },
-  { key: "marketplace-fulfillment", icon: "🚚", label: "Marketplace Fulfillment", patterns: [/Marketplace Fulfillment/i], load: () => import("./marketplace-fulfillment.jsx") },
-  { key: "order-management", icon: "🛍️", label: "Order Management", patterns: [/Order Management/i], load: () => import("./order-management.jsx") },
-  { key: "sync-readiness", icon: "🔄", label: "Marketplace Sync Readiness", patterns: [/Marketplace Sync Readiness/i], load: () => import("./marketplace-sync-readiness.jsx") },
-  { key: "channel-mapping", icon: "🗺️", label: "Product Channel Mapping", patterns: [/Product Channel Mapping/i], load: () => import("./product-channel-mapping.jsx") },
-  { key: "platform-admin", icon: "🛠️", label: "Platform Channel Admin", patterns: [/Platform Channel Admin/i], load: () => import("./platform-channel-admin.js") },
-  { key: "reports", icon: "📊", label: "Reports", patterns: [/^Reports$/i], load: () => import("./reports-center.js") },
-  { key: "business-controls", icon: "⚙️", label: "Business Controls", patterns: [/Business Controls/i], load: () => import("./business-controls.jsx") },
-  { key: "inventory", icon: "📦", label: "Inventory", patterns: [/^Inventory$/i], load: () => import("./inventory-center.jsx") },
-  { key: "growth", icon: "📈", label: "Growth", patterns: [/^Growth$/i], load: () => import("./growth-center.jsx") },
-  { key: "cashier-shift", icon: "💵", label: "Cashier Shift", patterns: [/Cashier Shift/i], load: () => import("./cashier-shift.jsx") }
+  { key: "team", icon: "👥", label: "Team", permission: "team.view", load: () => import("./team-management.js") },
+  { key: "channels", icon: "🌐", label: "Online Channels", permission: "marketplace.view", load: () => import("./sales-channels.jsx") },
+  { key: "marketplace-connections", icon: "🔌", label: "Marketplace Connections", permission: "marketplace.view", load: () => import("./marketplace-connections.jsx") },
+  { key: "marketplace-stock", icon: "📦", label: "Marketplace Stock", permission: "inventory.view", load: () => import("./marketplace-stock-reservation.jsx") },
+  { key: "marketplace-fulfillment", icon: "🚚", label: "Marketplace Fulfillment", permission: "marketplace.manage", load: () => import("./marketplace-fulfillment.jsx") },
+  { key: "order-management", icon: "🛍️", label: "Order Management", permission: "marketplace.view", load: () => import("./order-management.jsx") },
+  { key: "sync-readiness", icon: "🔄", label: "Marketplace Sync Readiness", permission: "marketplace.view", load: () => import("./marketplace-sync-readiness.jsx") },
+  { key: "channel-mapping", icon: "🗺️", label: "Product Channel Mapping", permission: "marketplace.manage", load: () => import("./product-channel-mapping.jsx") },
+  { key: "platform-admin", icon: "🛠️", label: "Platform Channel Admin", permission: "marketplace.manage", load: () => import("./platform-channel-admin.js") },
+  { key: "reports", icon: "📊", label: "Reports", permission: "reports.view", load: () => import("./reports-center.js") },
+  { key: "business-controls", icon: "⚙️", label: "Business Controls", permission: "settings.manage", load: () => import("./business-controls.jsx") },
+  { key: "inventory", icon: "📦", label: "Inventory", permission: "inventory.view", load: () => import("./inventory-center.jsx") },
+  { key: "growth", icon: "📈", label: "Growth", permission: "reports.view", load: () => import("./growth-center.jsx") },
+  { key: "cashier-shift", icon: "💵", label: "Cashier Shift", permission: "pos.use", load: () => import("./cashier-shift.jsx") }
 ];
 
 const loaded = new Set();
@@ -43,20 +43,7 @@ const yieldToBrowser = (callback) => {
 
 function nav() { return document.querySelector(".sidebar-nav"); }
 function textOf(el) { return String(el?.textContent || "").replace(/\s+/g, " ").trim(); }
-
-function currentRole() {
-  const sidebar = document.querySelector(".sidebar");
-  const explicit = sidebar?.dataset?.role;
-  if (explicit) return String(explicit).trim().toLowerCase();
-  const profile = document.querySelector(".profile-box");
-  const smalls = profile ? Array.from(profile.querySelectorAll("small")) : [];
-  return String(smalls.find(el => !el.classList.contains("online"))?.textContent || "").trim().toLowerCase();
-}
-
-function isOwnerAdminRole() {
-  const role = currentRole();
-  return role === "owner" || role === "admin" || role === "super_admin";
-}
+function hasPermission(code) { return typeof window.__smallbizHasPermission === "function" && window.__smallbizHasPermission(code); }
 
 function findNativeButton(item) {
   const root = nav();
@@ -64,7 +51,7 @@ function findNativeButton(item) {
   return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el => {
     if (el.dataset?.smallbizLazyOwner) return false;
     const text = textOf(el);
-    return item.patterns.some(pattern => pattern.test(text));
+    return item.label === text || item.label.replace(/\s+/g, " ").toLowerCase() === text.toLowerCase();
   }) || null;
 }
 
@@ -75,7 +62,7 @@ function openLoadedModule(item) {
 }
 
 async function loadOwnerModule(item, placeholder) {
-  if (!isOwnerAdminRole()) return;
+  if (!hasPermission(item.permission)) return;
   if (loading.has(item.key)) return;
   if (loaded.has(item.key)) { openLoadedModule(item); return; }
   loading.add(item.key);
@@ -97,15 +84,15 @@ async function loadOwnerModule(item, placeholder) {
 function ensureOwnerMenu() {
   const root = nav();
   if (!root) return false;
-
-  if (!isOwnerAdminRole()) {
-    root.querySelectorAll("[data-smallbiz-lazy-owner]").forEach(el => el.remove());
-    return true;
-  }
+  if (!window.__smallbizPermissionsReady) return false;
 
   OWNER_MENU.forEach(item => {
-    if (findNativeButton(item)) return;
-    if (root.querySelector(`[data-smallbiz-lazy-owner='${item.key}']`)) return;
+    const existing = root.querySelector(`[data-smallbiz-lazy-owner='${item.key}']`);
+    if (!hasPermission(item.permission)) {
+      existing?.remove();
+      return;
+    }
+    if (findNativeButton(item) || existing) return;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "nav-item";
@@ -119,6 +106,7 @@ function ensureOwnerMenu() {
 }
 
 async function loadAttendance() {
+  if (!hasPermission("attendance.view")) return;
   try {
     await import("./attendance-runtime-bridge.js");
     await import("./attendance-center.js");
@@ -133,14 +121,15 @@ function observeSidebarOnce() {
     if (ensureOwnerMenu()) observer.disconnect();
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
-  setTimeout(() => observer.disconnect(), 15000);
+  window.addEventListener("smallbiz:permissions-ready", () => { ensureOwnerMenu(); loadAttendance(); }, { once: true });
+  setTimeout(() => observer.disconnect(), 20000);
 }
 
 export function startOwnerModules() {
   if (started) return;
   started = true;
   observeSidebarOnce();
-  loadAttendance();
+  if (window.__smallbizPermissionsReady) loadAttendance();
   yieldToBrowser(async () => {
     for (const load of SUPPORT_MODULES) {
       try { await load(); } catch (error) { console.warn("[SmallBiz] Optional POS enhancement failed.", error); }
