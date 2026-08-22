@@ -9,15 +9,44 @@ const newBlock = `    // POS-first startup: only products/categories are needed 
     await loadCategories(p.business_id);`;
 
 const effectMarker = "// SMALLBIZ_LAZY_PAGE_DATA_V1";
-const effect = `\n  ${effectMarker}\n  useEffect(()=>{\n    const b=profile?.business_id;\n    if(!b)return;\n    const key=\`\\${b}:\\${activePage}\`;\n    if(window.__smallbizLazyPageLoads?.has(key))return;\n    window.__smallbizLazyPageLoads=window.__smallbizLazyPageLoads||new Set();\n    window.__smallbizLazyPageLoads.add(key);\n    const run=async()=>{\n      try{\n        if(activePage===\"dashboard\"||activePage===\"transactions\") await loadSalesHistory(b);\n        else if(activePage===\"reports\") await Promise.all([loadSalesHistory(b),loadPurchaseHistory(b)]);\n        else if(activePage===\"movements\") await loadMovements(b);\n        else if(activePage===\"customers\") await loadCustomers(b);\n        else if(activePage===\"purchases\") await Promise.all([loadSuppliers(b),loadPurchaseHistory(b)]);\n        else if(activePage===\"suppliers\") await loadSuppliers(b);\n        else if(activePage===\"categories\"||activePage===\"products\") await loadCategories(b);\n      }catch(error){console.warn(\"[SmallBiz] Lazy page data failed.\",error);window.__smallbizLazyPageLoads.delete(key);}\n    };\n    if(activePage!==\"pos\")run();\n  },[activePage,profile?.business_id]);\n\n  useEffect(()=>{\n    if(!paymentOpen||!profile?.business_id)return;\n    const b=profile.business_id;\n    const key=\`\\${b}:customers-payment\`;\n    window.__smallbizLazyPageLoads=window.__smallbizLazyPageLoads||new Set();\n    if(window.__smallbizLazyPageLoads.has(key))return;\n    window.__smallbizLazyPageLoads.add(key);\n    loadCustomers(b).catch(()=>window.__smallbizLazyPageLoads.delete(key));\n  },[paymentOpen,profile?.business_id]);\n`;
+const effect = `
+  ${effectMarker}
+  useEffect(()=>{
+    const b=profile?.business_id;
+    if(!b)return;
+    const key=String(b)+":"+String(activePage);
+    if(window.__smallbizLazyPageLoads?.has(key))return;
+    window.__smallbizLazyPageLoads=window.__smallbizLazyPageLoads||new Set();
+    window.__smallbizLazyPageLoads.add(key);
+    const run=async()=>{
+      try{
+        if(activePage==="dashboard"||activePage==="transactions") await loadSalesHistory(b);
+        else if(activePage==="reports") await Promise.all([loadSalesHistory(b),loadPurchaseHistory(b)]);
+        else if(activePage==="movements") await loadMovements(b);
+        else if(activePage==="customers") await loadCustomers(b);
+        else if(activePage==="purchases") await Promise.all([loadSuppliers(b),loadPurchaseHistory(b)]);
+        else if(activePage==="suppliers") await loadSuppliers(b);
+        else if(activePage==="categories"||activePage==="products") await loadCategories(b);
+      }catch(error){console.warn("[SmallBiz] Lazy page data failed.",error);window.__smallbizLazyPageLoads.delete(key);}
+    };
+    if(activePage!=="pos")run();
+  },[activePage,profile?.business_id]);
 
-if (!text.includes(oldBlock)) {
-  if (!text.includes(effectMarker)) {
-    throw new Error("POS startup data block not found; performance patch stopped safely.");
-  }
-} else {
-  text = text.replace(oldBlock, newBlock);
+  useEffect(()=>{
+    if(!paymentOpen||!profile?.business_id)return;
+    const b=profile.business_id;
+    const key=String(b)+":customers-payment";
+    window.__smallbizLazyPageLoads=window.__smallbizLazyPageLoads||new Set();
+    if(window.__smallbizLazyPageLoads.has(key))return;
+    window.__smallbizLazyPageLoads.add(key);
+    loadCustomers(b).catch(()=>window.__smallbizLazyPageLoads.delete(key));
+  },[paymentOpen,profile?.business_id]);
+`;
+
+if (!text.includes(oldBlock) && !text.includes(effectMarker)) {
+  throw new Error("POS startup data block not found; performance patch stopped safely.");
 }
+if (text.includes(oldBlock)) text = text.replace(oldBlock, newBlock);
 
 if (!text.includes(effectMarker)) {
   const anchor = "  async function loadSalesHistory(businessId){";
@@ -26,4 +55,4 @@ if (!text.includes(effectMarker)) {
 }
 
 fs.writeFileSync(path, text);
-console.log("Applied SMALLBIZ_POS_STARTUP_PERFORMANCE_V1: defer secondary data queries until their page is opened.");
+console.log("Applied SMALLBIZ_POS_STARTUP_PERFORMANCE_V2: defer secondary POS data queries until their page is opened.");
