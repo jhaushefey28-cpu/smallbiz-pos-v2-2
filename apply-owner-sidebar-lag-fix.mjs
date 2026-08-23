@@ -3,14 +3,7 @@ import fs from "node:fs";
 const OWNER="owner-modules-loader.jsx";
 const ATTENDANCE="attendance-center.js";
 
-/*
- * FINAL SIDEBAR RECOVERY
- *
- * This build step must never remove, hide, or deduplicate existing sidebar items.
- * Previous versions mutated the whole .sidebar-nav and could make unrelated menus
- * disappear or become unresponsive on mobile. We now only bind/create the owner
- * module entries that are actually needed, leaving every existing menu untouched.
- */
+/* Final sidebar recovery: never remove, hide, or deduplicate existing menus. */
 const ownerLoader=`// SMALLBIZ_OWNER_MODULES_LOADER_V26_SAFE
 // Non-destructive owner sidebar loader: existing sidebar items are preserved.
 import "./attendance-center.css";
@@ -72,7 +65,7 @@ function ensureButton(item){
  if(existing)return bindButton(item,existing);
  const button=document.createElement("button");
  button.className="nav-item";
- button.innerHTML=`<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;
+ button.innerHTML="<span aria-hidden=\"true\">"+item.icon+"</span><b>"+item.label+"</b>";
  root.appendChild(button);
  return bindButton(item,button);
 }
@@ -90,7 +83,7 @@ async function openModule(item){
   handler();
   return true;
  }
- window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));
+ window.dispatchEvent(new CustomEvent("smallbiz:open-"+item.key));
  return true;
 }
 
@@ -99,7 +92,7 @@ async function loadOwnerModule(item,button){
  loading.add(item.key);
  button?.setAttribute("aria-busy","true");
  const labelNode=button?.querySelector("b");
- if(labelNode)labelNode.textContent=`${item.label}…`;
+ if(labelNode)labelNode.textContent=item.label+"…";
  try{
   if(!loaded.has(item.key)){
    await item.load();
@@ -107,7 +100,7 @@ async function loadOwnerModule(item,button){
   }
   await openModule(item);
  }catch(error){
-  console.warn(`[SmallBiz] ${item.label} failed to load.`,error);
+  console.warn("[SmallBiz] "+item.label+" failed to load.",error);
   window.dispatchEvent(new CustomEvent("smallbiz:owner-module-error",{detail:{key:item.key,label:item.label,error}}));
  }finally{
   button?.removeAttribute("aria-busy");
