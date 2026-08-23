@@ -1,19 +1,19 @@
-// SMALLBIZ_POST_LOGIN_MODULES_V6
+// SMALLBIZ_POST_LOGIN_MODULES_V7
 // Optional UI enhancements start only after the authenticated React app-shell exists.
 // Sidebar/module ownership is handled by owner-modules-loader.jsx.
-// This loader must NOT execute the same sidebar-owning modules a second time.
+// This loader must NOT execute sidebar-owning modules a second time.
 // Mobile/sidebar layout CSS is intentionally untouched.
 
 let started = false;
 let observer = null;
 
 // Only load enhancements that do not own/register sidebar entries.
-// Sidebar-owning modules are loaded on demand by owner-modules-loader.jsx.
+// Growth Center sidebar ownership is intentionally excluded here because
+// owner-modules-loader.jsx owns the canonical Growth Center button.
 const MODULE_SCRIPTS = [
   "/order-management-shipment-hotfix.js",
   "/marketplace-oauth-connect.js",
-  "/report-export-engine.js",
-  "/growth-center-sidebar-fix.js"
+  "/report-export-engine.js"
 ];
 
 const STYLE_LINKS = [
@@ -31,7 +31,7 @@ function loadScript(src) {
     if (document.querySelector(`script[data-smallbiz-module="${src}"]`)) return resolve();
     const script = document.createElement("script");
     script.type = "module";
-    script.src = `${src}?postLogin=20260823-v6`;
+    script.src = `${src}?postLogin=20260823-v7`;
     script.dataset.smallbizModule = src;
     script.onload = resolve;
     script.onerror = () => {
@@ -46,7 +46,7 @@ function loadStyle(href) {
   if (document.querySelector(`link[data-smallbiz-style="${href}"]`)) return;
   const link = document.createElement("link");
   link.rel = "stylesheet";
-  link.href = `${href}?postLogin=20260823-v6`;
+  link.href = `${href}?postLogin=20260823-v7`;
   link.dataset.smallbizStyle = href;
   document.head.appendChild(link);
 }
