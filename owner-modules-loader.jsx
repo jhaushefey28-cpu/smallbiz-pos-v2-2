@@ -1,6 +1,7 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V11
-// Tenant-aware lazy owner-module loader with a single sidebar owner, stable
-// deduplication, and reliable module opening. Mobile/sidebar CSS is untouched.
+// SMALLBIZ_OWNER_MODULES_LOADER_V12
+// Canonical owner sidebar: one button per module, one click owner, no stacked
+// placeholder/self-registered sidebar entries. Module-owned buttons are hidden
+// and reused only as internal openers after their module has loaded.
 import "./attendance-center.css";
 import "./attendance-log-enhancement.css";
 import "./employee-attendance.css";
@@ -30,77 +31,73 @@ const OWNER_MENU = [
 
 const loaded = new Set();
 const loading = new Set();
-const GLOBAL_KEY = "__smallbizOwnerModulesLoaderV11";
+const GLOBAL_KEY = "__smallbizOwnerModulesLoaderV12";
 
 function hasPermission(code){
   return typeof window.__smallbizHasPermission === "function" && window.__smallbizHasPermission(code);
 }
+function nav(){ return document.querySelector(".sidebar-nav"); }
+function textOf(el){ return String(el?.textContent||"").replace(/\s+/g," ").trim(); }
 
-function nav(){return document.querySelector(".sidebar-nav");}
-function textOf(el){return String(el?.textContent||"").replace(/\s+/g," ").trim();}
+function isCoreButton(el){
+  return el instanceof HTMLElement && !el.dataset.smallbizOwnerCanonical && !el.dataset.smallbizOwnerInternal;
+}
 
-function findNativeButton(item){
+function findInternalButton(item){
   const root=nav();
   if(!root)return null;
   return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>{
-    if(el.dataset?.smallbizLazyOwner)return false;
-    const text=textOf(el);
-    return item.label===text || item.label.replace(/\s+/g," ").toLowerCase()===text.toLowerCase();
+    if(!isCoreButton(el))return false;
+    return textOf(el).toLowerCase()===item.label.toLowerCase();
   })||null;
 }
 
-function removeLazyButtons(item){
+function hideDuplicateModuleButtons(item){
   const root=nav();
   if(!root)return;
-  const buttons=Array.from(root.querySelectorAll(`[data-smallbiz-lazy-owner='${item.key}']`));
-  buttons.forEach((button,index)=>{
-    // Keep at most one placeholder only when no native button exists.
-    if(index>0 || findNativeButton(item))button.remove();
+  Array.from(root.querySelectorAll("button,a,[role='button']")).forEach(el=>{
+    if(el.dataset.smallbizOwnerCanonical||el.dataset.smallbizOwnerInternal)return;
+    if(textOf(el).toLowerCase()!==item.label.toLowerCase())return;
+    el.dataset.smallbizOwnerInternal=item.key;
+    el.setAttribute("aria-hidden","true");
+    el.tabIndex=-1;
+    el.style.display="none";
   });
 }
 
-function ensureOneLazyButton(item){
+function ensureCanonicalButton(item){
   const root=nav();
   if(!root)return null;
-  const native=findNativeButton(item);
-  const existing=Array.from(root.querySelectorAll(`[data-smallbiz-lazy-owner='${item.key}']`));
+  const canonical=root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`);
+  if(canonical)return canonical;
+  if(item.key==="reports")return null;
 
-  if(native){
-    existing.forEach(button=>button.remove());
-    return null;
-  }
-
-  const button=existing[0]||document.createElement("button");
-  existing.slice(1).forEach(node=>node.remove());
-  if(!button.parentNode){
-    button.type="button";
-    button.className="nav-item";
-    button.dataset.smallbizLazyOwner=item.key;
-    button.innerHTML=`<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;
-    button.setAttribute("aria-label",item.label);
-    button.addEventListener("click",event=>{
-      event.preventDefault();
-      event.stopPropagation();
-      if(typeof event.stopImmediatePropagation==="function")event.stopImmediatePropagation();
-      loadOwnerModule(item,button);
-    },true);
-    root.appendChild(button);
-  }
+  const button=document.createElement("button");
+  button.type="button";
+  button.className="nav-item";
+  button.dataset.smallbizOwnerCanonical=item.key;
+  button.innerHTML=`<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;
+  button.setAttribute("aria-label",item.label);
+  button.addEventListener("click",event=>{
+    event.preventDefault();
+    event.stopPropagation();
+    if(typeof event.stopImmediatePropagation==="function")event.stopImmediatePropagation();
+    loadOwnerModule(item,button);
+  },true);
+  root.appendChild(button);
   return button;
 }
 
 function reconcileOwnerMenu(){
   const root=nav();
   if(!root||!window.__smallbizPermissionsReady)return false;
-
   OWNER_MENU.forEach(item=>{
     if(!hasPermission(item.permission)){
-      Array.from(root.querySelectorAll(`[data-smallbiz-lazy-owner='${item.key}']`)).forEach(el=>el.remove());
+      root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`)?.remove();
       return;
     }
-    // Native buttons (for example the core Reports item) always win.
-    // Lazy placeholders are only used for modules that have no native entry.
-    ensureOneLazyButton(item);
+    ensureCanonicalButton(item);
+    hideDuplicateModuleButtons(item);
   });
   return true;
 }
@@ -110,67 +107,50 @@ function openLoadedModule(item){
     window.__smallbizOpenTeam();
     return true;
   }
-
-  const native=findNativeButton(item);
-  if(native){
-    native.click();
-    return true;
-  }
-
+  const internal=findInternalButton(item);
+  if(internal){ internal.click(); return true; }
   window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));
   return false;
 }
 
-async function loadOwnerModule(item,placeholder){
-  if(!hasPermission(item.permission))return;
-  if(loading.has(item.key))return;
-
+async function loadOwnerModule(item,button){
+  if(!hasPermission(item.permission)||loading.has(item.key))return;
   if(loaded.has(item.key)){
     openLoadedModule(item);
     return;
   }
 
   loading.add(item.key);
-  if(placeholder)placeholder.dataset.loading="1";
-  const labelNode=placeholder?.querySelector("b");
+  button?.setAttribute("aria-busy","true");
+  const labelNode=button?.querySelector("b");
   if(labelNode)labelNode.textContent=`${item.label}…`;
 
   try{
     await item.load();
     loaded.add(item.key);
-    // Self-mounting modules such as Cashier Shift need a short tick to register
-    // their native sidebar button before the placeholder is reconciled.
-    await new Promise(resolve=>setTimeout(resolve,80));
+    await new Promise(resolve=>setTimeout(resolve,120));
     reconcileOwnerMenu();
-    const opened=openLoadedModule(item);
-    if(opened)reconcileOwnerMenu();
-    else if(placeholder){
-      placeholder.dataset.loading="0";
-      const currentLabel=placeholder.querySelector("b");
-      if(currentLabel)currentLabel.textContent=item.label;
-    }
+    openLoadedModule(item);
   }catch(error){
     console.warn(`[SmallBiz] ${item.label} failed to load.`,error);
-    if(placeholder){
-      placeholder.dataset.loading="0";
-      const currentLabel=placeholder.querySelector("b");
+  }finally{
+    if(button){
+      button.removeAttribute("aria-busy");
+      const currentLabel=button.querySelector("b");
       if(currentLabel)currentLabel.textContent=item.label;
     }
-  }finally{
     loading.delete(item.key);
   }
 }
 
 function startObserver(){
-  if(window[GLOBAL_KEY]?.observer)return window[GLOBAL_KEY].observer;
-
+  const state=window[GLOBAL_KEY]||{};
+  if(state.observer)return state.observer;
   const observer=new MutationObserver(()=>{
-    // React and module mounts can both mutate the sidebar. Reconcile instead of
-    // appending another copy of the owner menu.
     if(document.querySelector(".app-shell"))reconcileOwnerMenu();
   });
   observer.observe(document.documentElement,{childList:true,subtree:true});
-  window[GLOBAL_KEY]={...(window[GLOBAL_KEY]||{}),observer};
+  window[GLOBAL_KEY]={...state,observer};
   return observer;
 }
 
@@ -178,7 +158,8 @@ function stopObserverIfLoggedOut(){
   if(document.querySelector(".app-shell"))return;
   const state=window[GLOBAL_KEY];
   state?.observer?.disconnect?.();
-  if(state)state.observer=null;
+  state?.logoutObserver?.disconnect?.();
+  if(state){state.observer=null;state.logoutObserver=null;}
 }
 
 export function startOwnerModules(){
@@ -192,7 +173,6 @@ export function startOwnerModules(){
   window[GLOBAL_KEY]={...state,started:true};
   startObserver();
   reconcileOwnerMenu();
-
   window.addEventListener("smallbiz:permissions-ready",()=>{
     startObserver();
     reconcileOwnerMenu();
@@ -202,16 +182,13 @@ export function startOwnerModules(){
   logoutObserver.observe(document.documentElement,{childList:true,subtree:true});
   window[GLOBAL_KEY].logoutObserver=logoutObserver;
 
-  if(window.__smallbizPermissionsReady){
-    reconcileOwnerMenu();
-    if(!window[GLOBAL_KEY].supportStarted){
-      window[GLOBAL_KEY].supportStarted=true;
-      setTimeout(async()=>{
-        for(const load of SUPPORT_MODULES){
-          try{await load();}catch(error){console.warn("[SmallBiz] Optional POS enhancement failed.",error);}
-          await new Promise(resolve=>setTimeout(resolve,0));
-        }
-      },0);
-    }
+  if(window.__smallbizPermissionsReady&&!window[GLOBAL_KEY].supportStarted){
+    window[GLOBAL_KEY].supportStarted=true;
+    setTimeout(async()=>{
+      for(const load of SUPPORT_MODULES){
+        try{await load();}catch(error){console.warn("[SmallBiz] Optional POS enhancement failed.",error);}
+        await new Promise(resolve=>setTimeout(resolve,0));
+      }
+    },0);
   }
 }
