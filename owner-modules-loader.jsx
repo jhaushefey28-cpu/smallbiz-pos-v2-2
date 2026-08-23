@@ -1,4 +1,4 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V20
+// SMALLBIZ_OWNER_MODULES_LOADER_V21
 import "./attendance-center.css";
 import "./attendance-log-enhancement.css";
 import "./employee-attendance.css";
@@ -26,145 +26,18 @@ const textOf=el=>String(el?.textContent||"").replace(/\s+/g," ").trim();
 const normalizedLabel=value=>String(value||"").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"");
 const isCanonical=el=>Boolean(el?.dataset?.smallbizOwnerCanonical);
 const labelsFor=item=>[item.label,...(item.internalLabels||[])].map(normalizedLabel);
-
-function removeRetiredMenuItems(){
- const root=nav();if(!root)return;
- const retired=new Set(RETIRED_LABELS.map(normalizedLabel));
- Array.from(root.querySelectorAll("button,a,[role='button']")).forEach(el=>{
-  if(isCanonical(el)||el.dataset?.smallbizOwnerInternal)return;
-  const label=normalizedLabel(textOf(el));
-  if(retired.has(label)&&label!==normalizedLabel("Product Channel Mapping")&&label!==normalizedLabel("Inventory"))el.remove();
- });
-}
-function markInternal(el,item){
- if(!el||isCanonical(el))return;
- el.dataset.smallbizOwnerInternal=item.key;
- el.setAttribute("aria-hidden","true");
- el.tabIndex=-1;
- el.style.setProperty("display","none","important");
- el.style.setProperty("pointer-events","none","important");
-}
-function findInternalButton(item){
- const root=nav();if(!root)return null;
- return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>el.dataset?.smallbizOwnerInternal===item.key)||null;
-}
-function hideDuplicateModuleButtons(item){
- const root=nav();if(!root)return;
- const targets=new Set(labelsFor(item));
- Array.from(root.querySelectorAll("button,a,[role='button']")).forEach(el=>{
-  if(isCanonical(el)||el.dataset?.smallbizOwnerInternal)return;
-  if(targets.has(normalizedLabel(textOf(el))))markInternal(el,item);
- });
-}
-function removeDuplicateCanonicalButtons(item,keep){
- const root=nav();if(!root)return;
- Array.from(root.querySelectorAll(`[data-smallbiz-owner-canonical='${item.key}']`)).forEach(el=>{if(el!==keep)el.remove()});
-}
-function bindCanonicalButton(item,button){
- if(!button)return null;
- button.type="button";
- button.setAttribute("aria-label",item.label);
- button.style.setProperty("pointer-events","auto","important");
- button.style.setProperty("touch-action","manipulation","important");
- button.style.setProperty("position","relative","important");
- button.style.setProperty("z-index","3","important");
- button.onclick=event=>{event.preventDefault();event.stopPropagation();loadOwnerModule(item,button)};
- button.dataset.smallbizOwnerBound="v20";
- return button;
-}
-function ensureCanonicalButton(item){
- const root=nav();if(!root)return null;
- let existing=root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`);
- if(existing){removeDuplicateCanonicalButtons(item,existing);return bindCanonicalButton(item,existing)}
- const button=document.createElement("button");
- button.className="nav-item";
- button.dataset.smallbizOwnerCanonical=item.key;
- button.innerHTML=`<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;
- const targets=new Set(labelsFor(item));
- const firstMatching=Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>targets.has(normalizedLabel(textOf(el)))&&!isCanonical(el));
- if(firstMatching)root.insertBefore(button,firstMatching);else root.appendChild(button);
- return bindCanonicalButton(item,button);
-}
-function removeDuplicateReports(){
- const root=nav();if(!root)return;
- const reports=Array.from(root.querySelectorAll("button,a,[role='button']")).filter(el=>normalizedLabel(textOf(el))==="reports");
- reports.slice(1).forEach(el=>el.remove());
-}
-function reconcileOwnerMenu(){
- const root=nav();if(!root||!window.__smallbizPermissionsReady)return false;
- removeRetiredMenuItems();
- OWNER_MENU.forEach(item=>{
-  if(!hasPermission(item.permission)){root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`)?.remove();return}
-  const canonical=ensureCanonicalButton(item);
-  hideDuplicateModuleButtons(item);
-  removeDuplicateCanonicalButtons(item,canonical);
- });
- removeDuplicateReports();
- return true;
-}
-function openLoadedModule(item){
- if(item.key==="team"&&typeof window.__smallbizOpenTeam==="function"){window.__smallbizOpenTeam();return true}
- if(item.key==="growth"&&typeof window.__smallbizOpenGrowthCenter==="function"){window.__smallbizOpenGrowthCenter();return true}
- if(item.key==="cashier-shift"&&typeof window.__smallbizOpenCashierShift==="function"){window.__smallbizOpenCashierShift();return true}
- const internal=findInternalButton(item);
- if(internal){internal.click();return true}
- window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));
- return false;
-}
-async function waitForInternalButton(item,timeout=3000){
- const started=Date.now();
- while(Date.now()-started<timeout){
-  hideDuplicateModuleButtons(item);
-  const internal=findInternalButton(item);
-  if(internal)return internal;
-  await new Promise(resolve=>setTimeout(resolve,40));
- }
- return null;
-}
-async function loadOwnerModule(item,button){
- if(!hasPermission(item.permission)||loading.has(item.key))return;
- if(loaded.has(item.key)){openLoadedModule(item);return}
- loading.add(item.key);
- button?.setAttribute("aria-busy","true");
- const labelNode=button?.querySelector("b");
- if(labelNode)labelNode.textContent=`${item.label}…`;
- try{
-  await item.load();
-  loaded.add(item.key);
-  reconcileOwnerMenu();
-  if(DIRECT_OPEN_KEYS.has(item.key)){
-   openLoadedModule(item);
-  }else{
-   const internal=await waitForInternalButton(item);
-   if(internal)internal.click();
-   else window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));
-  }
- }catch(error){
-  console.warn(`[SmallBiz] ${item.label} failed to load.`,error);
-  window.dispatchEvent(new CustomEvent("smallbiz:owner-module-error",{detail:{key:item.key,label:item.label,error}}));
- }finally{
-  button?.removeAttribute("aria-busy");
-  const currentLabel=button?.querySelector("b");
-  if(currentLabel)currentLabel.textContent=item.label;
-  loading.delete(item.key);
- }
-}
-function scheduleReconcile(){
- [0,100,300,800,1500].forEach(delay=>setTimeout(()=>reconcileOwnerMenu(),delay));
-}
-export function startOwnerModules(){
- const state=window[GLOBAL_KEY]||{};
- if(state.started){scheduleReconcile();return}
- window[GLOBAL_KEY]={...state,started:true};
- scheduleReconcile();
- window.addEventListener("smallbiz:permissions-ready",scheduleReconcile,{passive:true});
- if(window.__smallbizPermissionsReady&&!window[GLOBAL_KEY].supportStarted){
-  window[GLOBAL_KEY].supportStarted=true;
-  setTimeout(async()=>{
-   for(const load of SUPPORT_MODULES){
-    try{await load()}catch(error){console.warn("[SmallBiz] Optional POS enhancement failed.",error)}
-    await new Promise(resolve=>setTimeout(resolve,0));
-   }
-  },0);
- }
-}
+function removeRetiredMenuItems(){const root=nav();if(!root)return;const retired=new Set(RETIRED_LABELS.map(normalizedLabel));Array.from(root.querySelectorAll("button,a,[role='button']")).forEach(el=>{if(isCanonical(el)||el.dataset?.smallbizOwnerInternal)return;const label=normalizedLabel(textOf(el));if(retired.has(label)&&label!==normalizedLabel("Product Channel Mapping")&&label!==normalizedLabel("Inventory"))el.remove()})}
+function markInternal(el,item){if(!el||isCanonical(el))return;el.dataset.smallbizOwnerInternal=item.key;el.setAttribute("aria-hidden","true");el.tabIndex=-1;el.style.setProperty("display","none","important");el.style.setProperty("pointer-events","none","important")}
+function findInternalButton(item){const root=nav();if(!root)return null;return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>el.dataset?.smallbizOwnerInternal===item.key)||null}
+function hideDuplicateModuleButtons(item){const root=nav();if(!root)return;const targets=new Set(labelsFor(item));Array.from(root.querySelectorAll("button,a,[role='button']")).forEach(el=>{if(isCanonical(el)||el.dataset?.smallbizOwnerInternal)return;if(targets.has(normalizedLabel(textOf(el))))markInternal(el,item)})}
+function removeDuplicateCanonicalButtons(item,keep){const root=nav();if(!root)return;Array.from(root.querySelectorAll(`[data-smallbiz-owner-canonical='${item.key}']`)).forEach(el=>{if(el!==keep)el.remove()})}
+function bindCanonicalButton(item,button){if(!button)return null;button.type="button";button.setAttribute("aria-label",item.label);button.style.setProperty("pointer-events","auto","important");button.style.setProperty("touch-action","manipulation","important");button.style.setProperty("position","relative","important");button.style.setProperty("z-index","3","important");button.onclick=event=>{event.preventDefault();event.stopPropagation();loadOwnerModule(item,button)};button.dataset.smallbizOwnerBound="v21";return button}
+function ensureCanonicalButton(item){const root=nav();if(!root)return null;let existing=root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`);if(existing){removeDuplicateCanonicalButtons(item,existing);return bindCanonicalButton(item,existing)}const button=document.createElement("button");button.className="nav-item";button.dataset.smallbizOwnerCanonical=item.key;button.innerHTML=`<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;const targets=new Set(labelsFor(item));const firstMatching=Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>targets.has(normalizedLabel(textOf(el)))&&!isCanonical(el));if(firstMatching)root.insertBefore(button,firstMatching);else root.appendChild(button);return bindCanonicalButton(item,button)}
+function removeDuplicateReports(){const root=nav();if(!root)return;const reports=Array.from(root.querySelectorAll("button,a,[role='button']")).filter(el=>normalizedLabel(textOf(el))==="reports");reports.slice(1).forEach(el=>el.remove())}
+function reconcileOwnerMenu(){const root=nav();if(!root||!window.__smallbizPermissionsReady)return false;removeRetiredMenuItems();OWNER_MENU.forEach(item=>{if(!hasPermission(item.permission)){root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`)?.remove();return}const canonical=ensureCanonicalButton(item);hideDuplicateModuleButtons(item);removeDuplicateCanonicalButtons(item,canonical)});removeDuplicateReports();return true}
+function openLoadedModule(item){if(item.key==="team"&&typeof window.__smallbizOpenTeam==="function"){window.__smallbizOpenTeam();return true}if(item.key==="growth"&&typeof window.__smallbizOpenGrowthCenter==="function"){window.__smallbizOpenGrowthCenter();return true}if(item.key==="cashier-shift"&&typeof window.__smallbizOpenCashierShift==="function"){window.__smallbizOpenCashierShift();return true}const internal=findInternalButton(item);if(internal){internal.click();return true}window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));return false}
+async function waitForOpenHandler(item,timeout=3000){const handlerKey=item.key==="growth"?"__smallbizOpenGrowthCenter":item.key==="cashier-shift"?"__smallbizOpenCashierShift":null;if(!handlerKey)return false;const started=Date.now();while(Date.now()-started<timeout){if(typeof window[handlerKey]==="function")return true;await new Promise(resolve=>setTimeout(resolve,25))}return false}
+async function waitForInternalButton(item,timeout=3000){const started=Date.now();while(Date.now()-started<timeout){hideDuplicateModuleButtons(item);const internal=findInternalButton(item);if(internal)return internal;await new Promise(resolve=>setTimeout(resolve,40))}return null}
+async function loadOwnerModule(item,button){if(!hasPermission(item.permission)||loading.has(item.key))return;if(loaded.has(item.key)){openLoadedModule(item);return}loading.add(item.key);button?.setAttribute("aria-busy","true");const labelNode=button?.querySelector("b");if(labelNode)labelNode.textContent=`${item.label}…`;try{await item.load();loaded.add(item.key);reconcileOwnerMenu();if(DIRECT_OPEN_KEYS.has(item.key)){const ready=await waitForOpenHandler(item);if(ready)openLoadedModule(item);else window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`))}else{const internal=await waitForInternalButton(item);if(internal)internal.click();else window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`))}}catch(error){console.warn(`[SmallBiz] ${item.label} failed to load.`,error);window.dispatchEvent(new CustomEvent("smallbiz:owner-module-error",{detail:{key:item.key,label:item.label,error}}))}finally{button?.removeAttribute("aria-busy");const currentLabel=button?.querySelector("b");if(currentLabel)currentLabel.textContent=item.label;loading.delete(item.key)}}
+function scheduleReconcile(){[0,100,300,800,1500].forEach(delay=>setTimeout(()=>reconcileOwnerMenu(),delay))}
+export function startOwnerModules(){const state=window[GLOBAL_KEY]||{};if(state.started){scheduleReconcile();return}window[GLOBAL_KEY]={...state,started:true};scheduleReconcile();window.addEventListener("smallbiz:permissions-ready",scheduleReconcile,{passive:true});if(window.__smallbizPermissionsReady&&!window[GLOBAL_KEY].supportStarted){window[GLOBAL_KEY].supportStarted=true;setTimeout(async()=>{for(const load of SUPPORT_MODULES){try{await load()}catch(error){console.warn("[SmallBiz] Optional POS enhancement failed.",error)}await new Promise(resolve=>setTimeout(resolve,0))}},0)}}
