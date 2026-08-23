@@ -23,9 +23,8 @@ const clickNeedle = 'onClick={()=>setActivePage(key)}';
 const clickReplacement = 'onClick={()=>{if(key==="attendance"){if(typeof window.__smallbizOpenAttendance==="function")window.__smallbizOpenAttendance();else import("./attendance-center.js").then(()=>window.__smallbizOpenAttendance?.()).catch(e=>console.warn("[SmallBiz] Attendance open failed.",e));}else setActivePage(key)}}';
 if (main.includes(clickNeedle) && !main.includes('key==="attendance"')) main = main.replace(clickNeedle, clickReplacement);
 
-/* FINAL MOBILE LAYOUT: replace the old 54/60px mobile rail with an off-canvas
-   full navigation. The main POS keeps the full phone width while the sidebar
-   gets its own vertical scroll when opened. */
+/* FINAL MOBILE LAYOUT: full off-canvas navigation on phones/tablets.
+   Sidebar and main POS scroll independently. */
 if (!main.includes('import "./mobile-final-layout.css";')) {
   const sidebarCssAnchor = 'import "./sidebar-fix.css";';
   if (main.includes(sidebarCssAnchor)) main = main.replace(sidebarCssAnchor, `${sidebarCssAnchor}\nimport "./mobile-final-layout.css";`);
@@ -33,28 +32,31 @@ if (!main.includes('import "./mobile-final-layout.css";')) {
   else throw new Error("Final mobile layout CSS import insertion failed safely.");
 }
 
-const stateNeedle = 'const [profile,setProfile]=useState(null),[activePage,setActivePage]=useState("pos");';
+const stateRegex = /const \[profile,setProfile\]=useState\(null\),\[activePage,setActivePage\]=useState\("pos"\);/;
 if (!main.includes("mobileSidebarOpen")) {
-  if (!main.includes(stateNeedle)) throw new Error("Final mobile layout state insertion failed safely.");
-  main = main.replace(stateNeedle, `${stateNeedle}\n  const [mobileSidebarOpen,setMobileSidebarOpen]=useState(false);`);
+  if (!stateRegex.test(main)) throw new Error("Final mobile layout state insertion failed safely.");
+  main = main.replace(stateRegex, match => `${match}\n  const [mobileSidebarOpen,setMobileSidebarOpen]=useState(false);`);
 }
 
-const sidebarMarkupNeedle = '<aside className="sidebar">';
-const sidebarMarkupReplacement = '<aside className={mobileSidebarOpen?"sidebar mobile-sidebar-open":"sidebar"}>';
+/* Earlier versions matched the entire app-shell string. That was brittle because
+   other build-time patches can change whitespace/newlines. Match only the actual
+   sidebar element and insert the mobile controls immediately before the sidebar. */
+const sidebarRegex = /<aside\s+className=(?:"sidebar"|'sidebar')\s*>/;
 if (!main.includes('mobile-sidebar-toggle')) {
-  if (!main.includes(sidebarMarkupNeedle)) throw new Error("Final mobile layout sidebar insertion failed safely: sidebar markup anchor not found.");
-  main = main.replace(sidebarMarkupNeedle, sidebarMarkupReplacement);
-  const appShellNeedle = 'return <div className="app-shell">';
+  if (!sidebarRegex.test(main)) throw new Error("Final mobile layout sidebar insertion failed safely: sidebar markup anchor not found.");
+  main = main.replace(sidebarRegex, '<aside className={mobileSidebarOpen?"sidebar mobile-sidebar-open":"sidebar"}>');
+
+  const appShellRegex = /return\s+<div\s+className=(?:"app-shell"|'app-shell')\s*>/;
   const appShellReplacement = `return <div className="app-shell">\n    <button type="button" className="mobile-sidebar-toggle" aria-label="Open navigation" onClick={()=>setMobileSidebarOpen(true)}>☰</button>\n    {mobileSidebarOpen&&<button type="button" className="mobile-sidebar-backdrop" aria-label="Close navigation" onClick={()=>setMobileSidebarOpen(false)} />}`;
-  if (!main.includes(appShellNeedle)) throw new Error("Final mobile layout sidebar insertion failed safely: app shell anchor not found.");
-  main = main.replace(appShellNeedle, appShellReplacement);
+  if (!appShellRegex.test(main)) throw new Error("Final mobile layout sidebar insertion failed safely: app shell anchor not found.");
+  main = main.replace(appShellRegex, appShellReplacement);
 }
 
-const navNeedleExact = 'className={activePage===key?"nav-item active":"nav-item"} onClick=';
+const navRegex = /className=\{activePage===key\?"nav-item active":"nav-item"\}\s+onClick=/;
 const navReplacement = 'className={activePage===key?"nav-item active":"nav-item"} onClickCapture={()=>setMobileSidebarOpen(false)} onClick=';
 if (!main.includes('onClickCapture={()=>setMobileSidebarOpen(false)}')) {
-  if (!main.includes(navNeedleExact)) throw new Error("Final mobile layout navigation hook insertion failed safely.");
-  main = main.replace(navNeedleExact, navReplacement);
+  if (!navRegex.test(main)) throw new Error("Final mobile layout navigation hook insertion failed safely.");
+  main = main.replace(navRegex, navReplacement);
 }
 
 if (!main.includes('import "./mobile-final-layout.css";')) throw new Error("Final mobile layout CSS import was not inserted safely.");
@@ -62,4 +64,4 @@ if (!main.includes('className="profile-box" data-role={role}')) throw new Error(
 if (!main.includes('mobile-sidebar-toggle')) throw new Error("Mobile sidebar toggle was not inserted safely.");
 
 fs.writeFileSync(mainPath, main);
-console.log("Applied SMALLBIZ_FINAL_ROLE_MOBILE_FIX_V5: deterministic role marker + permission-gated Attendance + full off-canvas mobile sidebar + isolated POS scrolling.");
+console.log("Applied SMALLBIZ_FINAL_ROLE_MOBILE_FIX_V6: deterministic role marker + permission-gated Attendance + robust full off-canvas mobile sidebar + isolated POS scrolling.");
