@@ -38,9 +38,6 @@ if (!main.includes("mobileSidebarOpen")) {
   main = main.replace(stateRegex, match => `${match}\n  const [mobileSidebarOpen,setMobileSidebarOpen]=useState(false);`);
 }
 
-/* Earlier versions matched the entire app-shell string. That was brittle because
-   other build-time patches can change whitespace/newlines. Match only the actual
-   sidebar element and insert the mobile controls immediately before the sidebar. */
 const sidebarRegex = /<aside\s+className=(?:"sidebar"|'sidebar')\s*>/;
 if (!main.includes('mobile-sidebar-toggle')) {
   if (!sidebarRegex.test(main)) throw new Error("Final mobile layout sidebar insertion failed safely: sidebar markup anchor not found.");
@@ -52,16 +49,26 @@ if (!main.includes('mobile-sidebar-toggle')) {
   main = main.replace(appShellRegex, appShellReplacement);
 }
 
-const navRegex = /className=\{activePage===key\?"nav-item active":"nav-item"\}\s+onClick=/;
-const navReplacement = 'className={activePage===key?"nav-item active":"nav-item"} onClickCapture={()=>setMobileSidebarOpen(false)} onClick=';
-if (!main.includes('onClickCapture={()=>setMobileSidebarOpen(false)}')) {
-  if (!navRegex.test(main)) throw new Error("Final mobile layout navigation hook insertion failed safely.");
-  main = main.replace(navRegex, navReplacement);
-}
+/* Navigation must use one bubble-phase click handler. The previous onClickCapture
+   closed the mobile sidebar before the navigation onClick could reliably update
+   activePage, which made sidebar items appear unresponsive. Closing the drawer and
+   changing the page are now one atomic UI action; no mobile CSS/layout is changed. */
+const oldCapture = ' onClickCapture={()=>setMobileSidebarOpen(false)} onClick=';
+if (main.includes(oldCapture)) main = main.replace(oldCapture, ' onClick=');
+
+const currentAttendanceHandler = 'onClick={()=>{if(key==="attendance"){if(typeof window.__smallbizOpenAttendance==="function")window.__smallbizOpenAttendance();else import("./attendance-center.js").then(()=>window.__smallbizOpenAttendance?.()).catch(e=>console.warn("[SmallBiz] Attendance open failed.",e));}else setActivePage(key)}}';
+const robustAttendanceHandler = 'onClick={()=>{setMobileSidebarOpen(false);if(key==="attendance"){if(typeof window.__smallbizOpenAttendance==="function")window.__smallbizOpenAttendance();else import("./attendance-center.js").then(()=>window.__smallbizOpenAttendance?.()).catch(e=>console.warn("[SmallBiz] Attendance open failed.",e));}else{setActivePage(key);window.requestAnimationFrame?.(()=>document.querySelector(".main-area")?.scrollTo({top:0,behavior:"auto"}));}}}';
+if (main.includes(currentAttendanceHandler)) main = main.replace(currentAttendanceHandler, robustAttendanceHandler);
+
+/* Safety fallback: if a future source variant still has the plain nav handler,
+   make it robust without touching any layout rules. */
+const plainHandler = 'onClick={()=>setActivePage(key)}';
+if (main.includes(plainHandler)) main = main.replace(plainHandler, 'onClick={()=>{setMobileSidebarOpen(false);setActivePage(key);window.requestAnimationFrame?.(()=>document.querySelector(".main-area")?.scrollTo({top:0,behavior:"auto"}));}}');
 
 if (!main.includes('import "./mobile-final-layout.css";')) throw new Error("Final mobile layout CSS import was not inserted safely.");
 if (!main.includes('className="profile-box" data-role={role}')) throw new Error("Deterministic role marker was not inserted safely.");
 if (!main.includes('mobile-sidebar-toggle')) throw new Error("Mobile sidebar toggle was not inserted safely.");
+if (main.includes('onClickCapture={()=>setMobileSidebarOpen(false)}')) throw new Error("Navigation capture handler remained; build stopped safely.");
 
 fs.writeFileSync(mainPath, main);
-console.log("Applied SMALLBIZ_FINAL_ROLE_MOBILE_FIX_V6: deterministic role marker + permission-gated Attendance + robust full off-canvas mobile sidebar + isolated POS scrolling.");
+console.log("Applied SMALLBIZ_FINAL_ROLE_MOBILE_FIX_V7: sidebar navigation uses a reliable bubble click handler; mobile layout/CSS unchanged.");
