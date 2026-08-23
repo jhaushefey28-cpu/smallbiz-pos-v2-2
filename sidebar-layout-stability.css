@@ -1,6 +1,6 @@
-/* SMALLBIZ SIDEBAR LAYOUT STABILITY
-   Sidebar owns its own scroll area. POS/main content owns page scroll.
-   This prevents dragging/scrolling the product area from moving the sidebar. */
+/* SMALLBIZ SIDEBAR / POS SCROLL STABILITY V2
+   Keep sidebar and POS as separate scroll containers without trapping vertical
+   gestures. No DOM/menu changes are performed by this stylesheet. */
 
 .app-shell {
   height: 100dvh;
@@ -14,7 +14,6 @@
   min-height: 0;
   position: relative;
   overflow: hidden;
-  overscroll-behavior: contain;
 }
 
 .sidebar-nav {
@@ -22,24 +21,15 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   scrollbar-width: thin;
 }
 
-.sidebar-nav::-webkit-scrollbar {
-  width: 7px;
-}
-
-.sidebar-nav::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sidebar-nav::-webkit-scrollbar-thumb {
-  background: #3a4658;
-  border-radius: 999px;
-}
+.sidebar-nav::-webkit-scrollbar { width: 7px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: #3a4658; border-radius: 999px; }
 
 .sidebar-bottom {
   flex: 0 0 auto;
@@ -51,36 +41,41 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: auto;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scrollbar-width: thin;
 }
 
-/* Keep product/card dragging and scrolling inside the POS area. */
+/* Explicitly keep vertical gestures available throughout the POS surface. */
 .pos-layout,
-.products-panel {
+.products-panel,
+.products-grid,
+.right-panel {
   min-height: 0;
+  touch-action: pan-y;
 }
 
 .products-panel,
-.products-grid {
-  overscroll-behavior: contain;
+.products-grid,
+.right-panel {
+  overscroll-behavior-y: auto;
 }
 
 @media (max-width: 900px) {
-  .app-shell {
-    height: 100dvh;
-    min-height: 100dvh;
-  }
-
-  .sidebar {
+  .app-shell,
+  .sidebar,
+  .main-area {
     height: 100dvh;
   }
 
   .sidebar-nav {
     max-height: none;
+    touch-action: pan-y;
   }
 
   .main-area {
-    height: 100dvh;
+    overflow-y: auto !important;
+    touch-action: pan-y !important;
   }
 }
