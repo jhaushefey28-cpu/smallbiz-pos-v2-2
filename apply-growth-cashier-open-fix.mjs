@@ -1,3 +1,4 @@
+// SMALLBIZ_GROWTH_CASHIER_OPEN_STABILITY_V1
 import fs from "node:fs";
 
 function patchGrowth(){
