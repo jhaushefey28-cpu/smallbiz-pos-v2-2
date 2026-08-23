@@ -1,10 +1,8 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V24
-// Tenant-scoped sidebar module loader. Module buttons open their actual UI after lazy load.
+// SMALLBIZ_OWNER_MODULES_LOADER_V25
+// Tenant-scoped sidebar module loader. Heavy Growth/Cashier modules are lazy-loaded only on click.
 import "./attendance-center.css";
 import "./attendance-log-enhancement.css";
 import "./employee-attendance.css";
-import "./growth-center.jsx";
-import "./cashier-shift.jsx";
 
 const SUPPORT_MODULES=[()=>import("./reprint-modal-fix.js"),()=>import("./void-reason-enhancement.js"),()=>import("./transaction-audit-enhancement.js")];
 const OWNER_MENU=[
@@ -22,7 +20,8 @@ const OWNER_MENU=[
 ];
 const RETIRED_LABELS=["Marketplace Sync Readiness","Product Mapping","Products & Inventory","Platform Channel Admin","Growth"];
 const DIRECT_OPEN_KEYS=new Set(["team","growth","cashier-shift"]);
-const loaded=new Set(["growth","cashier-shift"]),loading=new Set(),GLOBAL_KEY="__smallbizOwnerModulesLoader";
+// IMPORTANT: these modules are truly lazy. They must not be marked loaded until their dynamic import finishes.
+const loaded=new Set(),loading=new Set(),GLOBAL_KEY="__smallbizOwnerModulesLoader";
 const hasPermission=code=>typeof window.__smallbizHasPermission==="function"&&window.__smallbizHasPermission(code);
 const nav=()=>document.querySelector(".sidebar-nav");
 const textOf=el=>String(el?.textContent||"").replace(/\s+/g," ").trim();
@@ -34,7 +33,7 @@ function markInternal(el,item){if(!el||isCanonical(el))return;el.dataset.smallbi
 function findInternalButton(item){const root=nav();if(!root)return null;return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>el.dataset?.smallbizOwnerInternal===item.key)||null}
 function hideDuplicateModuleButtons(item){const root=nav();if(!root)return;const targets=new Set(labelsFor(item));Array.from(root.querySelectorAll("button,a,[role='button']")).forEach(el=>{if(isCanonical(el)||el.dataset?.smallbizOwnerInternal)return;if(targets.has(normalizedLabel(textOf(el))))markInternal(el,item)})}
 function removeDuplicateCanonicalButtons(item,keep){const root=nav();if(!root)return;Array.from(root.querySelectorAll(`[data-smallbiz-owner-canonical='${item.key}']`)).forEach(el=>{if(el!==keep)el.remove()})}
-function bindCanonicalButton(item,button){if(!button)return null;button.type="button";button.setAttribute("aria-label",item.label);button.style.setProperty("pointer-events","auto","important");button.style.setProperty("touch-action","manipulation","important");button.style.setProperty("position","relative","important");button.style.setProperty("z-index","3","important");button.onclick=event=>{event.preventDefault();event.stopPropagation();loadOwnerModule(item,button)};button.dataset.smallbizOwnerBound="v24";return button}
+function bindCanonicalButton(item,button){if(!button)return null;button.type="button";button.setAttribute("aria-label",item.label);button.style.setProperty("pointer-events","auto","important");button.style.setProperty("touch-action","manipulation","important");button.style.setProperty("position","relative","important");button.style.setProperty("z-index","3","important");button.onclick=event=>{event.preventDefault();event.stopPropagation();loadOwnerModule(item,button)};button.dataset.smallbizOwnerBound="v25";return button}
 function ensureCanonicalButton(item){const root=nav();if(!root)return null;let existing=root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`);if(existing){removeDuplicateCanonicalButtons(item,existing);return bindCanonicalButton(item,existing)}const button=document.createElement("button");button.className="nav-item";button.dataset.smallbizOwnerCanonical=item.key;button.innerHTML=`<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;const targets=new Set(labelsFor(item));const firstMatching=Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>targets.has(normalizedLabel(textOf(el)))&&!isCanonical(el));if(firstMatching)root.insertBefore(button,firstMatching);else root.appendChild(button);return bindCanonicalButton(item,button)}
 function removeDuplicateReports(){const root=nav();if(!root)return;const reports=Array.from(root.querySelectorAll("button,a,[role='button']")).filter(el=>normalizedLabel(textOf(el))==="reports");reports.slice(1).forEach(el=>el.remove())}
 function reconcileOwnerMenu(){const root=nav();if(!root||!window.__smallbizPermissionsReady)return false;removeRetiredMenuItems();OWNER_MENU.forEach(item=>{if(!hasPermission(item.permission)){root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`)?.remove();return}const canonical=ensureCanonicalButton(item);hideDuplicateModuleButtons(item);removeDuplicateCanonicalButtons(item,canonical)});removeDuplicateReports();return true}
