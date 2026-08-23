@@ -1,32 +1,19 @@
-// SMALLBIZ_POST_LOGIN_MODULES_V5
-// Optional UI modules start only after the authenticated React app-shell exists.
-// Authentication remains completely independent from module failures.
+// SMALLBIZ_POST_LOGIN_MODULES_V6
+// Optional UI enhancements start only after the authenticated React app-shell exists.
+// Sidebar/module ownership is handled by owner-modules-loader.jsx.
+// This loader must NOT execute the same sidebar-owning modules a second time.
+// Mobile/sidebar layout CSS is intentionally untouched.
 
 let started = false;
 let observer = null;
 
+// Only load enhancements that do not own/register sidebar entries.
+// Sidebar-owning modules are loaded on demand by owner-modules-loader.jsx.
 const MODULE_SCRIPTS = [
-  "/reprint-modal-fix.js",
-  "/void-reason-enhancement.js",
-  "/transaction-audit-enhancement.js",
-  "/team-management.js",
-  "/sales-channels.jsx",
-  "/product-channel-mapping.jsx",
   "/order-management-shipment-hotfix.js",
-  "/order-management.jsx",
-  "/platform-channel-admin.js",
-  "/marketplace-connections.jsx",
   "/marketplace-oauth-connect.js",
-  "/marketplace-sync-readiness.jsx",
-  "/marketplace-stock-reservation.jsx",
-  "/marketplace-fulfillment.jsx",
   "/report-export-engine.js",
-  "/reports-center.js",
-  "/business-controls.jsx",
-  "/inventory-center.jsx",
-  "/growth-center.jsx",
-  "/growth-center-sidebar-fix.js",
-  "/cashier-shift.jsx"
+  "/growth-center-sidebar-fix.js"
 ];
 
 const STYLE_LINKS = [
@@ -44,11 +31,11 @@ function loadScript(src) {
     if (document.querySelector(`script[data-smallbiz-module="${src}"]`)) return resolve();
     const script = document.createElement("script");
     script.type = "module";
-    script.src = `${src}?postLogin=20260821-v5`;
+    script.src = `${src}?postLogin=20260823-v6`;
     script.dataset.smallbizModule = src;
     script.onload = resolve;
     script.onerror = () => {
-      console.warn(`[SmallBiz] Optional module failed: ${src}`);
+      console.warn(`[SmallBiz] Optional enhancement failed: ${src}`);
       resolve();
     };
     document.body.appendChild(script);
@@ -59,7 +46,7 @@ function loadStyle(href) {
   if (document.querySelector(`link[data-smallbiz-style="${href}"]`)) return;
   const link = document.createElement("link");
   link.rel = "stylesheet";
-  link.href = `${href}?postLogin=20260821-v5`;
+  link.href = `${href}?postLogin=20260823-v6`;
   link.dataset.smallbizStyle = href;
   document.head.appendChild(link);
 }
@@ -69,7 +56,7 @@ async function loadOptionalModules() {
   started = true;
   STYLE_LINKS.forEach(loadStyle);
   for (const src of MODULE_SCRIPTS) await loadScript(src);
-  console.info("[SmallBiz] Authenticated UI modules loaded safely.");
+  console.info("[SmallBiz] Authenticated UI enhancements loaded safely.");
 }
 
 function start() {
