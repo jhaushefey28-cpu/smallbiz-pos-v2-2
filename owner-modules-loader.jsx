@@ -1,8 +1,8 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V14
+// SMALLBIZ_OWNER_MODULES_LOADER_V15
 // Canonical owner sidebar. React owns the core POS navigation; this loader owns
 // marketplace/owner modules that are implemented as self-mounting modules.
-// Exactly one visible button is kept for each owner module. Module-created
-// buttons are converted to hidden internal openers after the module loads.
+// Self-mounted module buttons are internal openers only. Exactly one visible
+// canonical button is kept for every owner module.
 import "./attendance-center.css";
 import "./attendance-log-enhancement.css";
 import "./employee-attendance.css";
@@ -13,9 +13,6 @@ const SUPPORT_MODULES = [
   () => import("./transaction-audit-enhancement.js")
 ];
 
-// Reports is intentionally NOT here. The main React sidebar already owns the
-// Reports button/page, so the module loader must never create or hide another
-// Reports entry.
 const OWNER_MENU = [
   { key: "team", icon: "👥", label: "Team", permission: "team.view", load: () => import("./team-management.js") },
   { key: "channels", icon: "🌐", label: "Online Channels", permission: "marketplace.view", load: () => import("./sales-channels.jsx") },
@@ -34,7 +31,7 @@ const OWNER_MENU = [
 
 const loaded = new Set();
 const loading = new Set();
-const GLOBAL_KEY = "__smallbizOwnerModulesLoaderV14";
+const GLOBAL_KEY = "__smallbizOwnerModulesLoaderV15";
 
 function hasPermission(code) {
   return typeof window.__smallbizHasPermission === "function" && window.__smallbizHasPermission(code);
@@ -48,6 +45,13 @@ function textOf(el) {
   return String(el?.textContent || "").replace(/\s+/g, " ").trim();
 }
 
+function normalizedLabel(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
 function isCanonical(el) {
   return Boolean(el?.dataset?.smallbizOwnerCanonical);
 }
@@ -58,6 +62,7 @@ function markInternal(el, item) {
   el.setAttribute("aria-hidden", "true");
   el.tabIndex = -1;
   el.style.setProperty("display", "none", "important");
+  el.style.setProperty("pointer-events", "none", "important");
 }
 
 function findInternalButton(item) {
@@ -70,10 +75,19 @@ function findInternalButton(item) {
 function hideDuplicateModuleButtons(item) {
   const root = nav();
   if (!root) return;
+  const target = normalizedLabel(item.label);
   Array.from(root.querySelectorAll("button,a,[role='button']")).forEach(el => {
     if (isCanonical(el) || el.dataset?.smallbizOwnerInternal) return;
-    if (textOf(el).toLowerCase() !== item.label.toLowerCase()) return;
+    if (normalizedLabel(textOf(el)) !== target) return;
     markInternal(el, item);
+  });
+}
+
+function removeDuplicateCanonicalButtons(item, keep) {
+  const root = nav();
+  if (!root) return;
+  Array.from(root.querySelectorAll(`[data-smallbiz-owner-canonical='${item.key}']`)).forEach(el => {
+    if (el !== keep) el.remove();
   });
 }
 
@@ -82,7 +96,10 @@ function ensureCanonicalButton(item) {
   if (!root) return null;
 
   const existing = root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`);
-  if (existing) return existing;
+  if (existing) {
+    removeDuplicateCanonicalButtons(item, existing);
+    return existing;
+  }
 
   const button = document.createElement("button");
   button.type = "button";
@@ -90,14 +107,29 @@ function ensureCanonicalButton(item) {
   button.dataset.smallbizOwnerCanonical = item.key;
   button.innerHTML = `<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;
   button.setAttribute("aria-label", item.label);
+  button.style.setProperty("pointer-events", "auto", "important");
+  button.style.setProperty("touch-action", "manipulation", "important");
   button.addEventListener("click", event => {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
     loadOwnerModule(item, button);
   }, true);
-  root.appendChild(button);
+
+  const firstMatching = Array.from(root.querySelectorAll("button,a,[role='button']"))
+    .find(el => normalizedLabel(textOf(el)) === normalizedLabel(item.label) && !isCanonical(el));
+  if (firstMatching) root.insertBefore(button, firstMatching);
+  else root.appendChild(button);
+
   return button;
+}
+
+function removeDuplicateReports() {
+  const root = nav();
+  if (!root) return;
+  const reports = Array.from(root.querySelectorAll("button,a,[role='button']"))
+    .filter(el => normalizedLabel(textOf(el)) === "reports");
+  reports.slice(1).forEach(el => el.remove());
 }
 
 function reconcileOwnerMenu() {
@@ -109,19 +141,12 @@ function reconcileOwnerMenu() {
       root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`)?.remove();
       return;
     }
-    ensureCanonicalButton(item);
+    const canonical = ensureCanonicalButton(item);
     hideDuplicateModuleButtons(item);
+    removeDuplicateCanonicalButtons(item, canonical);
   });
 
-  // Reports is React-owned. Never allow an old loader/module button to remain
-  // as a second Reports entry.
-  Array.from(root.querySelectorAll("button,a,[role='button']")).forEach(el => {
-    if (isCanonical(el) || el.dataset?.smallbizOwnerInternal) return;
-    if (textOf(el).toLowerCase() === "reports") {
-      if (el.dataset?.smallbizLazyOwner || el.dataset?.smallbizOwnerModule) el.remove();
-    }
-  });
-
+  removeDuplicateReports();
   return true;
 }
 
@@ -170,7 +195,6 @@ async function loadOwnerModule(item, button) {
     loaded.add(item.key);
     const internal = await waitForInternalButton(item);
     reconcileOwnerMenu();
-
     if (internal) internal.click();
     else window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));
   } catch (error) {
