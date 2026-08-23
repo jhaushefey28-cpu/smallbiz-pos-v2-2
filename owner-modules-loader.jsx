@@ -1,7 +1,6 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V12
-// Canonical owner sidebar: one button per module, one click owner, no stacked
-// placeholder/self-registered sidebar entries. Module-owned buttons are hidden
-// and reused only as internal openers after their module has loaded.
+// SMALLBIZ_OWNER_MODULES_LOADER_V13
+// Canonical owner sidebar: one visible button per module. Module-owned buttons
+// are hidden and retained only as internal openers so existing module code works.
 import "./attendance-center.css";
 import "./attendance-log-enhancement.css";
 import "./employee-attendance.css";
@@ -29,27 +28,18 @@ const OWNER_MENU = [
   { key: "cashier-shift", icon: "💵", label: "Cashier Shift", permission: "pos.use", load: () => import("./cashier-shift.jsx") }
 ];
 
-const loaded = new Set();
-const loading = new Set();
-const GLOBAL_KEY = "__smallbizOwnerModulesLoaderV12";
+const loaded=new Set();
+const loading=new Set();
+const GLOBAL_KEY="__smallbizOwnerModulesLoaderV13";
 
-function hasPermission(code){
-  return typeof window.__smallbizHasPermission === "function" && window.__smallbizHasPermission(code);
-}
-function nav(){ return document.querySelector(".sidebar-nav"); }
-function textOf(el){ return String(el?.textContent||"").replace(/\s+/g," ").trim(); }
-
-function isCoreButton(el){
-  return el instanceof HTMLElement && !el.dataset.smallbizOwnerCanonical && !el.dataset.smallbizOwnerInternal;
-}
+function hasPermission(code){return typeof window.__smallbizHasPermission==="function"&&window.__smallbizHasPermission(code);}
+function nav(){return document.querySelector(".sidebar-nav");}
+function textOf(el){return String(el?.textContent||"").replace(/\s+/g," ").trim();}
 
 function findInternalButton(item){
   const root=nav();
   if(!root)return null;
-  return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>{
-    if(!isCoreButton(el))return false;
-    return textOf(el).toLowerCase()===item.label.toLowerCase();
-  })||null;
+  return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>el.dataset?.smallbizOwnerInternal===item.key)||null;
 }
 
 function hideDuplicateModuleButtons(item){
@@ -68,8 +58,8 @@ function hideDuplicateModuleButtons(item){
 function ensureCanonicalButton(item){
   const root=nav();
   if(!root)return null;
-  const canonical=root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`);
-  if(canonical)return canonical;
+  const existing=root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`);
+  if(existing)return existing;
   if(item.key==="reports")return null;
 
   const button=document.createElement("button");
@@ -108,32 +98,26 @@ function openLoadedModule(item){
     return true;
   }
   const internal=findInternalButton(item);
-  if(internal){ internal.click(); return true; }
+  if(internal){internal.click();return true;}
   window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));
   return false;
 }
 
 async function loadOwnerModule(item,button){
   if(!hasPermission(item.permission)||loading.has(item.key))return;
-  if(loaded.has(item.key)){
-    openLoadedModule(item);
-    return;
-  }
-
+  if(loaded.has(item.key)){openLoadedModule(item);return;}
   loading.add(item.key);
   button?.setAttribute("aria-busy","true");
   const labelNode=button?.querySelector("b");
   if(labelNode)labelNode.textContent=`${item.label}…`;
-
   try{
     await item.load();
     loaded.add(item.key);
     await new Promise(resolve=>setTimeout(resolve,120));
     reconcileOwnerMenu();
     openLoadedModule(item);
-  }catch(error){
-    console.warn(`[SmallBiz] ${item.label} failed to load.`,error);
-  }finally{
+  }catch(error){console.warn(`[SmallBiz] ${item.label} failed to load.`,error)}
+  finally{
     if(button){
       button.removeAttribute("aria-busy");
       const currentLabel=button.querySelector("b");
@@ -146,9 +130,7 @@ async function loadOwnerModule(item,button){
 function startObserver(){
   const state=window[GLOBAL_KEY]||{};
   if(state.observer)return state.observer;
-  const observer=new MutationObserver(()=>{
-    if(document.querySelector(".app-shell"))reconcileOwnerMenu();
-  });
+  const observer=new MutationObserver(()=>{if(document.querySelector(".app-shell"))reconcileOwnerMenu()});
   observer.observe(document.documentElement,{childList:true,subtree:true});
   window[GLOBAL_KEY]={...state,observer};
   return observer;
@@ -164,29 +146,19 @@ function stopObserverIfLoggedOut(){
 
 export function startOwnerModules(){
   const state=window[GLOBAL_KEY]||{};
-  if(state.started){
-    startObserver();
-    reconcileOwnerMenu();
-    return;
-  }
-
+  if(state.started){startObserver();reconcileOwnerMenu();return;}
   window[GLOBAL_KEY]={...state,started:true};
   startObserver();
   reconcileOwnerMenu();
-  window.addEventListener("smallbiz:permissions-ready",()=>{
-    startObserver();
-    reconcileOwnerMenu();
-  });
-
+  window.addEventListener("smallbiz:permissions-ready",()=>{startObserver();reconcileOwnerMenu()});
   const logoutObserver=new MutationObserver(stopObserverIfLoggedOut);
   logoutObserver.observe(document.documentElement,{childList:true,subtree:true});
   window[GLOBAL_KEY].logoutObserver=logoutObserver;
-
   if(window.__smallbizPermissionsReady&&!window[GLOBAL_KEY].supportStarted){
     window[GLOBAL_KEY].supportStarted=true;
     setTimeout(async()=>{
       for(const load of SUPPORT_MODULES){
-        try{await load();}catch(error){console.warn("[SmallBiz] Optional POS enhancement failed.",error);}
+        try{await load()}catch(error){console.warn("[SmallBiz] Optional POS enhancement failed.",error)}
         await new Promise(resolve=>setTimeout(resolve,0));
       }
     },0);
