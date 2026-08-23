@@ -1,6 +1,6 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V9
-// Tenant-aware lazy owner-module loader. Sidebar entries render only when the current user has permission.
-// Tenant super-admins have full access. Core POS/auth and attendance remain independent.
+// SMALLBIZ_OWNER_MODULES_LOADER_V10
+// Tenant-aware lazy owner-module loader with reliable click/open handling.
+// Mobile/sidebar layout is intentionally untouched.
 let started = false;
 
 import "./attendance-center.css";
@@ -32,108 +32,118 @@ const OWNER_MENU = [
 
 const loaded = new Set();
 const loading = new Set();
-
 const yieldToBrowser = (callback) => {
-  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-    window.requestIdleCallback(callback, { timeout: 300 });
-  } else {
-    setTimeout(callback, 0);
-  }
+  if (typeof window !== "undefined" && "requestIdleCallback" in window) window.requestIdleCallback(callback,{timeout:300});
+  else setTimeout(callback,0);
 };
+function nav(){return document.querySelector(".sidebar-nav");}
+function textOf(el){return String(el?.textContent||"").replace(/\s+/g," ").trim();}
+function hasPermission(code){return typeof window.__smallbizHasPermission==="function"&&window.__smallbizHasPermission(code);}
 
-function nav() { return document.querySelector(".sidebar-nav"); }
-function textOf(el) { return String(el?.textContent || "").replace(/\s+/g, " ").trim(); }
-function hasPermission(code) { return typeof window.__smallbizHasPermission === "function" && window.__smallbizHasPermission(code); }
-
-function findNativeButton(item) {
-  const root = nav();
-  if (!root) return null;
-  return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el => {
-    if (el.dataset?.smallbizLazyOwner) return false;
-    const text = textOf(el);
-    return item.label === text || item.label.replace(/\s+/g, " ").toLowerCase() === text.toLowerCase();
-  }) || null;
+function findNativeButton(item){
+  const root=nav();if(!root)return null;
+  return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>{
+    if(el.dataset?.smallbizLazyOwner)return false;
+    const text=textOf(el);
+    return item.label===text||item.label.replace(/\s+/g," ").toLowerCase()===text.toLowerCase();
+  })||null;
 }
 
-function openLoadedModule(item) {
-  const native = findNativeButton(item);
-  if (native) { native.click(); return; }
+function openLoadedModule(item){
+  // Team is a standalone DOM module and exposes an explicit opener.
+  if(item.key==="team"&&typeof window.__smallbizOpenTeam==="function"){
+    window.__smallbizOpenTeam();
+    return true;
+  }
+  // Modules such as Cashier Shift mount their own native sidebar button.
+  const native=findNativeButton(item);
+  if(native){
+    native.click();
+    return true;
+  }
+  // Keep compatibility with modules that listen for the custom open event.
   window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));
+  return false;
 }
 
-async function loadOwnerModule(item, placeholder) {
-  if (!hasPermission(item.permission)) return;
-  if (loading.has(item.key)) return;
-  if (loaded.has(item.key)) { openLoadedModule(item); return; }
+async function loadOwnerModule(item,placeholder){
+  if(!hasPermission(item.permission))return;
+  if(loading.has(item.key))return;
+  if(loaded.has(item.key)){
+    openLoadedModule(item);
+    return;
+  }
   loading.add(item.key);
-  placeholder.dataset.loading = "1";
-  const labelNode = placeholder.querySelector("b");
-  if (labelNode) labelNode.textContent = `${item.label}…`;
-  try {
+  placeholder.dataset.loading="1";
+  const labelNode=placeholder.querySelector("b");
+  if(labelNode)labelNode.textContent=`${item.label}…`;
+  try{
     await item.load();
     loaded.add(item.key);
-    placeholder.remove();
-    setTimeout(() => openLoadedModule(item), 40);
-  } catch (error) {
-    console.warn(`[SmallBiz] ${item.label} failed to load.`, error);
-    placeholder.dataset.loading = "0";
-    if (labelNode) labelNode.textContent = item.label;
-  } finally { loading.delete(item.key); }
+    // Give self-mounting modules a tick to create their native button.
+    await new Promise(resolve=>setTimeout(resolve,60));
+    const opened=openLoadedModule(item);
+    if(opened&&item.key!=="team")placeholder.remove();
+    else if(!opened&&item.key!=="team"){
+      // Do not remove a menu entry when a module did not expose an opener.
+      placeholder.dataset.loading="0";
+      if(labelNode)labelNode.textContent=item.label;
+    }
+  }catch(error){
+    console.warn(`[SmallBiz] ${item.label} failed to load.`,error);
+    placeholder.dataset.loading="0";
+    if(labelNode)labelNode.textContent=item.label;
+  }finally{loading.delete(item.key);}
 }
 
-function ensureOwnerMenu() {
-  const root = nav();
-  if (!root) return false;
-  if (!window.__smallbizPermissionsReady) return false;
-
-  OWNER_MENU.forEach(item => {
-    const existing = root.querySelector(`[data-smallbiz-lazy-owner='${item.key}']`);
-    if (!hasPermission(item.permission)) {
-      existing?.remove();
-      return;
-    }
-    if (findNativeButton(item) || existing) return;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "nav-item";
-    button.dataset.smallbizLazyOwner = item.key;
-    button.innerHTML = `<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;
-    button.setAttribute("aria-label", item.label);
-    button.addEventListener("click", () => loadOwnerModule(item, button));
+function ensureOwnerMenu(){
+  const root=nav();if(!root||!window.__smallbizPermissionsReady)return false;
+  OWNER_MENU.forEach(item=>{
+    const existing=root.querySelector(`[data-smallbiz-lazy-owner='${item.key}']`);
+    if(!hasPermission(item.permission)){existing?.remove();return;}
+    if(findNativeButton(item)||existing)return;
+    const button=document.createElement("button");
+    button.type="button";button.className="nav-item";button.dataset.smallbizLazyOwner=item.key;
+    button.innerHTML=`<span aria-hidden="true">${item.icon}</span><b>${item.label}</b>`;
+    button.setAttribute("aria-label",item.label);
+    button.addEventListener("click",event=>{
+      event.preventDefault();
+      event.stopPropagation();
+      if(typeof event.stopImmediatePropagation==="function")event.stopImmediatePropagation();
+      loadOwnerModule(item,button);
+    },true);
     root.appendChild(button);
   });
   return true;
 }
 
-async function loadAttendance() {
-  if (!hasPermission("attendance.view")) return;
-  try {
+async function loadAttendance(){
+  if(!hasPermission("attendance.view"))return;
+  try{
     await import("./attendance-runtime-bridge.js");
     await import("./attendance-center.js");
     await import("./employee-attendance.js");
     await import("./attendance-sidebar-fix.js");
-  } catch (error) { console.warn("[SmallBiz] Attendance module failed; core app remains active.", error); }
+  }catch(error){console.warn("[SmallBiz] Attendance module failed; core app remains active.",error);}
 }
 
-function observeSidebarOnce() {
-  if (ensureOwnerMenu()) return;
-  const observer = new MutationObserver(() => {
-    if (ensureOwnerMenu()) observer.disconnect();
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  window.addEventListener("smallbiz:permissions-ready", () => { ensureOwnerMenu(); loadAttendance(); }, { once: true });
-  setTimeout(() => observer.disconnect(), 20000);
+function observeSidebarOnce(){
+  if(ensureOwnerMenu())return;
+  const observer=new MutationObserver(()=>{if(ensureOwnerMenu())observer.disconnect();});
+  observer.observe(document.documentElement,{childList:true,subtree:true});
+  window.addEventListener("smallbiz:permissions-ready",()=>{ensureOwnerMenu();loadAttendance();},{once:true});
+  setTimeout(()=>observer.disconnect(),20000);
 }
 
-export function startOwnerModules() {
-  if (started) return;
-  started = true;
+export function startOwnerModules(){
+  if(started)return;
+  started=true;
   observeSidebarOnce();
-  if (window.__smallbizPermissionsReady) loadAttendance();
-  yieldToBrowser(async () => {
-    for (const load of SUPPORT_MODULES) {
-      try { await load(); } catch (error) { console.warn("[SmallBiz] Optional POS enhancement failed.", error); }
-      await new Promise(resolve => setTimeout(resolve, 0));
+  if(window.__smallbizPermissionsReady)loadAttendance();
+  yieldToBrowser(async()=>{
+    for(const load of SUPPORT_MODULES){
+      try{await load();}catch(error){console.warn("[SmallBiz] Optional POS enhancement failed.",error);}
+      await new Promise(resolve=>setTimeout(resolve,0));
     }
   });
 }
