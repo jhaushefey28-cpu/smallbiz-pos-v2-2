@@ -1,4 +1,4 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V16
+// SMALLBIZ_OWNER_MODULES_LOADER_V17
 // Canonical owner sidebar. React owns the core POS navigation; this loader owns
 // marketplace/owner modules that are implemented as self-mounting modules.
 // Self-mounted module buttons are internal openers only. Exactly one visible
@@ -20,13 +20,20 @@ const OWNER_MENU = [
   { key: "marketplace-stock", icon: "📦", label: "Marketplace Stock", permission: "inventory.view", load: () => import("./marketplace-stock-reservation.jsx") },
   { key: "marketplace-fulfillment", icon: "🚚", label: "Marketplace Fulfillment", permission: "marketplace.manage", load: () => import("./marketplace-fulfillment.jsx") },
   { key: "order-management", icon: "🛍️", label: "Order Management", permission: "marketplace.view", load: () => import("./order-management.jsx") },
-  { key: "sync-readiness", icon: "🔄", label: "Marketplace Sync Readiness", permission: "marketplace.view", load: () => import("./marketplace-sync-readiness.jsx") },
   { key: "channel-mapping", icon: "🗺️", label: "Product Channel Mapping", permission: "marketplace.manage", load: () => import("./product-channel-mapping.jsx") },
-  { key: "platform-admin", icon: "🛠️", label: "Platform Channel Admin", permission: "marketplace.manage", load: () => import("./platform-channel-admin.js") },
   { key: "business-controls", icon: "⚙️", label: "Business Controls", permission: "settings.manage", load: () => import("./business-controls.jsx") },
   { key: "inventory", icon: "📦", label: "Inventory", permission: "inventory.view", load: () => import("./inventory-center.jsx") },
-  { key: "growth", icon: "📈", label: "Growth", permission: "reports.view", load: () => import("./growth-center.jsx") },
+  { key: "growth", icon: "📈", label: "Growth Center", permission: "reports.view", load: () => import("./growth-center.jsx") },
   { key: "cashier-shift", icon: "💵", label: "Cashier Shift", permission: "pos.use", load: () => import("./cashier-shift.jsx") }
+];
+
+// Legacy/duplicate labels that must never remain in the tenant Owner sidebar.
+const RETIRED_LABELS = [
+  "Marketplace Sync Readiness",
+  "Product Mapping",
+  "Products & Inventory",
+  "Platform Channel Admin",
+  "Growth"
 ];
 
 const loaded = new Set();
@@ -40,6 +47,14 @@ function nav() { return document.querySelector(".sidebar-nav"); }
 function textOf(el) { return String(el?.textContent || "").replace(/\s+/g, " ").trim(); }
 function normalizedLabel(value) { return String(value || "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
 function isCanonical(el) { return Boolean(el?.dataset?.smallbizOwnerCanonical); }
+function removeRetiredMenuItems() {
+  const root = nav(); if (!root) return;
+  const retired = new Set(RETIRED_LABELS.map(normalizedLabel));
+  Array.from(root.querySelectorAll("button,a,[role='button']")).forEach(el => {
+    if (isCanonical(el) || el.dataset?.smallbizOwnerInternal) return;
+    if (retired.has(normalizedLabel(textOf(el)))) el.remove();
+  });
+}
 function markInternal(el, item) {
   if (!el || isCanonical(el)) return;
   el.dataset.smallbizOwnerInternal = item.key;
@@ -74,15 +89,12 @@ function bindCanonicalButton(item, button) {
   button.style.setProperty("touch-action", "manipulation", "important");
   button.style.setProperty("position", "relative", "important");
   button.style.setProperty("z-index", "3", "important");
-  // Use the DOM onclick property so an existing canonical button is repaired
-  // even when it was created by an older loader instance and its old listener
-  // was lost during a React/nav remount.
   button.onclick = event => {
     event.preventDefault();
     event.stopPropagation();
     loadOwnerModule(item, button);
   };
-  button.dataset.smallbizOwnerBound = "v16";
+  button.dataset.smallbizOwnerBound = "v17";
   return button;
 }
 
@@ -109,6 +121,7 @@ function removeDuplicateReports() {
 function reconcileOwnerMenu() {
   const root = nav();
   if (!root || !window.__smallbizPermissionsReady) return false;
+  removeRetiredMenuItems();
   OWNER_MENU.forEach(item => {
     if (!hasPermission(item.permission)) { root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`)?.remove(); return; }
     const canonical = ensureCanonicalButton(item);
