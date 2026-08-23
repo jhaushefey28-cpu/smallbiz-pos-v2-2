@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node apply-owner-sidebar-lag-fix.mjs && node apply-stock-edit-protection.mjs && node apply-pos-stability-fix.mjs && node apply-owner-module-stability.mjs && node apply-owner-modules-loader.mjs && node apply-attendance-sidebar-stability.mjs && node apply-sidebar-layout-stability.mjs && node apply-css-markdown-fence-fix.mjs && node apply-pos-startup-performance.mjs && node apply-pos-core-code-split.mjs && node apply-final-role-mobile-fix.mjs && node apply-tenant-permission-model.mjs && node apply-tenant-superadmin-team-access.mjs && vite build",
+    "build": "node apply-owner-sidebar-lag-fix.mjs && node apply-stock-edit-protection.mjs && node apply-pos-stability-fix.mjs && node apply-owner-module-stability.mjs && node apply-auth-singleton-fix.mjs && node apply-growth-cashier-open-fix.mjs && node apply-owner-modules-loader.mjs && node apply-attendance-sidebar-stability.mjs && node apply-sidebar-layout-stability.mjs && node apply-css-markdown-fence-fix.mjs && node apply-pos-startup-performance.mjs && node apply-pos-core-code-split.mjs && node apply-final-role-mobile-fix.mjs && node apply-tenant-permission-model.mjs && node apply-tenant-superadmin-team-access.mjs && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
