@@ -65,7 +65,7 @@ function ensureButton(item){
  if(existing)return bindButton(item,existing);
  const button=document.createElement("button");
  button.className="nav-item";
- button.innerHTML="<span aria-hidden=\"true\">"+item.icon+"</span><b>"+item.label+"</b>";
+ button.innerHTML='<span aria-hidden="true">'+item.icon+'</span><b>'+item.label+'</b>';
  root.appendChild(button);
  return bindButton(item,button);
 }
