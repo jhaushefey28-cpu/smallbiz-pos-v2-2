@@ -3,11 +3,11 @@ import fs from "node:fs";
 const OWNER="owner-modules-loader.jsx";
 const ATTENDANCE="attendance-center.js";
 
-/* V29 is the authoritative owner sidebar loader. Never regenerate, remove,
- * hide, or deduplicate sidebar entries during the build. */
+/* V30 is the authoritative owner sidebar loader. Never regenerate or overwrite
+ * the sidebar during build; the loader reuses one canonical item per menu. */
 if(!fs.existsSync(OWNER))throw new Error("owner-modules-loader.jsx is missing; build stopped safely.");
 const owner=fs.readFileSync(OWNER,"utf8");
-if(!owner.includes("SMALLBIZ_OWNER_MODULES_LOADER_V29_DEDUP_SAFE"))throw new Error("Expected V29 dedup-safe owner loader; refusing to overwrite sidebar.");
+if(!owner.includes("SMALLBIZ_OWNER_MODULES_LOADER_V30_SINGLE_START_DEDUP"))throw new Error("Expected V30 single-start dedup-safe owner loader; refusing to overwrite sidebar.");
 
 if(fs.existsSync(ATTENDANCE)){
   let attendance=fs.readFileSync(ATTENDANCE,"utf8");
@@ -18,4 +18,4 @@ if(fs.existsSync(ATTENDANCE)){
     fs.writeFileSync(ATTENDANCE,attendance,"utf8");
   }
 }
-console.log("Applied SMALLBIZ_OWNER_SIDEBAR_LAG_FIX_V29_SAFE: preserved the authoritative V29 sidebar loader and all existing sidebar items.");
+console.log("Applied SMALLBIZ_OWNER_SIDEBAR_LAG_FIX_V30_SAFE: preserved the authoritative V30 sidebar loader and existing sidebar items.");
