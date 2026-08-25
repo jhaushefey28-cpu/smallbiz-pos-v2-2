@@ -1,5 +1,6 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V29_DEDUP_SAFE
-// Non-destructive owner sidebar loader. Reuses existing matching sidebar items instead of creating duplicates.
+// SMALLBIZ_OWNER_MODULES_LOADER_V30_SINGLE_START_DEDUP
+// Non-destructive owner sidebar loader. Reuses existing matching sidebar items,
+// keeps one canonical item per owner-menu label, and never starts a second loader path.
 import "./attendance-center.css";
 import "./attendance-log-enhancement.css";
 import "./employee-attendance.css";
@@ -24,11 +25,10 @@ const hasPermission=code=>isOwner()||(typeof window.__smallbizHasPermission==="f
 const nav=()=>document.querySelector(".sidebar-nav");
 const textOf=el=>String(el?.textContent||"").replace(/\s+/g," ").trim();
 const normalizedLabel=value=>String(value||"").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"");
-const labelsFor=item=>[item.label].map(normalizedLabel);
-function bindCanonicalButton(item,button){if(!button)return null;button.type="button";button.setAttribute("aria-label",item.label);button.style.setProperty("pointer-events","auto","important");button.style.setProperty("touch-action","manipulation","important");button.onclick=event=>{event.preventDefault();event.stopPropagation();loadOwnerModule(item,button)};button.dataset.smallbizOwnerBound="v29";button.dataset.smallbizOwnerCanonical=item.key;return button}
-function findExistingButton(root,item){const target=normalizedLabel(item.label);return Array.from(root.querySelectorAll("button,a,[role='button']")).find(el=>normalizedLabel(textOf(el))===target&&!el.dataset.smallbizOwnerCanonical)||null}
-function removeOnlyOurDuplicateButtons(root,item,keep){Array.from(root.querySelectorAll(`[data-smallbiz-owner-canonical='${item.key}']`)).forEach(el=>{if(el!==keep)el.remove()})}
-function ensureCanonicalButton(item){const root=nav();if(!root)return null;let canonical=root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`);if(canonical){removeOnlyOurDuplicateButtons(root,item,canonical);return bindCanonicalButton(item,canonical)}const existing=findExistingButton(root,item);if(existing)return bindCanonicalButton(item,existing);const button=document.createElement("button");button.className="nav-item";button.dataset.smallbizOwnerCanonical=item.key;button.innerHTML='<span aria-hidden="true">'+item.icon+'</span><b>'+item.label+'</b>';root.appendChild(button);return bindCanonicalButton(item,button)}
+function bindCanonicalButton(item,button){if(!button)return null;button.type="button";button.setAttribute("aria-label",item.label);button.style.setProperty("pointer-events","auto","important");button.style.setProperty("touch-action","manipulation","important");button.onclick=event=>{event.preventDefault();event.stopPropagation();loadOwnerModule(item,button)};button.dataset.smallbizOwnerBound="v30";button.dataset.smallbizOwnerCanonical=item.key;return button}
+function matchingButtons(root,item){const target=normalizedLabel(item.label);return Array.from(root.querySelectorAll("button,a,[role='button']")).filter(el=>normalizedLabel(textOf(el))===target)}
+function removeDuplicateOwnerButtons(root,item,keep){matchingButtons(root,item).forEach(el=>{if(el!==keep)el.remove()});Array.from(root.querySelectorAll(`[data-smallbiz-owner-canonical='${item.key}']`)).forEach(el=>{if(el!==keep)el.remove()})}
+function ensureCanonicalButton(item){const root=nav();if(!root)return null;let canonical=root.querySelector(`[data-smallbiz-owner-canonical='${item.key}']`);if(!canonical)canonical=matchingButtons(root,item)[0]||null;if(canonical){removeDuplicateOwnerButtons(root,item,canonical);return bindCanonicalButton(item,canonical)}const button=document.createElement("button");button.className="nav-item";button.dataset.smallbizOwnerCanonical=item.key;button.innerHTML='<span aria-hidden="true">'+item.icon+'</span><b>'+item.label+'</b>';root.appendChild(button);return bindCanonicalButton(item,button)}
 function reconcileOwnerMenu(){const root=nav();if(!root||!isOwner())return false;OWNER_MENU.forEach(item=>ensureCanonicalButton(item));return true}
 function directHandlerFor(item){if(item.key==="team")return window.__smallbizOpenTeam;if(item.key==="growth")return window.__smallbizOpenGrowthCenter;if(item.key==="cashier-shift")return window.__smallbizOpenCashierShift;return null}
 async function forceDirectOpen(item){for(let i=0;i<40;i++){try{const handler=directHandlerFor(item);if(typeof handler==="function"){handler();return true}}catch(error){console.warn(`[SmallBiz] ${item.label} open handler failed.`,error)}window.dispatchEvent(new CustomEvent(`smallbiz:open-${item.key}`));await new Promise(resolve=>setTimeout(resolve,75))}return false}
