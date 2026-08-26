@@ -7,26 +7,29 @@ const ATTENDANCE="attendance-center.js";
 if(!fs.existsSync(OWNER))throw new Error("owner-modules-loader.jsx is missing; build stopped safely.");
 if(!fs.existsSync(MAIN))throw new Error("main.jsx is missing; build stopped safely.");
 
-/* SMALLBIZ_SIDEBAR_CANONICAL_V35
+/* SMALLBIZ_SIDEBAR_CANONICAL_V36
    React owns the sidebar. The owner loader may bind existing entries and load
-   modules, but it must NEVER manufacture navigation buttons. Growth Center and
-   Cashier Shift are rendered by the canonical React sidebar so they cannot jump
-   to the bottom or duplicate after a React rerender. */
+   modules, but it must NEVER manufacture navigation buttons. Navigation keeps
+   the existing visual layout/order, and changing page resets the sidebar to the
+   top instead of preserving a bottom scroll position that hides the menu. */
 let owner=fs.readFileSync(OWNER,"utf8");
 const v34="SMALLBIZ_OWNER_MODULES_LOADER_V34_EXISTING_FIRST_NO_DUPLICATE";
 const v35="SMALLBIZ_OWNER_MODULES_LOADER_V35_CANONICAL_REACT_NO_CREATE";
-if(!owner.includes(v34)&&!owner.includes(v35))throw new Error("Expected V34/V35 safe owner loader; refusing sidebar mutation.");
+const v36="SMALLBIZ_OWNER_MODULES_LOADER_V36_CANONICAL_REACT_STABLE";
+if(!owner.includes(v34)&&!owner.includes(v35)&&!owner.includes(v36))throw new Error("Expected V34/V35/V36 safe owner loader; refusing sidebar mutation.");
 
 if(owner.includes(v34)){
-  owner=owner.replace(v34,v35);
-  owner=owner.replace('const LOADER_VERSION="v34";','const LOADER_VERSION="v35";');
-
+  owner=owner.replace(v34,v36);
+  owner=owner.replace('const LOADER_VERSION="v34";','const LOADER_VERSION="v36";');
   const fallbackBlock=`  // Reuse one previously-created fallback instead of creating another.\n  const created=matches.find(el=>el.dataset.smallbizOwnerCreated)||null;\n  if(created){\n    bindButton(item,created,true);\n    removeCreatedDuplicates(root,item,created);\n    return created;\n  }\n  const button=document.createElement("button");\n  button.className="nav-item";\n  button.innerHTML='<span aria-hidden="true">'+item.icon+'</span><b>'+item.label+'</b>';\n  root.appendChild(button);\n  return bindButton(item,button,true);`;
   if(!owner.includes(fallbackBlock))throw new Error("V34 fallback creation block not found; refusing unsafe sidebar rewrite.");
   owner=owner.replace(fallbackBlock,'  // React is the sole owner of sidebar creation. Missing entries are not generated here.\n  return null;');
   fs.writeFileSync(OWNER,owner,"utf8");
+}else if(owner.includes(v35)){
+  owner=owner.replace(v35,v36).replace('const LOADER_VERSION="v34";','const LOADER_VERSION="v36";');
+  fs.writeFileSync(OWNER,owner,"utf8");
 }else if(owner.includes('const LOADER_VERSION="v34";')){
-  owner=owner.replace('const LOADER_VERSION="v34";','const LOADER_VERSION="v35";');
+  owner=owner.replace('const LOADER_VERSION="v34";','const LOADER_VERSION="v36";');
   fs.writeFileSync(OWNER,owner,"utf8");
 }
 
@@ -36,10 +39,13 @@ const newNav=`        {[["pos","🛒","POS",canSell],["cashier-shift","💵","Ca
 if(main.includes(oldNav))main=main.replace(oldNav,newNav);
 else if(!main.includes('["cashier-shift","💵","Cashier Shift"'))throw new Error("Canonical sidebar anchor not found; build stopped safely.");
 
-if(!main.includes('function selectSidebarPage(key)')){
+const stableFunction=`  function selectSidebarPage(key){\n    if(typeof setMobileSidebarOpen==="function")setMobileSidebarOpen(false);\n    setActivePage(key);\n    requestAnimationFrame(()=>{\n      const next=document.querySelector(".sidebar-nav");\n      if(next)next.scrollTop=0;\n      const mainArea=document.querySelector(".main-area");\n      if(mainArea)mainArea.scrollTo({top:0,behavior:"auto"});\n    });\n  }`;
+const functionPattern=/  function selectSidebarPage\(key\)\{[\s\S]*?\n  \}/;
+if(functionPattern.test(main))main=main.replace(functionPattern,stableFunction);
+else if(!main.includes('function selectSidebarPage(key)')){
   const anchor='  const canManageMasters=isOwner||role==="manager";';
   if(!main.includes(anchor))throw new Error("Sidebar permission anchor not found; build stopped safely.");
-  main=main.replace(anchor,anchor+'\n\n  function selectSidebarPage(key){\n    const nav=document.querySelector(".sidebar-nav");\n    const scrollTop=nav?.scrollTop||0;\n    if(typeof setMobileSidebarOpen==="function")setMobileSidebarOpen(false);\n    setActivePage(key);\n    requestAnimationFrame(()=>{\n      const next=document.querySelector(".sidebar-nav");\n      if(next)next.scrollTop=scrollTop;\n      document.querySelector(".main-area")?.scrollTo({top:0,behavior:"auto"});\n    });\n  }');
+  main=main.replace(anchor,anchor+'\n\n'+stableFunction);
 }
 
 fs.writeFileSync(MAIN,main,"utf8");
@@ -51,4 +57,4 @@ if(fs.existsSync(ATTENDANCE)){
   if(attendance.includes(old)){attendance=attendance.replace(old,next);fs.writeFileSync(ATTENDANCE,attendance,"utf8");}
 }
 
-console.log("Applied SMALLBIZ_SIDEBAR_CANONICAL_V35: Growth Center + Cashier Shift are canonical React sidebar entries; owner loader no longer creates fallback/duplicate menu items; sidebar and main scroll state are preserved on navigation.");
+console.log("Applied SMALLBIZ_SIDEBAR_CANONICAL_V36: React remains the sole sidebar creator; Growth Center + Cashier Shift stay canonical; navigation resets sidebar scroll to keep the existing menu visible without changing layout.");
