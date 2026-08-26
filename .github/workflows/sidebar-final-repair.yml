@@ -1,4 +1,4 @@
-name: SmallBiz Sidebar Final Repair
+name: SmallBiz One-Time Sidebar Source Repair
 
 on:
   push:
@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   repair:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -17,74 +18,62 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply final sidebar repair
+      - name: Make sidebar source canonical once
         shell: bash
         run: |
           node <<'NODE'
-          const fs = require('fs');
-          const OWNER = 'owner-modules-loader.jsx';
-          const MAIN = 'main.jsx';
-          const LAG = 'apply-owner-sidebar-lag-fix.mjs';
+          const fs=require('fs');
+          const path='main.jsx';
+          let text=fs.readFileSync(path,'utf8');
+          const oldNav=/<nav className="sidebar-nav">[\s\S]*?<\/nav>/;
+          const nav=`<nav className="sidebar-nav">
+          {[["pos","🛒","POS",canSell],["cashier-shift","💵","Cashier Shift",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["products","📦","Product",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Supplier",canManageMasters],["attendance","👥","Employee/Attendance",canManageMasters],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>
+            <button key={key} type="button" className={activePage===key?"nav-item active":"nav-item"} onClick={()=>selectSidebarPage(key)}><span>{icon}</span><b>{label}</b></button>)}
+        </nav>`;
+          if(!oldNav.test(text)) throw new Error('Canonical sidebar nav block not found; stopped without modifying source.');
+          text=text.replace(oldNav,nav);
+          const anchor='  return <div className="app-shell">';
+          if(!text.includes('SMALLBIZ_CANONICAL_SIDEBAR_NAV_V42')){
+            if(!text.includes(anchor)) throw new Error('App shell anchor not found; stopped safely.');
+            const fn=`  // SMALLBIZ_CANONICAL_SIDEBAR_NAV_V42
+  async function selectSidebarPage(key){
+    try{
+      if(key==="cashier-shift"){
+        await import("./cashier-shift.jsx");
+        window.dispatchEvent(new CustomEvent("smallbiz:open-cashier-shift"));
+        return;
+      }
+      if(key==="attendance"){
+        await import("./attendance-runtime-bridge.js");
+        await import("./attendance-center.js");
+        window.dispatchEvent(new CustomEvent("smallbiz:open-attendance"));
+        return;
+      }
+      setActivePage(key);
+      requestAnimationFrame(()=>document.querySelector(".main-area")?.scrollTo({top:0,behavior:"auto"}));
+    }catch(e){
+      setErr(String(e?.message||e));
+    }
+  }
 
-          let owner = fs.readFileSync(OWNER, 'utf8');
-          owner = owner.replace(/\/\/ SMALLBIZ_OWNER_MODULES_LOADER_V[^\n]*/, '// SMALLBIZ_OWNER_MODULES_LOADER_V38_REACT_BIND_ONLY_NO_CREATE');
-          owner = owner.replace(/const LOADER_VERSION="[^"]+";/, 'const LOADER_VERSION="v38";');
-
-          const ensurePattern = /function ensureCanonicalButton\(item\)\{[\s\S]*?\n\}/;
-          const bindOnly = `function ensureCanonicalButton(item){
-            const root=nav();
-            if(!root||!hasPermission(item.permission))return null;
-            const matches=matchingButtons(root,item);
-            const existing=matches.find(el=>!el.dataset.smallbizOwnerCreated)||null;
-            if(existing){bindButton(item,existing,false);removeCreatedDuplicates(root,item,existing);return existing;}
-            const created=matches.find(el=>el.dataset.smallbizOwnerCreated)||null;
-            if(created){bindButton(item,created,true);removeCreatedDuplicates(root,item,created);return created;}
-            return null;
-          }`;
-          if (!ensurePattern.test(owner)) throw new Error('ensureCanonicalButton not found');
-          owner = owner.replace(ensurePattern, bindOnly);
-
-          const reconcilePattern = /function reconcileOwnerMenu\(\)\{[\s\S]*?\n\}/;
-          const reconcile = `function reconcileOwnerMenu(){
-            const root=nav();
-            if(!root||!isOwner())return false;
-            for(const item of OWNER_MENU)ensureCanonicalButton(item);
-            return true;
-          }`;
-          if (!reconcilePattern.test(owner)) throw new Error('reconcileOwnerMenu not found');
-          owner = owner.replace(reconcilePattern, reconcile);
-          fs.writeFileSync(OWNER, owner);
-
-          let main = fs.readFileSync(MAIN, 'utf8');
-          const selectPattern = /  function selectSidebarPage\(key\)\{[\s\S]*?\n  \}/;
-          const stable = `  function selectSidebarPage(key){
-            setActivePage(key);
-            requestAnimationFrame(()=>{
-              const mainArea=document.querySelector(".main-area");
-              if(mainArea)mainArea.scrollTo({top:0,behavior:"auto"});
-            });
-          }`;
-          if (selectPattern.test(main)) main = main.replace(selectPattern, stable);
-          fs.writeFileSync(MAIN, main);
-
-          let lag = fs.readFileSync(LAG, 'utf8');
-          if (!lag.includes('const v38=')) {
-            lag = lag.replace('const v36="SMALLBIZ_OWNER_MODULES_LOADER_V36_CANONICAL_REACT_STABLE";', 'const v36="SMALLBIZ_OWNER_MODULES_LOADER_V36_CANONICAL_REACT_STABLE";\nconst v38="SMALLBIZ_OWNER_MODULES_LOADER_V38_REACT_BIND_ONLY_NO_CREATE";');
+`;
+            text=text.replace(anchor,fn+anchor);
           }
-          lag = lag.replace('if(!owner.includes(v34)&&!owner.includes(v35)&&!owner.includes(v36))throw new Error("Expected V34/V35/V36 safe owner loader; refusing sidebar mutation.");', 'if(!owner.includes(v34)&&!owner.includes(v35)&&!owner.includes(v36)&&!owner.includes(v38))throw new Error("Expected safe owner loader; refusing sidebar mutation.");');
-          fs.writeFileSync(LAG, lag);
-          console.log('[SmallBiz] V38 sidebar repair applied to source.');
+          fs.writeFileSync(path,text);
+          console.log('[SmallBiz] Canonical sidebar source written once.');
           NODE
 
-      - name: Commit and push repair
+      - name: Remove sidebar mutation workflows and commit source repair
         shell: bash
         run: |
+          rm -f .github/workflows/sidebar-layout-source-repair.yml
+          rm -f .github/workflows/sidebar-final-repair.yml
           git config user.name "smallbiz-sidebar-repair"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add owner-modules-loader.jsx main.jsx apply-owner-sidebar-lag-fix.mjs
+          git add main.jsx .github/workflows/sidebar-layout-source-repair.yml .github/workflows/sidebar-final-repair.yml
           if git diff --cached --quiet; then
-            echo "No sidebar changes to commit."
+            echo "No source repair changes detected."
           else
-            git commit -m "Fix sidebar duplicate creation and navigation scroll"
+            git commit -m "Make sidebar canonical and remove sidebar mutation workflows"
             git push origin HEAD:main
           fi
