@@ -39,7 +39,7 @@ else if(!main.includes('["cashier-shift","💵","Cashier Shift"'))throw new Erro
 if(!main.includes('function selectSidebarPage(key)')){
   const anchor='  const canManageMasters=isOwner||role==="manager";';
   if(!main.includes(anchor))throw new Error("Sidebar permission anchor not found; build stopped safely.");
-  main=main.replace(anchor,anchor+'\n\n  function selectSidebarPage(key){\n    const nav=document.querySelector(".sidebar-nav");\n    const scrollTop=nav?.scrollTop||0;\n    setActivePage(key);\n    requestAnimationFrame(()=>{const next=document.querySelector(".sidebar-nav");if(next)next.scrollTop=scrollTop});\n  }');
+  main=main.replace(anchor,anchor+'\n\n  function selectSidebarPage(key){\n    const nav=document.querySelector(".sidebar-nav");\n    const scrollTop=nav?.scrollTop||0;\n    if(typeof setMobileSidebarOpen==="function")setMobileSidebarOpen(false);\n    setActivePage(key);\n    requestAnimationFrame(()=>{\n      const next=document.querySelector(".sidebar-nav");\n      if(next)next.scrollTop=scrollTop;\n      document.querySelector(".main-area")?.scrollTo({top:0,behavior:"auto"});\n    });\n  }');
 }
 
 fs.writeFileSync(MAIN,main,"utf8");
@@ -51,4 +51,4 @@ if(fs.existsSync(ATTENDANCE)){
   if(attendance.includes(old)){attendance=attendance.replace(old,next);fs.writeFileSync(ATTENDANCE,attendance,"utf8");}
 }
 
-console.log("Applied SMALLBIZ_SIDEBAR_CANONICAL_V35: Growth Center + Cashier Shift are canonical React sidebar entries; owner loader no longer creates fallback/duplicate menu items; sidebar scroll position is preserved on navigation.");
+console.log("Applied SMALLBIZ_SIDEBAR_CANONICAL_V35: Growth Center + Cashier Shift are canonical React sidebar entries; owner loader no longer creates fallback/duplicate menu items; sidebar and main scroll state are preserved on navigation.");
