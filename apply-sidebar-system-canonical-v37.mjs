@@ -15,7 +15,7 @@ let owner=fs.readFileSync(OWNER,"utf8");
    The visual sidebar layout is preserved; only the canonical item list/order
    is restored. */
 
-const navBlock=/<nav className="sidebar-nav">[\\s\\S]*?<\\/nav>/;
+const navBlock=/<nav className="sidebar-nav">[\s\S]*?<\/nav>/;
 const canonicalNav=`<nav className="sidebar-nav">
         {[["pos","🛒","POS",canSell],["cashier-shift","💵","Cashier Shift",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["growth","📈","Growth Center",canViewReports],["products","📦","Products",canManageInventory],["inventory","📦","Inventory",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["movements","🔄","Stock History",canManageInventory],["team","👥","Team",isOwner],["channels","🌐","Online Channels",isOwner],["marketplace-connections","🔌","Marketplace Connections",isOwner],["marketplace-stock","📦","Marketplace Stock",isOwner],["marketplace-fulfillment","🚚","Marketplace Fulfillment",isOwner],["order-management","🛍️","Order Management",isOwner],["channel-mapping","🗺️","Product Channel Mapping",isOwner],["business-controls","⚙️","Business Controls",isOwner]].filter(x=>x[3]).map(([key,icon,label])=>
           <button key={key} type="button" className={activePage===key?"nav-item active":"nav-item"} onClick={()=>selectSidebarPage(key)}><span>{icon}</span><b>{label}</b></button>)}
@@ -37,15 +37,14 @@ if(!main.includes("function selectSidebarPage(key)")){
   if(!main.includes(anchor))throw new Error("Sidebar permission anchor not found; build stopped safely.");
   main=main.replace(anchor,anchor+"\n\n"+stableFunction);
 }else{
-  main=main.replace(/  function selectSidebarPage\(key\)\{[\\s\\S]*?\n  \}/,stableFunction);
+  main=main.replace(/  function selectSidebarPage\(key\)\{[\s\S]*?\n  \}/,stableFunction);
 }
 
 // Make the runtime loader strictly bind-only. It must never manufacture missing
 // sidebar buttons or move a button to the bottom of the React navigation.
-owner=owner.replace(/\/\/ SMALLBIZ_OWNER_MODULES_LOADER_V[^
-]*\n/,"// SMALLBIZ_OWNER_MODULES_LOADER_V37_REACT_CANONICAL_BIND_ONLY\n");
+owner=owner.replace(/\/\/ SMALLBIZ_OWNER_MODULES_LOADER_V[^\n]*\n/,"// SMALLBIZ_OWNER_MODULES_LOADER_V37_REACT_CANONICAL_BIND_ONLY\n");
 owner=owner.replace(/const LOADER_VERSION="[^"]+";/,'const LOADER_VERSION="v37";');
-const ensurePattern=/function ensureCanonicalButton\(item\)\{[\\s\\S]*?\n\}/;
+const ensurePattern=/function ensureCanonicalButton\(item\)\{[\s\S]*?\n\}/;
 const bindOnly=`function ensureCanonicalButton(item){
   const root=nav();
   if(!root||!hasPermission(item.permission))return null;
@@ -63,7 +62,7 @@ if(!ensurePattern.test(owner))throw new Error("Owner loader ensureCanonicalButto
 owner=owner.replace(ensurePattern,bindOnly);
 
 // Do not append a fallback during reconciliation. Existing React entries are enough.
-const reconcilePattern=/function reconcileOwnerMenu\(\)\{[\\s\\S]*?\n\}/;
+const reconcilePattern=/function reconcileOwnerMenu\(\)\{[\s\S]*?\n\}/;
 const reconcile=`function reconcileOwnerMenu(){
   const root=nav();
   if(!root||!isOwner())return false;
