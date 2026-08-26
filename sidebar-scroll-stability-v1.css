@@ -1,7 +1,15 @@
-/* SMALLBIZ SIDEBAR SCROLL STABILITY V1
-   Layout-preserving: only the menu list scrolls. */
+/* SMALLBIZ SIDEBAR SCROLL STABILITY V2
+   Keep the sidebar fixed to the viewport; only its menu list and the main content may scroll. */
 
 html,body,#root{height:100%;min-height:100%;}
+html,body{overflow:hidden !important;}
+
+.app-shell{
+  height:100dvh !important;
+  min-height:100dvh !important;
+  max-height:100dvh !important;
+  overflow:hidden !important;
+}
 
 .sidebar{
   height:100dvh !important;
@@ -12,6 +20,7 @@ html,body,#root{height:100%;min-height:100%;}
   flex-direction:column !important;
   position:sticky !important;
   top:0 !important;
+  align-self:flex-start !important;
 }
 
 .sidebar-nav{
@@ -24,16 +33,23 @@ html,body,#root{height:100%;min-height:100%;}
   scrollbar-gutter:stable !important;
 }
 
+.main-area{
+  height:100dvh !important;
+  min-height:0 !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  overscroll-behavior:contain !important;
+}
+
 .sidebar-nav::-webkit-scrollbar{width:6px;}
 .sidebar-nav{scrollbar-width:thin;}
 
-/* Keep common non-menu sidebar regions from becoming part of the scroll area. */
 .sidebar-header,.sidebar-top,.sidebar-profile,.sidebar-user,.sidebar-footer,.sidebar-bottom{
   flex:0 0 auto !important;
 }
 
 .sidebar-nav button,.sidebar-nav a{
-  flex:0 0 auto;
+  flex:0 0 auto !important;
   pointer-events:auto !important;
   touch-action:manipulation;
 }
@@ -41,4 +57,5 @@ html,body,#root{height:100%;min-height:100%;}
 @media(max-width:900px){
   .sidebar{max-height:100dvh !important;height:100dvh !important;}
   .sidebar-nav{max-height:none !important;}
+  .main-area{height:100dvh !important;}
 }
