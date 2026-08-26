@@ -13,7 +13,7 @@
     "html5-qrcode": "^2.3.6",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "xlsx": "^0.18.0"
+    "xlsx": "^0.18.3"
   },
   "devDependencies": {
     "vite": "^7.3.6"
