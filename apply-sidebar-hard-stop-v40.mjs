@@ -30,7 +30,7 @@ const openExternal=`  const externalSidebarOpen={
 
   async function selectSidebarPage(key){
     if(externalSidebarOpen[key]){
-      try{await externalSidebarOpen[key]();}catch(error){console.warn(`[SmallBiz] ${key} failed to open.`,error);setErr(`${key} failed to open: ${error?.message||error}`)}
+      try{await externalSidebarOpen[key]();}catch(error){console.warn("[SmallBiz] "+key+" failed to open.",error);setErr(String(key)+" failed to open: "+String(error?.message||error));}
       return;
     }
     setActivePage(key);
