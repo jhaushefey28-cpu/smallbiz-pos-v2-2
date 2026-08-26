@@ -2224,3 +2224,24 @@ button:disabled {
   }
 }
 ```
+
+
+/* SMALLBIZ SIDEBAR SOURCE LAYOUT V38 */
+.sidebar {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.sidebar-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+.sidebar-bottom {
+  flex: 0 0 auto;
+  margin-top: 0;
+}

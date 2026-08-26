@@ -26,8 +26,6 @@ main=main.replace(navBlock,canonicalNav);
 const stableFunction=`  function selectSidebarPage(key){
     setActivePage(key);
     requestAnimationFrame(()=>{
-      const next=document.querySelector(".sidebar-nav");
-      if(next)next.scrollTop=0;
       const mainArea=document.querySelector(".main-area");
       if(mainArea)mainArea.scrollTo({top:0,behavior:"auto"});
     });
