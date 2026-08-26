@@ -1,0 +1,90 @@
+name: SmallBiz Sidebar Final Repair
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply final sidebar repair
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const OWNER = 'owner-modules-loader.jsx';
+          const MAIN = 'main.jsx';
+          const LAG = 'apply-owner-sidebar-lag-fix.mjs';
+
+          let owner = fs.readFileSync(OWNER, 'utf8');
+          owner = owner.replace(/\/\/ SMALLBIZ_OWNER_MODULES_LOADER_V[^\n]*/, '// SMALLBIZ_OWNER_MODULES_LOADER_V38_REACT_BIND_ONLY_NO_CREATE');
+          owner = owner.replace(/const LOADER_VERSION="[^"]+";/, 'const LOADER_VERSION="v38";');
+
+          const ensurePattern = /function ensureCanonicalButton\(item\)\{[\s\S]*?\n\}/;
+          const bindOnly = `function ensureCanonicalButton(item){
+            const root=nav();
+            if(!root||!hasPermission(item.permission))return null;
+            const matches=matchingButtons(root,item);
+            const existing=matches.find(el=>!el.dataset.smallbizOwnerCreated)||null;
+            if(existing){bindButton(item,existing,false);removeCreatedDuplicates(root,item,existing);return existing;}
+            const created=matches.find(el=>el.dataset.smallbizOwnerCreated)||null;
+            if(created){bindButton(item,created,true);removeCreatedDuplicates(root,item,created);return created;}
+            return null;
+          }`;
+          if (!ensurePattern.test(owner)) throw new Error('ensureCanonicalButton not found');
+          owner = owner.replace(ensurePattern, bindOnly);
+
+          const reconcilePattern = /function reconcileOwnerMenu\(\)\{[\s\S]*?\n\}/;
+          const reconcile = `function reconcileOwnerMenu(){
+            const root=nav();
+            if(!root||!isOwner())return false;
+            for(const item of OWNER_MENU)ensureCanonicalButton(item);
+            return true;
+          }`;
+          if (!reconcilePattern.test(owner)) throw new Error('reconcileOwnerMenu not found');
+          owner = owner.replace(reconcilePattern, reconcile);
+          fs.writeFileSync(OWNER, owner);
+
+          let main = fs.readFileSync(MAIN, 'utf8');
+          const selectPattern = /  function selectSidebarPage\(key\)\{[\s\S]*?\n  \}/;
+          const stable = `  function selectSidebarPage(key){
+            setActivePage(key);
+            requestAnimationFrame(()=>{
+              const mainArea=document.querySelector(".main-area");
+              if(mainArea)mainArea.scrollTo({top:0,behavior:"auto"});
+            });
+          }`;
+          if (selectPattern.test(main)) main = main.replace(selectPattern, stable);
+          fs.writeFileSync(MAIN, main);
+
+          let lag = fs.readFileSync(LAG, 'utf8');
+          if (!lag.includes('const v38=')) {
+            lag = lag.replace('const v36="SMALLBIZ_OWNER_MODULES_LOADER_V36_CANONICAL_REACT_STABLE";', 'const v36="SMALLBIZ_OWNER_MODULES_LOADER_V36_CANONICAL_REACT_STABLE";\nconst v38="SMALLBIZ_OWNER_MODULES_LOADER_V38_REACT_BIND_ONLY_NO_CREATE";');
+          }
+          lag = lag.replace('if(!owner.includes(v34)&&!owner.includes(v35)&&!owner.includes(v36))throw new Error("Expected V34/V35/V36 safe owner loader; refusing sidebar mutation.");', 'if(!owner.includes(v34)&&!owner.includes(v35)&&!owner.includes(v36)&&!owner.includes(v38))throw new Error("Expected safe owner loader; refusing sidebar mutation.");');
+          fs.writeFileSync(LAG, lag);
+          console.log('[SmallBiz] V38 sidebar repair applied to source.');
+          NODE
+
+      - name: Commit and push repair
+        shell: bash
+        run: |
+          git config user.name "smallbiz-sidebar-repair"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add owner-modules-loader.jsx main.jsx apply-owner-sidebar-lag-fix.mjs
+          if git diff --cached --quiet; then
+            echo "No sidebar changes to commit."
+          else
+            git commit -m "Fix sidebar duplicate creation and navigation scroll"
+            git push origin HEAD:main
+          fi
