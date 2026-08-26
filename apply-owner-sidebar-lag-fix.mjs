@@ -13,26 +13,28 @@ if(!fs.existsSync(MAIN))throw new Error("main.jsx is missing; build stopped safe
    Cashier Shift are rendered by the canonical React sidebar so they cannot jump
    to the bottom or duplicate after a React rerender. */
 let owner=fs.readFileSync(OWNER,"utf8");
-if(!owner.includes("SMALLBIZ_OWNER_MODULES_LOADER_V34_EXISTING_FIRST_NO_DUPLICATE")){
-  throw new Error("Expected V34 existing-first owner loader; refusing sidebar mutation.");
+const v34="SMALLBIZ_OWNER_MODULES_LOADER_V34_EXISTING_FIRST_NO_DUPLICATE";
+const v35="SMALLBIZ_OWNER_MODULES_LOADER_V35_CANONICAL_REACT_NO_CREATE";
+if(!owner.includes(v34)&&!owner.includes(v35))throw new Error("Expected V34/V35 safe owner loader; refusing sidebar mutation.");
+
+if(owner.includes(v34)){
+  owner=owner.replace(v34,v35);
+  owner=owner.replace('const LOADER_VERSION="v34";','const LOADER_VERSION="v35";');
+
+  const fallbackBlock=`  // Reuse one previously-created fallback instead of creating another.\n  const created=matches.find(el=>el.dataset.smallbizOwnerCreated)||null;\n  if(created){\n    bindButton(item,created,true);\n    removeCreatedDuplicates(root,item,created);\n    return created;\n  }\n  const button=document.createElement("button");\n  button.className="nav-item";\n  button.innerHTML='<span aria-hidden="true">'+item.icon+'</span><b>'+item.label+'</b>';\n  root.appendChild(button);\n  return bindButton(item,button,true);`;
+  if(!owner.includes(fallbackBlock))throw new Error("V34 fallback creation block not found; refusing unsafe sidebar rewrite.");
+  owner=owner.replace(fallbackBlock,'  // React is the sole owner of sidebar creation. Missing entries are not generated here.\n  return null;');
+  fs.writeFileSync(OWNER,owner,"utf8");
+}else if(owner.includes('const LOADER_VERSION="v34";')){
+  owner=owner.replace('const LOADER_VERSION="v34";','const LOADER_VERSION="v35";');
+  fs.writeFileSync(OWNER,owner,"utf8");
 }
-
-owner=owner.replace(
-  "// SMALLBIZ_OWNER_MODULES_LOADER_V34_EXISTING_FIRST_NO_DUPLICATE",
-  "// SMALLBIZ_OWNER_MODULES_LOADER_V35_CANONICAL_REACT_NO_CREATE"
-);
-owner=owner.replace('const LOADER_VERSION="v34";','const LOADER_VERSION="v35";');
-
-const fallbackBlock=`  // Reuse one previously-created fallback instead of creating another.\n  const created=matches.find(el=>el.dataset.smallbizOwnerCreated)||null;\n  if(created){\n    bindButton(item,created,true);\n    removeCreatedDuplicates(root,item,created);\n    return created;\n  }\n  const button=document.createElement("button");\n  button.className="nav-item";\n  button.innerHTML='<span aria-hidden="true">'+item.icon+'</span><b>'+item.label+'</b>';\n  root.appendChild(button);\n  return bindButton(item,button,true);`;
-if(!owner.includes(fallbackBlock))throw new Error("V34 fallback creation block not found; refusing unsafe sidebar rewrite.");
-owner=owner.replace(fallbackBlock,'  // React is the sole owner of sidebar creation. Missing entries are not generated here.\n  return null;');
-fs.writeFileSync(OWNER,owner,"utf8");
 
 let main=fs.readFileSync(MAIN,"utf8");
 const oldNav=`        {[["pos","🛒","POS",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["products","📦","Products",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>\n          <button key={key} className={activePage===key?"nav-item active":"nav-item"} onClick={()=>setActivePage(key)}><span>{icon}</span><b>{label}</b></button>)}`;
 const newNav=`        {[["pos","🛒","POS",canSell],["cashier-shift","💵","Cashier Shift",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["growth","📈","Growth Center",canViewReports],["products","📦","Products",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>\n          <button key={key} className={activePage===key?"nav-item active":"nav-item"} onClick={()=>selectSidebarPage(key)}><span>{icon}</span><b>{label}</b></button>)}`;
 if(main.includes(oldNav))main=main.replace(oldNav,newNav);
-else if(!main.includes('['+'"cashier-shift","💵","Cashier Shift"'))throw new Error("Canonical sidebar anchor not found; build stopped safely.");
+else if(!main.includes('["cashier-shift","💵","Cashier Shift"'))throw new Error("Canonical sidebar anchor not found; build stopped safely.");
 
 if(!main.includes('function selectSidebarPage(key)')){
   const anchor='  const canManageMasters=isOwner||role==="manager";';
