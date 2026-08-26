@@ -7,16 +7,14 @@ if(!fs.existsSync(MAIN)||!fs.existsSync(OWNER))throw new Error("Sidebar source f
 let main=fs.readFileSync(MAIN,"utf8");
 let owner=fs.readFileSync(OWNER,"utf8");
 
-/* SMALLBIZ_SIDEBAR_HARD_STOP_V40
-   Final source-of-truth repair. React owns every visible sidebar button.
-   Runtime modules may open overlays, but they are forbidden from creating or
-   rebinding sidebar buttons. A DOM guard removes any non-React child that a
-   legacy module tries to append, preventing the exact "click -> duplicate at
-   bottom -> duplicate works" failure. */
+/* SMALLBIZ_SIDEBAR_HARD_STOP_V41
+   React owns every visible sidebar button. Runtime modules may open their
+   existing pages/overlays, but they never create or rebind sidebar buttons.
+   The complete owner sidebar is restored in one canonical React list. */
 
 const navBlock=/<nav className="sidebar-nav">[\s\S]*?<\/nav>/;
 const canonicalNav=`<nav className="sidebar-nav">
-        {[["pos","🛒","POS",canSell],["cashier-shift","💵","Cashier Shift",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["growth","📈","Growth Center",canViewReports],["products","📦","Products",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["attendance","👥","Employee/Attendance",canSell],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>
+        {[["pos","🛒","POS",canSell],["cashier-shift","💵","Cashier Shift",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["growth","📈","Growth Center",canViewReports],["products","📦","Products",canManageInventory],["inventory","📦","Inventory",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["attendance","👥","Employee/Attendance",canSell],["movements","🔄","Stock History",canManageInventory],["team","👥","Team",isOwner],["channels","🌐","Online Channels",isOwner],["marketplace-connections","🔌","Marketplace Connections",isOwner],["marketplace-stock","📦","Marketplace Stock",isOwner],["marketplace-fulfillment","🚚","Marketplace Fulfillment",isOwner],["order-management","🛍️","Order Management",isOwner],["channel-mapping","🗺️","Product Channel Mapping",isOwner],["business-controls","⚙️","Business Controls",isOwner]].filter(x=>x[3]).map(([key,icon,label])=>
           <button key={key} type="button" data-smallbiz-react-sidebar="true" data-sidebar-key={key} className={activePage===key?"nav-item active":"nav-item"} onClick={()=>selectSidebarPage(key)}><span>{icon}</span><b>{label}</b></button>)}
       </nav>`;
 if(!navBlock.test(main))throw new Error("Sidebar nav source block not found; refusing hard-stop repair.");
@@ -25,6 +23,15 @@ main=main.replace(navBlock,canonicalNav);
 const openExternal=`  const externalSidebarOpen={
     "cashier-shift":async()=>{await import("./cashier-shift.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-cashier-shift"));},
     "growth":async()=>{await import("./growth-center.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-growth-center"));},
+    "inventory":async()=>{await import("./inventory-center.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-inventory"));},
+    "team":async()=>{await import("./team-management.js");window.dispatchEvent(new CustomEvent("smallbiz:open-team"));},
+    "channels":async()=>{await import("./sales-channels.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-channels"));},
+    "marketplace-connections":async()=>{await import("./marketplace-connections.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-marketplace-connections"));},
+    "marketplace-stock":async()=>{await import("./marketplace-stock-reservation.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-marketplace-stock"));},
+    "marketplace-fulfillment":async()=>{await import("./marketplace-fulfillment.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-marketplace-fulfillment"));},
+    "order-management":async()=>{await import("./order-management.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-order-management"));},
+    "channel-mapping":async()=>{await import("./product-channel-mapping.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-channel-mapping"));},
+    "business-controls":async()=>{await import("./business-controls.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-business-controls"));},
     "attendance":async()=>{window.__SMALLBIZ_SUPABASE__=supabase;await import("./attendance-runtime-bridge.js");await import("./attendance-center.js");window.dispatchEvent(new CustomEvent("smallbiz:open-attendance"));}
   };
 
@@ -77,8 +84,6 @@ if(!main.includes("window.__SMALLBIZ_SUPABASE__=supabase")){
   main=main.replace(anchor,anchor+"\nwindow.__SMALLBIZ_SUPABASE__=supabase;");
 }
 
-/* Owner loader becomes bind-only and cannot attach a second click path to the
-   React button. React's onClick is the only sidebar navigation handler. */
 const bindPattern=/function bindButton\(item,button,created=false\)\{[\s\S]*?\n\}\n\nfunction ensureCanonicalButton/;
 const bindOnly=`function bindButton(item,button,created=false){
   if(!button)return null;
@@ -96,9 +101,9 @@ const bindOnly=`function bindButton(item,button,created=false){
 function ensureCanonicalButton`;
 if(!bindPattern.test(owner))throw new Error("Owner loader bind block not found; refusing hard-stop repair.");
 owner=owner.replace(bindPattern,bindOnly);
-owner=owner.replace(/SMALLBIZ_OWNER_MODULES_LOADER_V[^\n]*/,"SMALLBIZ_OWNER_MODULES_LOADER_V40_REACT_BIND_ONLY");
-owner=owner.replace(/const LOADER_VERSION="[^"]+";/,'const LOADER_VERSION="v40";');
+owner=owner.replace(/SMALLBIZ_OWNER_MODULES_LOADER_V[^\n]*/,"SMALLBIZ_OWNER_MODULES_LOADER_V41_REACT_BIND_ONLY");
+owner=owner.replace(/const LOADER_VERSION="[^"]+";/,'const LOADER_VERSION="v41";');
 
 fs.writeFileSync(MAIN,main,"utf8");
 fs.writeFileSync(OWNER,owner,"utf8");
-console.log("Applied SMALLBIZ_SIDEBAR_HARD_STOP_V40: React-only sidebar, fixed canonical order, external modules open through explicit events, duplicate DOM additions are removed, and the owner loader has no click handler.");
+console.log("Applied SMALLBIZ_SIDEBAR_HARD_STOP_V41: complete canonical sidebar restored; React owns navigation; runtime modules only open existing pages; no duplicate sidebar creation.");
