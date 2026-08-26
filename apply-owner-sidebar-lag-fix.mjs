@@ -16,7 +16,8 @@ let owner=fs.readFileSync(OWNER,"utf8");
 const v34="SMALLBIZ_OWNER_MODULES_LOADER_V34_EXISTING_FIRST_NO_DUPLICATE";
 const v35="SMALLBIZ_OWNER_MODULES_LOADER_V35_CANONICAL_REACT_NO_CREATE";
 const v36="SMALLBIZ_OWNER_MODULES_LOADER_V36_CANONICAL_REACT_STABLE";
-if(!owner.includes(v34)&&!owner.includes(v35)&&!owner.includes(v36))throw new Error("Expected V34/V35/V36 safe owner loader; refusing sidebar mutation.");
+const v38="SMALLBIZ_OWNER_MODULES_LOADER_V38_REACT_BIND_ONLY_NO_CREATE";
+if(!owner.includes(v34)&&!owner.includes(v35)&&!owner.includes(v36)&&!owner.includes(v38))throw new Error("Expected safe owner loader; refusing sidebar mutation.");
 
 if(owner.includes(v34)){
   owner=owner.replace(v34,v36);

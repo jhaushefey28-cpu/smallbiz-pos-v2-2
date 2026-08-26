@@ -1,4 +1,4 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V34_EXISTING_FIRST_NO_DUPLICATE
+// SMALLBIZ_OWNER_MODULES_LOADER_V38_REACT_BIND_ONLY_NO_CREATE
 // Existing React sidebar entries are canonical. Created fallbacks are removed only when
 // duplicated; React-owned DOM nodes are never removed. Existing entries receive a
 // bubble-phase open handler so they remain clickable without intercepting React events.
@@ -21,7 +21,7 @@ const OWNER_MENU=[
 {key:"cashier-shift",icon:"💵",label:"Cashier Shift",permission:"pos.use",load:()=>import("./cashier-shift.jsx")}
 ];
 const GLOBAL_KEY="__smallbizOwnerModulesLoader";
-const LOADER_VERSION="v34";
+const LOADER_VERSION="v38";
 const loaded=new Set(),loading=new Set();
 const isOwner=()=>Boolean(window.__smallbizIsOwner);
 const hasPermission=code=>isOwner()||(typeof window.__smallbizHasPermission==="function"&&window.__smallbizHasPermission(code));
@@ -58,41 +58,17 @@ function ensureCanonicalButton(item){
   const root=nav();
   if(!root||!hasPermission(item.permission))return null;
   const matches=matchingButtons(root,item);
-  // Existing React-owned entry is always canonical. Never remove it and always bind it.
   const existing=matches.find(el=>!el.dataset.smallbizOwnerCreated)||null;
-  if(existing){
-    bindButton(item,existing,false);
-    removeCreatedDuplicates(root,item,existing);
-    return existing;
-  }
-  // Reuse one previously-created fallback instead of creating another.
+  if(existing){bindButton(item,existing,false);removeCreatedDuplicates(root,item,existing);return existing;}
   const created=matches.find(el=>el.dataset.smallbizOwnerCreated)||null;
-  if(created){
-    bindButton(item,created,true);
-    removeCreatedDuplicates(root,item,created);
-    return created;
-  }
-  const button=document.createElement("button");
-  button.className="nav-item";
-  button.innerHTML='<span aria-hidden="true">'+item.icon+'</span><b>'+item.label+'</b>';
-  root.appendChild(button);
-  return bindButton(item,button,true);
+  if(created){bindButton(item,created,true);removeCreatedDuplicates(root,item,created);return created;}
+  return null;
 }
 
 function reconcileOwnerMenu(){
   const root=nav();
   if(!root||!isOwner())return false;
-  const state=window[GLOBAL_KEY]||{};
-  const suppressCreate=Number(state.suppressCreateUntil||0)>Date.now();
-  for(const item of OWNER_MENU){
-    if(suppressCreate){
-      const matches=matchingButtons(root,item);
-      const existing=matches.find(el=>!el.dataset.smallbizOwnerCreated)||matches.find(el=>el.dataset.smallbizOwnerCreated);
-      if(existing){bindButton(item,existing,Boolean(existing.dataset.smallbizOwnerCreated));removeCreatedDuplicates(root,item,existing)}
-      continue;
-    }
-    ensureCanonicalButton(item);
-  }
+  for(const item of OWNER_MENU)ensureCanonicalButton(item);
   return true;
 }
 
