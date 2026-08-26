@@ -7,10 +7,12 @@ if(!fs.existsSync(MAIN)||!fs.existsSync(OWNER))throw new Error("Sidebar source f
 let main=fs.readFileSync(MAIN,"utf8");
 let owner=fs.readFileSync(OWNER,"utf8");
 
-/* SMALLBIZ_SIDEBAR_HARD_STOP_V41
-   React owns every visible sidebar button. Runtime modules may open their
-   existing pages/overlays, but they never create or rebind sidebar buttons.
-   The complete owner sidebar is restored in one canonical React list. */
+/* SMALLBIZ_SIDEBAR_HARD_STOP_V42_PERFORMANCE
+   React is the sole owner of visible sidebar buttons.
+   Runtime modules only open existing pages/overlays.
+   IMPORTANT: no MutationObserver, no DOM cleanup loop, and no forced sidebar
+   scroll reset. Those operations caused React reconciliation/scroll lag and
+   made the sidebar difficult to test. */
 
 const navBlock=/<nav className="sidebar-nav">[\s\S]*?<\/nav>/;
 const canonicalNav=`<nav className="sidebar-nav">
@@ -41,12 +43,6 @@ const openExternal=`  const externalSidebarOpen={
       return;
     }
     setActivePage(key);
-    requestAnimationFrame(()=>{
-      const mainArea=document.querySelector(".main-area");
-      if(mainArea)mainArea.scrollTo({top:0,behavior:"auto"});
-      const sidebar=document.querySelector(".sidebar-nav");
-      if(sidebar)sidebar.scrollTop=0;
-    });
   }`;
 const functionPattern=/\s+(?:async )?function selectSidebarPage\(key\)\{[\s\S]*?\n  \}/;
 if(functionPattern.test(main))main=main.replace(functionPattern,"\n"+openExternal);
@@ -58,25 +54,10 @@ else{
 
 if(!main.includes("data-smallbiz-react-sidebar=\"true\""))throw new Error("React sidebar ownership marker was not inserted.");
 
-const observerEffect=`
-  useEffect(()=>{
-    const root=document.querySelector(".sidebar-nav");
-    if(!root)return;
-    const clean=()=>{
-      Array.from(root.children).forEach(node=>{
-        if(node instanceof HTMLElement&&!node.dataset.smallbizReactSidebar)node.remove();
-      });
-    };
-    clean();
-    const observer=new MutationObserver(clean);
-    observer.observe(root,{childList:true});
-    return()=>observer.disconnect();
-  },[profile?.id]);`;
-if(!main.includes("SMALLBIZ_SIDEBAR_DOM_GUARD_V40")){
-  const anchor='  useEffect(()=>{if(profile?.business_id)loadSaleItemsHistory()},[salesHistory,profile?.business_id]);';
-  if(!main.includes(anchor))throw new Error("Sidebar DOM guard insertion anchor not found.");
-  main=main.replace(anchor,anchor+"\n\n  // SMALLBIZ_SIDEBAR_DOM_GUARD_V40"+observerEffect);
-}
+// Remove all previous DOM MutationObserver sidebar guards. React owns the DOM;
+// deleting children behind React is unsafe and was a major source of lag.
+main=main.replace(/\s*\/\/ SMALLBIZ_SIDEBAR_DOM_GUARD_V40[\s\S]*?return\(\)=>observer\.disconnect\(\);\n\s*\},\[profile\?\.id\]\);/g,"");
+main=main.replace(/\s*\/\/ SMALLBIZ_SIDEBAR_DOM_GUARD_V43[\s\S]*?return\(\)=>observer\.disconnect\(\);\n\s*\},\[profile\?\.id\]\);/g,"");
 
 if(!main.includes("window.__SMALLBIZ_SUPABASE__=supabase")){
   const anchor="const supabase=configError?null:createClient(SUPABASE_URL,SUPABASE_KEY);";
@@ -93,17 +74,14 @@ const bindOnly=`function bindButton(item,button,created=false){
   if(created)button.dataset.smallbizOwnerCreated=LOADER_VERSION;
   button.style.setProperty("pointer-events","auto","important");
   button.style.setProperty("touch-action","manipulation","important");
-  button.style.setProperty("position","relative","important");
-  button.style.setProperty("z-index","5","important");
   return button;
 }
 
 function ensureCanonicalButton`;
-if(!bindPattern.test(owner))throw new Error("Owner loader bind block not found; refusing hard-stop repair.");
-owner=owner.replace(bindPattern,bindOnly);
-owner=owner.replace(/SMALLBIZ_OWNER_MODULES_LOADER_V[^\n]*/,"SMALLBIZ_OWNER_MODULES_LOADER_V41_REACT_BIND_ONLY");
-owner=owner.replace(/const LOADER_VERSION="[^"]+";/,'const LOADER_VERSION="v41";');
+if(bindPattern.test(owner))owner=owner.replace(bindPattern,bindOnly);
+owner=owner.replace(/SMALLBIZ_OWNER_MODULES_LOADER_V[^\n]*/,"SMALLBIZ_OWNER_MODULES_LOADER_V42_REACT_BIND_ONLY");
+owner=owner.replace(/const LOADER_VERSION="[^"]+";/,'const LOADER_VERSION="v42";');
 
 fs.writeFileSync(MAIN,main,"utf8");
 fs.writeFileSync(OWNER,owner,"utf8");
-console.log("Applied SMALLBIZ_SIDEBAR_HARD_STOP_V41: complete canonical sidebar restored; React owns navigation; runtime modules only open existing pages; no duplicate sidebar creation.");
+console.log("Applied SMALLBIZ_SIDEBAR_HARD_STOP_V42_PERFORMANCE: React-only sidebar, no MutationObserver/DOM cleanup, no forced scroll reset, complete OMS/online-platform menu preserved.");
