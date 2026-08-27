@@ -1,4 +1,4 @@
-name: SmallBiz One-Time Sidebar Source Repair
+name: SmallBiz One-Time Sidebar Source Migration
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  repair:
+  migrate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -18,62 +18,51 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Make sidebar source canonical once
+      - name: Materialize the current runtime fixes into source
         shell: bash
         run: |
+          set -euo pipefail
+          node apply-sidebar-hard-stop-v40.mjs
+          node apply-tenant-permission-model.mjs
+          node apply-sidebar-routing-and-module-isolation-v1.mjs
+          node apply-attendance-dom-isolation-v1.mjs
+
+      - name: Remove build-time mutation layer
+        shell: bash
+        run: |
+          set -euo pipefail
           node <<'NODE'
           const fs=require('fs');
-          const path='main.jsx';
-          let text=fs.readFileSync(path,'utf8');
-          const oldNav=/<nav className="sidebar-nav">[\s\S]*?<\/nav>/;
-          const nav=`<nav className="sidebar-nav">
-          {[["pos","🛒","POS",canSell],["cashier-shift","💵","Cashier Shift",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["products","📦","Product",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Supplier",canManageMasters],["attendance","👥","Employee/Attendance",canManageMasters],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>
-            <button key={key} type="button" className={activePage===key?"nav-item active":"nav-item"} onClick={()=>selectSidebarPage(key)}><span>{icon}</span><b>{label}</b></button>)}
-        </nav>`;
-          if(!oldNav.test(text)) throw new Error('Canonical sidebar nav block not found; stopped without modifying source.');
-          text=text.replace(oldNav,nav);
-          const anchor='  return <div className="app-shell">';
-          if(!text.includes('SMALLBIZ_CANONICAL_SIDEBAR_NAV_V42')){
-            if(!text.includes(anchor)) throw new Error('App shell anchor not found; stopped safely.');
-            const fn=`  // SMALLBIZ_CANONICAL_SIDEBAR_NAV_V42
-  async function selectSidebarPage(key){
-    try{
-      if(key==="cashier-shift"){
-        await import("./cashier-shift.jsx");
-        window.dispatchEvent(new CustomEvent("smallbiz:open-cashier-shift"));
-        return;
-      }
-      if(key==="attendance"){
-        await import("./attendance-runtime-bridge.js");
-        await import("./attendance-center.js");
-        window.dispatchEvent(new CustomEvent("smallbiz:open-attendance"));
-        return;
-      }
-      setActivePage(key);
-      requestAnimationFrame(()=>document.querySelector(".main-area")?.scrollTo({top:0,behavior:"auto"}));
-    }catch(e){
-      setErr(String(e?.message||e));
-    }
-  }
-
-`;
-            text=text.replace(anchor,fn+anchor);
-          }
-          fs.writeFileSync(path,text);
-          console.log('[SmallBiz] Canonical sidebar source written once.');
+          const path='package.json';
+          const pkg=JSON.parse(fs.readFileSync(path,'utf8'));
+          pkg.scripts={...pkg.scripts,build:'vite build'};
+          pkg._buildTrigger='2026-08-27-sidebar-source-canonical-v1';
+          fs.writeFileSync(path,JSON.stringify(pkg,null,2)+'\n');
           NODE
+          rm -f apply-sidebar-hard-stop-v40.mjs apply-tenant-permission-model.mjs apply-sidebar-routing-and-module-isolation-v1.mjs apply-attendance-dom-isolation-v1.mjs
+          rm -f .github/workflows/sidebar-layout-source-repair.yml .github/workflows/sidebar-final-repair.yml
 
-      - name: Remove sidebar mutation workflows and commit source repair
+      - name: Verify source is now canonical
         shell: bash
         run: |
-          rm -f .github/workflows/sidebar-layout-source-repair.yml
-          rm -f .github/workflows/sidebar-final-repair.yml
-          git config user.name "smallbiz-sidebar-repair"
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const main=fs.readFileSync('main.jsx','utf8');
+          const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
+          const required=['data-smallbiz-react-sidebar="true"','function selectSidebarPage(key)','async function loadEffectivePermissions','window.__SMALLBIZ_REACT_SIDEBAR_OWNER__=true','requestSidebarModuleOpen("smallbiz:open-channels")','window.__SMALLBIZ_SUPABASE__=supabase'];
+          for(const marker of required){if(!main.includes(marker))throw new Error('Missing canonical source marker: '+marker)}
+          if(pkg.scripts.build!=='vite build')throw new Error('Build script still mutates source.')
+          console.log('[SmallBiz] Canonical source migration verified. Build is now Vite-only.');
+          NODE
+
+      - name: Commit canonical source and remove migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "smallbiz-source-migration"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add main.jsx .github/workflows/sidebar-layout-source-repair.yml .github/workflows/sidebar-final-repair.yml
-          if git diff --cached --quiet; then
-            echo "No source repair changes detected."
-          else
-            git commit -m "Make sidebar canonical and remove sidebar mutation workflows"
-            git push origin HEAD:main
-          fi
+          git add -A
+          if git diff --cached --quiet; then echo "No migration changes detected."; exit 0; fi
+          git commit -m "Make sidebar navigation source-canonical"
+          git push origin HEAD:main
