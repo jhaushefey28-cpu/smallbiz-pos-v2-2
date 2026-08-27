@@ -1,0 +1,2 @@
+/* Product & Inventory is the single canonical product-management entry. */
+.sidebar-nav button[data-sidebar-key="products"]{display:none!important}
