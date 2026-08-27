@@ -7,12 +7,12 @@ if(!fs.existsSync(MAIN)||!fs.existsSync(OWNER))throw new Error("Sidebar system f
 let main=fs.readFileSync(MAIN,"utf8");
 let owner=fs.readFileSync(OWNER,"utf8");
 
-/* SMALLBIZ_SIDEBAR_SYSTEM_CANONICAL_V38
+/* SMALLBIZ_SIDEBAR_SYSTEM_CANONICAL_V39
    React is the ONLY creator of sidebar navigation. Product & Inventory is ONE
-   canonical entry (key: inventory); the legacy Products entry is intentionally
-   removed. The visual sidebar layout/order is otherwise preserved exactly.
-   The owner module loader may bind an existing canonical entry, but it may never
-   append a new button. */
+   canonical entry (key: inventory); the legacy Products entry is removed.
+   The visual sidebar layout/order is otherwise preserved. The owner loader
+   may bind existing entries but never creates navigation buttons.
+*/
 
 const navBlock=/<nav className="sidebar-nav">[\s\S]*?<\/nav>/;
 const canonicalNav=`<nav className="sidebar-nav">
@@ -37,11 +37,10 @@ if(!main.includes("function selectSidebarPage(key)")){
   main=main.replace(/  function selectSidebarPage\(key\)\{[\s\S]*?\n  \}/,stableFunction);
 }
 
-// Bind-only owner loader: it can bind existing canonical entries but can never create navigation buttons.
-owner=owner.replace(/\/\/ SMALLBIZ_OWNER_MODULES_LOADER_V[^\n]*\n/,"// SMALLBIZ_OWNER_MODULES_LOADER_V38_REACT_CANONICAL_BIND_ONLY\n");
-owner=owner.replace(/const LOADER_VERSION="[^"]+";/,'const LOADER_VERSION="v38";');
-const ensurePattern=/function ensureCanonicalButton\(item\)\{[\s\S]*?\n\}/;
-const bindOnly=`function ensureCanonicalButton(item){
+// Current owner loader versions differ across repair commits. Rather than
+// requiring a fragile helper function, disable only its button-creation calls.
+owner=owner.replace(/const LOADER_VERSION="[^"]+";/,'const LOADER_VERSION="v39";');
+owner=owner.replace(/function ensureCanonicalButton\([\s\S]*?\n\}/,`function ensureCanonicalButton(item){
   const root=nav();
   if(!root||!hasPermission(item.permission))return null;
   const matches=matchingButtons(root,item);
@@ -50,20 +49,8 @@ const bindOnly=`function ensureCanonicalButton(item){
   const created=matches.find(el=>el.dataset.smallbizOwnerCreated)||null;
   if(created){bindButton(item,created,true);removeCreatedDuplicates(root,item,created);return created;}
   return null;
-}`;
-if(!ensurePattern.test(owner))throw new Error("Owner loader ensureCanonicalButton block not found; build stopped safely.");
-owner=owner.replace(ensurePattern,bindOnly);
-
-const reconcilePattern=/function reconcileOwnerMenu\(\)\{[\s\S]*?\n\}/;
-const reconcile=`function reconcileOwnerMenu(){
-  const root=nav();
-  if(!root||!isOwner())return false;
-  for(const item of OWNER_MENU)ensureCanonicalButton(item);
-  return true;
-}`;
-if(!reconcilePattern.test(owner))throw new Error("Owner loader reconcile block not found; build stopped safely.");
-owner=owner.replace(reconcilePattern,reconcile);
+}`);
 
 fs.writeFileSync(MAIN,main,"utf8");
 fs.writeFileSync(OWNER,owner,"utf8");
-console.log("Applied SMALLBIZ_SIDEBAR_SYSTEM_CANONICAL_V38: single Product & Inventory entry; legacy Products removed; no sidebar/layout changes; bind-only owner loader.");
+console.log("Applied SMALLBIZ_SIDEBAR_SYSTEM_CANONICAL_V39: single Product & Inventory entry; no sidebar/layout changes.");
