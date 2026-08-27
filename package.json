@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node apply-tenant-permission-model.mjs && node apply-sidebar-hard-stop-v40.mjs && node apply-sidebar-routing-and-module-isolation-v1.mjs && node apply-attendance-dom-isolation-v1.mjs && vite build",
+    "build": "node apply-sidebar-hard-stop-v40.mjs && node apply-tenant-permission-model.mjs && node apply-sidebar-routing-and-module-isolation-v1.mjs && node apply-attendance-dom-isolation-v1.mjs && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -18,5 +18,5 @@
   "devDependencies": {
     "vite": "^7.3.6"
   },
-  "_buildTrigger": "2026-08-27-sidebar-attendance-isolation-v2"
+  "_buildTrigger": "2026-08-27-sidebar-build-order-v3"
 }
