@@ -49,9 +49,11 @@ for(const [path,eventName] of modules){
     const replacement=`,[open,setOpen]=useState(()=>{const p=window.__smallbizPendingModuleOpen;const v=Boolean(p?.[\"${eventName}\"]);if(v)delete p[\"${eventName}\"];return v})`;
     text=text.replace(stateNeedle,replacement);
   }
-  const sidebarGuard="useEffect(()=>{if(window.__SMALLBIZ_REACT_SIDEBAR_OWNER__)return;if(!profile";
-  if(text.includes("useEffect(()=>{if(!profile")&&!text.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__")){
-    text=text.replace("useEffect(()=>{if(!profile",sidebarGuard);
+  if(!text.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__")){
+    const sidebarEffect=/useEffect\(\(\)=>\{\s*if\(!profile/;
+    if(sidebarEffect.test(text)){
+      text=text.replace(sidebarEffect,"useEffect(()=>{if(window.__SMALLBIZ_REACT_SIDEBAR_OWNER__)return;if(!profile");
+    }
   }
   if(!text.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__"))throw new Error(`Sidebar owner guard not inserted in ${path}.`);
   const returnNeedle="return open&&profile?";
@@ -72,4 +74,4 @@ if(!team.includes('window.addEventListener("smallbiz:open-team",openTeam)')){
   team=team.replace(anchor,anchor+'\nwindow.addEventListener("smallbiz:open-team",openTeam);');
 }
 fs.writeFileSync(teamPath,team,"utf8");
-console.log("Applied SMALLBIZ_SIDEBAR_ROUTING_AND_MODULE_ISOLATION_V4: React owns sidebar; external modules cannot inject navigation and open only through routed events.");
+console.log("Applied SMALLBIZ_SIDEBAR_ROUTING_AND_MODULE_ISOLATION_V5: React owns sidebar; external modules cannot inject navigation and open only through routed events.");
