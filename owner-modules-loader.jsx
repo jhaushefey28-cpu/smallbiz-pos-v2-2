@@ -1,4 +1,4 @@
-// SMALLBIZ_OWNER_MODULES_LOADER_V43_REACT_ONLY
+// SMALLBIZ_OWNER_MODULES_LOADER_V42_REACT_BIND_ONLY
 // React owns the complete visible sidebar. This module must never create,
 // remove, observe, rebind, or otherwise mutate sidebar DOM nodes.
 // Runtime modules are opened by main.jsx through explicit React handlers.
@@ -13,7 +13,7 @@ const SUPPORT_MODULES=[
 ];
 
 const GLOBAL_KEY="__smallbizOwnerModulesLoader";
-const LOADER_VERSION="v43";
+const LOADER_VERSION="v42";
 
 export function startOwnerModules(){
   const state=window[GLOBAL_KEY]||{};

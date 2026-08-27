@@ -108,8 +108,7 @@ function App(){
     sb.from("profiles").select("id,business_id,full_name,role,active").eq("id",session.user.id).maybeSingle().then(({data})=>setProfile(data));
   },[session?.user?.id]);
 
-  useEffect(()=>{
-    if(!profile||!session)return;
+  useEffect(()=>{if(window.__SMALLBIZ_REACT_SIDEBAR_OWNER__)return;if(!profile||!session)return;
     const allowed=["owner","admin","super_admin"].includes(String(profile.role||"").toLowerCase());
     if(!allowed)return;
     const rootId="smallbiz-sales-channel-button";
@@ -129,7 +128,8 @@ function App(){
     return()=>{observer.disconnect();if(timer)clearTimeout(timer);document.getElementById(rootId)?.remove()};
   },[profile?.id,profile?.role,session?.user?.id]);
 
-  return open&&profile?<Panel profile={profile} onClose={()=>setOpen(false)}/>:null;
+  useEffect(()=>{const handler=()=>setOpen(true);window.addEventListener("smallbiz:open-channels",handler);return()=>window.removeEventListener("smallbiz:open-channels",handler)},[]);
+ return open&&profile?<Panel profile={profile} onClose={()=>setOpen(false)}/>:null;
 }
 
 const style=document.createElement("style");

@@ -117,4 +117,5 @@ async function openTeam(){
 }
 
 window.__smallbizOpenTeam=openTeam;
+window.addEventListener("smallbiz:open-team",openTeam);
 window.__SMALLBIZ_TEAM_MANAGEMENT__="v4";

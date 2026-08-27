@@ -20,6 +20,7 @@ const SUPABASE_URL=import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY=import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const configError=!SUPABASE_URL||!SUPABASE_KEY;
 const supabase=configError?null:createClient(SUPABASE_URL,SUPABASE_KEY);
+window.__SMALLBIZ_REACT_SIDEBAR_OWNER__=true;
 
 const money=v=>new Intl.NumberFormat("en-PH",{style:"currency",currency:"PHP"}).format(Number(v||0));
 
@@ -54,6 +55,7 @@ function App(){
   const [products,setProducts]=useState([]),[search,setSearch]=useState(""),[posCategoryFilter,setPosCategoryFilter]=useState("all"),[cart,setCart]=useState([]);
   const [scan,setScan]=useState(false),[status,setStatus]=useState(""),[err,setErr]=useState("");
   const [profile,setProfile]=useState(null),[activePage,setActivePage]=useState("pos");
+  const [permissionCodes,setPermissionCodes]=useState(()=>new Set()),[isTenantSuperAdmin,setIsTenantSuperAdmin]=useState(false),[isPlatformOwner,setIsPlatformOwner]=useState(false),[permissionsReady,setPermissionsReady]=useState(false);
   const [autoPrintReceipt,setAutoPrintReceipt]=useState(()=>localStorage.getItem("smallbiz_auto_print_receipt")==="true");
   const [paymentOpen,setPaymentOpen]=useState(false),[paymentDone,setPaymentDone]=useState(false);
   const [cash,setCash]=useState(""),[receiptNo,setReceiptNo]=useState(""),[savingPayment,setSavingPayment]=useState(false);
@@ -101,6 +103,9 @@ function App(){
 
   useEffect(()=>{if(session?.user)load(session.user.id)},[session]);
   useEffect(()=>{if(profile?.business_id)loadSaleItemsHistory()},[salesHistory,profile?.business_id]);
+  useEffect(()=>{if(!profile?.id||!profile?.business_id)return;loadEffectivePermissions(profile).catch(error=>console.warn("[SmallBiz] Permission load failed.",error))},[profile?.id,profile?.business_id]);
+  useEffect(()=>{const role=String(profile?.role||"").toLowerCase();const owner=isPlatformOwner||isTenantSuperAdmin||role==="owner"||role==="admin"||role==="super_admin";window.__smallbizPermissionsReady=permissionsReady;window.__smallbizIsPlatformOwner=isPlatformOwner;window.__smallbizIsTenantSuperAdmin=isTenantSuperAdmin;window.__smallbizIsOwner=owner;window.__smallbizHasPermission=(code)=>owner||permissionCodes.has(String(code||""));if(permissionsReady)window.dispatchEvent(new Event("smallbiz:permissions-ready"));if(owner)window.dispatchEvent(new Event("smallbiz:owner-ready"))},[permissionsReady,isPlatformOwner,isTenantSuperAdmin,permissionCodes,profile?.role]);
+
 
   async function load(uid){
     if(!supabase)return;
@@ -264,15 +269,44 @@ function App(){
   const discount=Math.max(0,Math.min(subtotal,Number(discountAmount||0)));
   const total=Math.max(0,subtotal-discount);
   const change=Number(cash||0)-total;
-  const role=String(profile?.role||"owner").toLowerCase();
-  const isOwner=role==="super_admin"||role==="owner"||role==="admin";
-  const canSell=isOwner||role==="manager"||role==="cashier";
-  const canViewReports=isOwner||role==="manager";
-  const canManageInventory=isOwner||role==="manager";
-  const canManagePurchasing=isOwner||role==="manager";
-  const canManageMasters=isOwner||role==="manager";
+  const role=String(profile?.role||"cashier").toLowerCase();
+  const hasPermission=code=>isPlatformOwner||isTenantSuperAdmin||permissionCodes.has(String(code||""));
+  const isOwner=isPlatformOwner||isTenantSuperAdmin||role==="owner"||role==="admin"||role==="super_admin";
+  const canSell=isOwner||hasPermission("pos.use");
+  const canViewReports=isOwner||hasPermission("reports.view");
+  const canManageInventory=isOwner||hasPermission("products.manage")||hasPermission("inventory.adjust");
+  const canManagePurchasing=isOwner||hasPermission("inventory.purchase");
+  const canManageMasters=isOwner||hasPermission("products.manage")||hasPermission("settings.manage");
+
+  function requestSidebarModuleOpen(eventName){const pending=window.__smallbizPendingModuleOpen||(window.__smallbizPendingModuleOpen={});pending[eventName]=true;}
+
+  const externalSidebarOpen={
+    "cashier-shift":async()=>{await import("./cashier-shift.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-cashier-shift"));},
+    "growth":async()=>{await import("./growth-center.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-growth-center"));},
+    "inventory":async()=>{await import("./inventory-center.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-inventory"));},
+    "team":async()=>{await import("./team-management.js");window.dispatchEvent(new CustomEvent("smallbiz:open-team"));},
+    "channels":async()=>{requestSidebarModuleOpen("smallbiz:open-channels");await import("./sales-channels.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-channels"));},
+    "marketplace-connections":async()=>{requestSidebarModuleOpen("smallbiz:open-marketplace-connections");await import("./marketplace-connections.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-marketplace-connections"));},
+    "marketplace-stock":async()=>{requestSidebarModuleOpen("smallbiz:open-marketplace-stock");await import("./marketplace-stock-reservation.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-marketplace-stock"));},
+    "marketplace-fulfillment":async()=>{requestSidebarModuleOpen("smallbiz:open-marketplace-fulfillment");await import("./marketplace-fulfillment.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-marketplace-fulfillment"));},
+    "order-management":async()=>{requestSidebarModuleOpen("smallbiz:open-order-management");await import("./order-management.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-order-management"));},
+    "channel-mapping":async()=>{requestSidebarModuleOpen("smallbiz:open-channel-mapping");await import("./product-channel-mapping.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-channel-mapping"));},
+    "business-controls":async()=>{requestSidebarModuleOpen("smallbiz:open-business-controls");await import("./business-controls.jsx");window.dispatchEvent(new CustomEvent("smallbiz:open-business-controls"));},
+    "attendance":async()=>{window.__SMALLBIZ_SUPABASE__=supabase;await import("./attendance-runtime-bridge.js");await import("./attendance-center.js");window.dispatchEvent(new CustomEvent("smallbiz:open-attendance"));}
+  };
+
+  async function selectSidebarPage(key){
+    if(externalSidebarOpen[key]){
+      try{await externalSidebarOpen[key]();}catch(error){console.warn("[SmallBiz] "+key+" failed to open.",error);setErr(String(key)+" failed to open: "+String(error?.message||error));}
+      return;
+    }
+    setActivePage(key);
+  }
 
   function paymentLabel(m){return m==="gcash"?"GCash":m==="card"?"Card":"Cash"}
+
+  async function loadEffectivePermissions(p){if(!supabase||!p?.id||!p?.business_id)return;const role=String(p.role||"cashier").toLowerCase();const [platformOwnerResult,tenantAdminResult]=await Promise.all([supabase.from("platform_owners").select("user_id").eq("user_id",p.id).maybeSingle(),supabase.from("tenant_superadmins").select("business_id,user_id").eq("business_id",p.business_id).eq("user_id",p.id).maybeSingle()]);if(platformOwnerResult.error)throw new Error(platformOwnerResult.error.message);if(tenantAdminResult.error)throw new Error(tenantAdminResult.error.message);const platformOwner=Boolean(platformOwnerResult.data?.user_id===p.id);const superAdmin=Boolean(tenantAdminResult.data?.user_id===p.id&&tenantAdminResult.data?.business_id===p.business_id);const ownerFull=platformOwner||superAdmin||role==="owner"||role==="admin"||role==="super_admin";const baseRole=superAdmin?"tenant_superadmin":role;const [{data:roleRows,error:roleError},{data:userRows,error:userError},{data:allPermissions,error:allError}]=await Promise.all([supabase.from("role_permissions").select("role,permission_id,allowed").eq("role",baseRole),supabase.from("user_permissions").select("permission_id,allowed").eq("user_id",p.id),supabase.from("permissions").select("id,code")]);if(roleError||userError||allError)throw new Error(roleError?.message||userError?.message||allError?.message||"Unable to load permissions.");const codesById=new Map((allPermissions||[]).map(x=>[x.id,x.code]));const effective=new Map();(roleRows||[]).forEach(row=>{const code=codesById.get(row.permission_id);if(code)effective.set(code,row.allowed!==false)});(userRows||[]).forEach(row=>{const code=codesById.get(row.permission_id);if(code)effective.set(code,row.allowed===true)});if(ownerFull)(allPermissions||[]).forEach(row=>effective.set(row.code,true));setIsPlatformOwner(platformOwner);setIsTenantSuperAdmin(superAdmin);setPermissionCodes(new Set(Array.from(effective.entries()).filter(([,allowed])=>allowed).map(([code])=>code)));setPermissionsReady(true)}
+
 
   async function recordMovement({product,quantity,before,after,type,reason,referenceType=null,referenceId=null}){
     const {error}=await supabase.from("stock_movements").insert({
@@ -756,8 +790,8 @@ function App(){
       <div className="brand"><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.5</span></div></div>
       <div className="profile-box"><div className="profile-avatar">👤</div><div><b>{profile?.full_name||"Business Owner"}</b><small>{profile?.role||"owner"}</small><small className="online">● Online</small></div></div>
       <nav className="sidebar-nav">
-        {[["pos","🛒","POS",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["products","📦","Products",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["movements","🔄","Stock History",canManageInventory]].filter(x=>x[3]).map(([key,icon,label])=>
-          <button key={key} className={activePage===key?"nav-item active":"nav-item"} onClick={()=>setActivePage(key)}><span>{icon}</span><b>{label}</b></button>)}
+        {[["pos","🛒","POS",canSell],["cashier-shift","💵","Cashier Shift",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["growth","📈","Growth Center",canViewReports],["products","📦","Products",canManageInventory],["inventory","📦","Product & Inventory",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["attendance","👥","Employee/Attendance",canSell],["movements","🔄","Stock History",canManageInventory],["team","👥","Team",isOwner],["channels","🌐","Online Channels",isOwner],["marketplace-connections","🔌","Marketplace Connections",isOwner],["marketplace-stock","📦","Marketplace Stock",isOwner],["marketplace-fulfillment","🚚","Marketplace Fulfillment",isOwner],["order-management","🛍️","Order Management",isOwner],["channel-mapping","🗺️","Product Channel Mapping",isOwner],["business-controls","⚙️","Business Controls",isOwner]].filter(x=>x[3]).map(([key,icon,label])=>
+          <button key={key} type="button" data-smallbiz-react-sidebar="true" data-sidebar-key={key} className={activePage===key?"nav-item active":"nav-item"} onClick={()=>selectSidebarPage(key)}><span>{icon}</span><b>{label}</b></button>)}
       </nav>
       <div className="sidebar-bottom">
         <div style={{padding:12,marginBottom:10,borderRadius:12,background:"rgba(255,255,255,.06)"}}>
