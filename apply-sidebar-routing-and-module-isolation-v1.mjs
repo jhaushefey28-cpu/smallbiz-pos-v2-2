@@ -2,7 +2,6 @@ import fs from "node:fs";
 
 const mainPath="main.jsx";
 let main=fs.readFileSync(mainPath,"utf8");
-
 if(!main.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__=true")){
   const anchor='const supabase=configError?null:createClient(SUPABASE_URL,SUPABASE_KEY);';
   if(!main.includes(anchor))throw new Error("Supabase anchor not found; refusing sidebar isolation rewrite.");
@@ -42,7 +41,6 @@ const modules=[
   ["product-channel-mapping.jsx","smallbiz:open-channel-mapping"],
   ["business-controls.jsx","smallbiz:open-business-controls"]
 ];
-
 for(const [path,eventName] of modules){
   if(!fs.existsSync(path))throw new Error(`${path} is missing; refusing module isolation.`);
   let text=fs.readFileSync(path,"utf8");
@@ -51,18 +49,16 @@ for(const [path,eventName] of modules){
     const replacement=`,[open,setOpen]=useState(()=>{const p=window.__smallbizPendingModuleOpen;const v=Boolean(p?.[\"${eventName}\"]);if(v)delete p[\"${eventName}\"];return v})`;
     text=text.replace(stateNeedle,replacement);
   }
-
   const sidebarGuard="useEffect(()=>{if(window.__SMALLBIZ_REACT_SIDEBAR_OWNER__)return;if(!profile";
   if(text.includes("useEffect(()=>{if(!profile")&&!text.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__")){
-    text=text.replace("useEffect(()=>{if(!profile",sidebarGuard,1);
+    text=text.replace("useEffect(()=>{if(!profile",sidebarGuard);
   }
   if(!text.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__"))throw new Error(`Sidebar owner guard not inserted in ${path}.`);
-
   const returnNeedle="return open&&profile?";
   const eventEffect=`useEffect(()=>{const handler=()=>setOpen(true);window.addEventListener("${eventName}",handler);return()=>window.removeEventListener("${eventName}",handler)},[]);`;
   if(!text.includes(eventEffect)){
     if(!text.includes(returnNeedle))throw new Error(`Open render anchor not found in ${path}.`);
-    text=text.replace(returnNeedle,eventEffect+"\\n "+returnNeedle,1);
+    text=text.replace(returnNeedle,eventEffect+"\n "+returnNeedle);
   }
   fs.writeFileSync(path,text,"utf8");
 }
@@ -76,4 +72,4 @@ if(!team.includes('window.addEventListener("smallbiz:open-team",openTeam)')){
   team=team.replace(anchor,anchor+'\nwindow.addEventListener("smallbiz:open-team",openTeam);');
 }
 fs.writeFileSync(teamPath,team,"utf8");
-console.log("Applied SMALLBIZ_SIDEBAR_ROUTING_AND_MODULE_ISOLATION_V3: React owns sidebar; external modules cannot inject navigation and open only through routed events.");
+console.log("Applied SMALLBIZ_SIDEBAR_ROUTING_AND_MODULE_ISOLATION_V4: React owns sidebar; external modules cannot inject navigation and open only through routed events.");
