@@ -8,7 +8,6 @@ if(!main.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__=true")){
   if(!main.includes(anchor))throw new Error("Supabase anchor not found; refusing sidebar isolation rewrite.");
   main=main.replace(anchor,anchor+'\nwindow.__SMALLBIZ_REACT_SIDEBAR_OWNER__=true;');
 }
-
 main=main.replace('["inventory","📦","Inventory",canManageInventory]','["inventory","📦","Product & Inventory",canManageInventory]');
 
 const routes=[
@@ -20,21 +19,18 @@ const routes=[
   ["channel-mapping","smallbiz:open-channel-mapping"],
   ["business-controls","smallbiz:open-business-controls"]
 ];
-
 if(!main.includes("function requestSidebarModuleOpen")){
   const anchor="  const externalSidebarOpen={";
   if(!main.includes(anchor))throw new Error("External sidebar route map not found; refusing rewrite.");
   main=main.replace(anchor,'  function requestSidebarModuleOpen(eventName){const pending=window.__smallbizPendingModuleOpen||(window.__smallbizPendingModuleOpen={});pending[eventName]=true;}\n\n'+anchor);
 }
-
 for(const [key,eventName] of routes){
-  const pattern=new RegExp(`\\\"${key}\\\":async\\(\\)=>\\{(?!requestSidebarModuleOpen\\()await import`);
-  if(pattern.test(main))main=main.replace(pattern,`"${key}":async()=>{requestSidebarModuleOpen("${eventName}");await import`);
+  const needle=`"${key}":async()=>{await import`;
+  const replacement=`"${key}":async()=>{requestSidebarModuleOpen("${eventName}");await import`;
+  if(main.includes(needle)&&!main.includes(replacement))main=main.replace(needle,replacement);
 }
-
 if(!main.includes("requestSidebarModuleOpen(\"smallbiz:open-channels\")"))throw new Error("Sidebar module routing was not inserted.");
 if(!main.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__=true"))throw new Error("React sidebar ownership flag missing.");
-
 fs.writeFileSync(mainPath,main,"utf8");
 
 const modules=[
@@ -56,11 +52,17 @@ for(const [path,eventName] of modules){
     text=text.replace(stateNeedle,replacement);
   }
 
-  const sidebarEffect=/useEffect\(\(\)=>\{if\(!profile[^]*?const (?:id|rootId)=\"[^\"]+\";[^]*?\},\[profile[^\]]*\]\);/;
-  if(sidebarEffect.test(text)){
-    text=text.replace(sidebarEffect,`useEffect(()=>{const handler=()=>setOpen(true);window.addEventListener("${eventName}",handler);return()=>window.removeEventListener("${eventName}",handler)},[]);`);
-  }else if(!text.includes(`window.addEventListener(\"${eventName}\",handler)`)){
-    throw new Error(`Sidebar injection effect not found in ${path}; refusing unsafe rewrite.`);
+  const sidebarGuard="useEffect(()=>{if(window.__SMALLBIZ_REACT_SIDEBAR_OWNER__)return;if(!profile";
+  if(text.includes("useEffect(()=>{if(!profile")&&!text.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__")){
+    text=text.replace("useEffect(()=>{if(!profile",sidebarGuard,1);
+  }
+  if(!text.includes("window.__SMALLBIZ_REACT_SIDEBAR_OWNER__"))throw new Error(`Sidebar owner guard not inserted in ${path}.`);
+
+  const returnNeedle="return open&&profile?";
+  const eventEffect=`useEffect(()=>{const handler=()=>setOpen(true);window.addEventListener("${eventName}",handler);return()=>window.removeEventListener("${eventName}",handler)},[]);`;
+  if(!text.includes(eventEffect)){
+    if(!text.includes(returnNeedle))throw new Error(`Open render anchor not found in ${path}.`);
+    text=text.replace(returnNeedle,eventEffect+"\\n "+returnNeedle,1);
   }
   fs.writeFileSync(path,text,"utf8");
 }
@@ -74,5 +76,4 @@ if(!team.includes('window.addEventListener("smallbiz:open-team",openTeam)')){
   team=team.replace(anchor,anchor+'\nwindow.addEventListener("smallbiz:open-team",openTeam);');
 }
 fs.writeFileSync(teamPath,team,"utf8");
-
-console.log("Applied SMALLBIZ_SIDEBAR_ROUTING_AND_MODULE_ISOLATION_V2: Product & Inventory label, React-only visible sidebar, pending module routing, and no external sidebar injection.");
+console.log("Applied SMALLBIZ_SIDEBAR_ROUTING_AND_MODULE_ISOLATION_V3: React owns sidebar; external modules cannot inject navigation and open only through routed events.");
