@@ -56,7 +56,7 @@ for(const [path,eventName] of modules){
     text=text.replace(stateNeedle,replacement);
   }
 
-  const sidebarEffect=/useEffect\(\(\)=>\{if\(!profile[^]*?const id=\"[^\"]+\";[^]*?\},\[profile[^\]]*\]\);/;
+  const sidebarEffect=/useEffect\(\(\)=>\{if\(!profile[^]*?const (?:id|rootId)=\"[^\"]+\";[^]*?\},\[profile[^\]]*\]\);/;
   if(sidebarEffect.test(text)){
     text=text.replace(sidebarEffect,`useEffect(()=>{const handler=()=>setOpen(true);window.addEventListener("${eventName}",handler);return()=>window.removeEventListener("${eventName}",handler)},[]);`);
   }else if(!text.includes(`window.addEventListener(\"${eventName}\",handler)`)){
@@ -75,4 +75,4 @@ if(!team.includes('window.addEventListener("smallbiz:open-team",openTeam)')){
 }
 fs.writeFileSync(teamPath,team,"utf8");
 
-console.log("Applied SMALLBIZ_SIDEBAR_ROUTING_AND_MODULE_ISOLATION_V1: Product & Inventory label, React-only visible sidebar, pending module routing, and no external sidebar injection.");
+console.log("Applied SMALLBIZ_SIDEBAR_ROUTING_AND_MODULE_ISOLATION_V2: Product & Inventory label, React-only visible sidebar, pending module routing, and no external sidebar injection.");
