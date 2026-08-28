@@ -1,2 +1,4 @@
 /* Product & Inventory is the single canonical product-management entry. */
 .sidebar-nav button[data-sidebar-key="products"]{display:none!important}
+/* If any legacy/duplicate renderer appends another inventory entry, keep only the first. */
+.sidebar-nav button[data-sidebar-key="inventory"] ~ button[data-sidebar-key="inventory"]{display:none!important}
