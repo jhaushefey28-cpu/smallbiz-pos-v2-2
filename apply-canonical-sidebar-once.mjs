@@ -3,10 +3,10 @@ import fs from "node:fs";
 const path="main.jsx";
 let text=fs.readFileSync(path,"utf8");
 
-/* SMALLBIZ_CANONICAL_SIDEBAR_NAV_V44
+/* SMALLBIZ_CANONICAL_SIDEBAR_NAV_V45
    One React-owned sidebar. Product & Inventory is the single product/inventory
-   entry. Employee/Attendance remains present and uses the existing Attendance
-   bridge. No sidebar CSS, spacing, ordering, or layout is changed. */
+   entry. Employee/Attendance remains present. Replace the existing navigation
+   handler block instead of stacking another handler declaration. */
 
 const oldNav=/<nav className="sidebar-nav">[\s\S]*?<\/nav>/;
 const nav=`<nav className="sidebar-nav">
@@ -39,11 +39,15 @@ const externalBlock=`
     }
     setActivePage(key);
     requestAnimationFrame(()=>{const mainArea=document.querySelector(".main-area");if(mainArea)mainArea.scrollTo({top:0,behavior:"auto"});});
-  }`;
+  }
+`;
 
-const functionPattern=/\s+(?:async )?function selectSidebarPage\(key\)\{[\s\S]*?\n  \}/;
-if(functionPattern.test(text))text=text.replace(functionPattern,"\n"+externalBlock);
-else throw new Error("Existing selectSidebarPage handler not found; refusing mutation.");
+const handlerBlock=/\n  const externalSidebarOpen=[\s\S]*?\n  function paymentLabel/;
+if(handlerBlock.test(text)){
+  text=text.replace(handlerBlock,externalBlock+"\n  function paymentLabel");
+}else{
+  throw new Error("Existing sidebar handler block not found; refusing mutation.");
+}
 
 if(!text.includes("window.__SMALLBIZ_SUPABASE__=supabase")){
   const anchor="const supabase=configError?null:createClient(SUPABASE_URL,SUPABASE_KEY);";
@@ -52,4 +56,4 @@ if(!text.includes("window.__SMALLBIZ_SUPABASE__=supabase")){
 }
 
 fs.writeFileSync(path,text,"utf8");
-console.log("Applied V44: one Product & Inventory entry; Employee/Attendance preserved; sidebar layout untouched.");
+console.log("Applied V45: one Product & Inventory entry; Employee/Attendance preserved; existing sidebar handler replaced safely; layout untouched.");
