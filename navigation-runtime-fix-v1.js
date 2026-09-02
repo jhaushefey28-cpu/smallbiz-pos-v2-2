@@ -1,14 +1,14 @@
-// SMALLBIZ NAVIGATION RUNTIME FIX V1
-// One navigation owner for legacy external modules. This deliberately does not
-// observe/rebuild the sidebar; it only removes duplicate Product/Inventory
-// entries and routes the three affected module buttons directly.
+// SMALLBIZ NAVIGATION RUNTIME FIX V2
+// Fixes three verified navigation problems without rebuilding the sidebar.
 (function(){
-  const removeDuplicateInventoryEntries=()=>{
+  const tidySidebar=()=>{
     const nav=document.querySelector('.sidebar-nav');
     if(!nav)return;
+    nav.querySelectorAll('[data-sidebar-key="products"]').forEach(x=>x.remove());
     const inventory=[...nav.querySelectorAll('[data-sidebar-key="inventory"]')];
     inventory.slice(1).forEach(x=>x.remove());
-    nav.querySelectorAll('[data-sidebar-key="products"]').forEach(x=>x.remove());
+    const legacyInventory=document.getElementById('smallbiz-inventory-center-btn');
+    if(legacyInventory)legacyInventory.style.display='none';
   };
 
   const closeOpenModuleOverlays=()=>{
@@ -19,24 +19,27 @@
 
   const openModule=async(key)=>{
     closeOpenModuleOverlays();
+    if(key==='inventory'){
+      await import('./inventory-center.jsx');
+      // inventory-center.jsx owns the actual panel; its legacy sidebar button
+      // is hidden and used only as the module's stable open command.
+      const legacyButton=document.getElementById('smallbiz-inventory-center-btn');
+      if(legacyButton)legacyButton.click();
+      tidySidebar();
+      return;
+    }
     if(key==='team'){
       await import('./team-management.js');
-      if(typeof window.__smallbizOpenTeam==='function') window.__smallbizOpenTeam();
+      if(typeof window.__smallbizOpenTeam==='function')await window.__smallbizOpenTeam();
       else window.dispatchEvent(new CustomEvent('smallbiz:open-team'));
       return;
     }
     if(key==='attendance'){
-      const app=window.__SMALLBIZ_REACT_SUPABASE__||window.__SMALLBIZ_SUPABASE__;
-      if(app)window.__SMALLBIZ_SUPABASE__=app;
       await import('./attendance-runtime-bridge.js');
       await import('./attendance-center.js');
-      if(typeof window.__smallbizOpenAttendance==='function') window.__smallbizOpenAttendance();
+      if(typeof window.__smallbizOpenAttendance==='function')window.__smallbizOpenAttendance();
       else window.dispatchEvent(new CustomEvent('smallbiz:open-attendance'));
       return;
-    }
-    if(key==='inventory'){
-      await import('./inventory-center.jsx');
-      window.dispatchEvent(new CustomEvent('smallbiz:open-inventory'));
     }
   };
 
@@ -50,9 +53,7 @@
     openModule(key).catch(error=>console.error('[SmallBiz] Navigation module failed:',key,error));
   },true);
 
-  const tidy=()=>removeDuplicateInventoryEntries();
+  const tidy=()=>{tidySidebar();setTimeout(tidySidebar,100);setTimeout(tidySidebar,500)};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tidy,{once:true});
   else tidy();
-  setTimeout(tidy,50);
-  setTimeout(tidy,250);
 })();
