@@ -2,7 +2,6 @@
 // Standalone Team UI. Platform owner can create tenant Super Admin accounts;
 // Tenant Super Admin/Owner/Admin can create and manage tenant staff/cashier accounts.
 import { createClient } from "@supabase/supabase-js";
-import "./tenant-superadmin-permissions.js";
 
 const SUPABASE_URL=import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY=import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
