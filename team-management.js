@@ -1,14 +1,14 @@
-// SMALLBIZ_TEAM_MANAGEMENT_V5
+// SMALLBIZ_TEAM_MANAGEMENT_V4
 // Standalone Team UI. Platform owner can create tenant Super Admin accounts;
 // Tenant Super Admin/Owner/Admin can create and manage tenant staff/cashier accounts.
 import { createClient } from "@supabase/supabase-js";
+import "./tenant-superadmin-permissions.js";
 
 const SUPABASE_URL=import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY=import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const sb=SUPABASE_URL&&SUPABASE_KEY?createClient(SUPABASE_URL,SUPABASE_KEY):null;
 
 let overlay=null;
-let opening=false;
 const esc=v=>String(v??"").replace(/[&<>\"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 
 async function getContext(){
@@ -29,10 +29,7 @@ async function getContext(){
   return {profile,uid,isPlatformOwner};
 }
 
-function closeTeam(){
-  document.querySelectorAll("#smallbiz-team-overlay").forEach(el=>el.remove());
-  overlay=null;
-}
+function closeTeam(){overlay?.remove();overlay=null;}
 function cardShell(){
   const o=document.createElement("div");
   o.id="smallbiz-team-overlay";
@@ -120,7 +117,7 @@ async function openTeam(){
     o.querySelector("#team-close").onclick=closeTeam;o.querySelector("#tm-add-cashier").onclick=()=>openCreate().catch(e=>alert(e.message));
     o.querySelectorAll("[data-team-active]").forEach(btn=>btn.onclick=()=>{const m={user_id:btn.dataset.teamActive,email:btn.dataset.teamEmail,full_name:btn.dataset.teamName,role:btn.dataset.teamRole};openPermissions(m).catch(e=>alert("Unable to open permissions: "+e.message));});
   }catch(e){console.error("[SmallBiz] Team Management failed:",e);alert(e.message||"Unable to open Team Management.");}
-  finally{opening=false}
+  finally{opening=false;}
 }
 
 window.__smallbizOpenTeam=openTeam;
