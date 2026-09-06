@@ -1,3 +1,6 @@
+import "./attendance-center.css";
+import "./employee-attendance.css";
+import "./attendance-log-enhancement.css";
 (function(){
   const SUPABASE_URL='https://fnuncwcsliojhgkmmhwo.supabase.co';
   const SUPABASE_KEY='sb_publishable_jvzxrFRakTBDiQvST5e44w_X60WWMPe';
