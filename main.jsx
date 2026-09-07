@@ -54,7 +54,7 @@ function App(){
   const [session,setSession]=useState(null),[email,setEmail]=useState(""),[password,setPassword]=useState("");
   const [products,setProducts]=useState([]),[search,setSearch]=useState(""),[posCategoryFilter,setPosCategoryFilter]=useState("all"),[cart,setCart]=useState([]);
   const [scan,setScan]=useState(false),[status,setStatus]=useState(""),[err,setErr]=useState("");
-  const [profile,setProfile]=useState(null),[activePage,setActivePage]=useState("pos");
+  const [profile,setProfile]=useState(null),[activePage,setActivePage]=useState("pos"),[mobileNavOpen,setMobileNavOpen]=useState(false);
   const [permissionCodes,setPermissionCodes]=useState(()=>new Set()),[isTenantSuperAdmin,setIsTenantSuperAdmin]=useState(false),[isPlatformOwner,setIsPlatformOwner]=useState(false),[permissionsReady,setPermissionsReady]=useState(false);
   const [autoPrintReceipt,setAutoPrintReceipt]=useState(()=>localStorage.getItem("smallbiz_auto_print_receipt")==="true");
   const [paymentOpen,setPaymentOpen]=useState(false),[paymentDone,setPaymentDone]=useState(false);
@@ -296,6 +296,7 @@ function App(){
   };
 
   async function selectSidebarPage(key){
+    setMobileNavOpen(false);
     if(externalSidebarOpen[key]){
       try{await externalSidebarOpen[key]();}catch(error){console.warn("[SmallBiz] "+key+" failed to open.",error);setErr(String(key)+" failed to open: "+String(error?.message||error));}
       return;
@@ -786,8 +787,8 @@ function App(){
   if(!session)return <div className="auth"><form className="login-card" onSubmit={login}><div className="login-logo">🛒</div><h1>SmallBiz POS</h1><p>Sign in to your business account</p><input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="primary">Login</button>{err&&<p className="error">{err}</p>}</form></div>;
 
   return <div className="app-shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.5</span></div></div>
+    <aside className={mobileNavOpen?"sidebar mobile-open":"sidebar"}>
+      <div className="brand"><button type="button" className="mobile-menu-toggle" aria-label="Toggle menu" onClick={()=>setMobileNavOpen(v=>!v)}>☰</button><div className="brand-icon">🛒</div><div><h1>SmallBiz POS</h1><span>V2.5</span></div></div>
       <div className="profile-box"><div className="profile-avatar">👤</div><div><b>{profile?.full_name||"Business Owner"}</b><small>{profile?.role||"owner"}</small><small className="online">● Online</small></div></div>
       <nav className="sidebar-nav">
         {[["pos","🛒","POS",canSell],["cashier-shift","💵","Cashier Shift",canSell],["dashboard","📈","Dashboard",canViewReports],["transactions","📋","Transactions",canSell],["reports","📊","Reports",canViewReports],["growth","📈","Growth Center",canViewReports],["products","📦","Products",canManageInventory],["inventory","📦","Product & Inventory",canManageInventory],["categories","🏷️","Categories",canManageMasters],["customers","👥","Customers",canManageMasters],["purchases","🚚","Purchasing",canManagePurchasing],["suppliers","🏢","Suppliers",canManageMasters],["attendance","👥","Employee/Attendance",canSell],["movements","🔄","Stock History",canManageInventory],["team","👥","Team",isOwner],["channels","🌐","Online Channels",isOwner],["marketplace-connections","🔌","Marketplace Connections",isOwner],["marketplace-stock","📦","Marketplace Stock",isOwner],["marketplace-fulfillment","🚚","Marketplace Fulfillment",isOwner],["order-management","🛍️","Order Management",isOwner],["channel-mapping","🗺️","Product Channel Mapping",isOwner],["business-controls","⚙️","Business Controls",isOwner]].filter(x=>x[3]).map(([key,icon,label])=>

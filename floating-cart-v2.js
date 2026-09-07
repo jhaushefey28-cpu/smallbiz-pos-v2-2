@@ -37,7 +37,54 @@
     document.body.appendChild(root);
     button=root.querySelector(".fc-btn");badge=root.querySelector(".fc-badge");drawer=root.querySelector(".fc-drawer");body=root.querySelector(".fc-body");
     root.querySelector(".fc-close").onclick=()=>root.classList.remove("open");
-    button.onclick=()=>{root.classList.toggle("open");refresh(true)};
+    makeDraggable(button);
+  }
+
+  function makeDraggable(el){
+    let sx=0,sy=0,ox=0,oy=0,dragging=false,moved=false;
+    const clamp=(v,min,max)=>Math.min(Math.max(v,min),max);
+    const onDown=e=>{
+      const p=e.touches?e.touches[0]:e;
+      dragging=true;moved=false;
+      sx=p.clientX;sy=p.clientY;
+      const r=el.getBoundingClientRect();ox=r.left;oy=r.top;
+      el.style.transition="none";
+      document.addEventListener("pointermove",onMove);
+      document.addEventListener("pointerup",onUp);
+      document.addEventListener("touchmove",onMove,{passive:false});
+      document.addEventListener("touchend",onUp);
+    };
+    const onMove=e=>{
+      if(!dragging)return;
+      const p=e.touches?e.touches[0]:e;
+      const dx=p.clientX-sx,dy=p.clientY-sy;
+      if(Math.abs(dx)>6||Math.abs(dy)>6)moved=true;
+      if(!moved)return;
+      e.preventDefault?.();
+      const w=el.offsetWidth,h=el.offsetHeight;
+      const nx=clamp(ox+dx,6,window.innerWidth-w-6);
+      const ny=clamp(oy+dy,6,window.innerHeight-h-6);
+      el.style.left=nx+"px";el.style.top=ny+"px";
+      el.style.right="auto";el.style.bottom="auto";
+    };
+    const onUp=e=>{
+      dragging=false;
+      el.style.transition="";
+      document.removeEventListener("pointermove",onMove);
+      document.removeEventListener("pointerup",onUp);
+      document.removeEventListener("touchmove",onMove);
+      document.removeEventListener("touchend",onUp);
+      if(moved){
+        e.preventDefault?.();e.stopPropagation?.();
+        moved=false;
+      }
+    };
+    el.addEventListener("pointerdown",onDown);
+    el.addEventListener("touchstart",onDown,{passive:true});
+    el.addEventListener("click",e=>{
+      if(moved){e.preventDefault();e.stopPropagation();return}
+      root.classList.toggle("open");refresh(true);
+    });
   }
 
   function wire(copy,original){
