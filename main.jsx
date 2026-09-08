@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient } from "@supabase/supabase-js";
 import { Html5Qrcode } from "html5-qrcode";
@@ -57,6 +57,10 @@ function App(){
   const [profile,setProfile]=useState(null),[activePage,setActivePage]=useState("pos"),[mobileNavOpen,setMobileNavOpen]=useState(false);
   const [permissionCodes,setPermissionCodes]=useState(()=>new Set()),[isTenantSuperAdmin,setIsTenantSuperAdmin]=useState(false),[isPlatformOwner,setIsPlatformOwner]=useState(false),[permissionsReady,setPermissionsReady]=useState(false);
   const [autoPrintReceipt,setAutoPrintReceipt]=useState(()=>localStorage.getItem("smallbiz_auto_print_receipt")==="true");
+  const [cashDrawerEnabled,setCashDrawerEnabled]=useState(()=>localStorage.getItem("smallbiz_cash_drawer_enabled")==="true");
+  const [cashDrawerPaired,setCashDrawerPaired]=useState(false);
+  const cashDrawerSupported=typeof navigator!=="undefined"&&(!!navigator.usb||!!navigator.serial);
+  const cashDrawerUsbRef=useRef(null),cashDrawerSerialRef=useRef(null);
   const [paymentOpen,setPaymentOpen]=useState(false),[paymentDone,setPaymentDone]=useState(false);
   const [cash,setCash]=useState(""),[receiptNo,setReceiptNo]=useState(""),[savingPayment,setSavingPayment]=useState(false);
   const [paymentMethod,setPaymentMethod]=useState("cash"),[salesHistory,setSalesHistory]=useState([]),[historyLoading,setHistoryLoading]=useState(false);
@@ -105,6 +109,55 @@ function App(){
   useEffect(()=>{if(profile?.business_id)loadSaleItemsHistory()},[salesHistory,profile?.business_id]);
   useEffect(()=>{if(!profile?.id||!profile?.business_id)return;loadEffectivePermissions(profile).catch(error=>console.warn("[SmallBiz] Permission load failed.",error))},[profile?.id,profile?.business_id]);
   useEffect(()=>{const role=String(profile?.role||"").toLowerCase();const owner=isPlatformOwner||isTenantSuperAdmin||role==="owner"||role==="admin"||role==="super_admin";window.__smallbizPermissionsReady=permissionsReady;window.__smallbizIsPlatformOwner=isPlatformOwner;window.__smallbizIsTenantSuperAdmin=isTenantSuperAdmin;window.__smallbizIsOwner=owner;window.__smallbizHasPermission=(code)=>owner||permissionCodes.has(String(code||""));if(permissionsReady)window.dispatchEvent(new Event("smallbiz:permissions-ready"));if(owner)window.dispatchEvent(new Event("smallbiz:owner-ready"))},[permissionsReady,isPlatformOwner,isTenantSuperAdmin,permissionCodes,profile?.role]);
+  useEffect(()=>{
+    (async()=>{
+      try{
+        if(navigator.usb){const devices=await navigator.usb.getDevices();if(devices&&devices[0]){cashDrawerUsbRef.current=devices[0];setCashDrawerPaired(true);return}}
+        if(navigator.serial){const ports=await navigator.serial.getPorts();if(ports&&ports[0]){cashDrawerSerialRef.current=ports[0];setCashDrawerPaired(true);return}}
+      }catch(e){console.warn("[SmallBiz] Cash drawer auto-reconnect skipped.",e)}
+    })();
+  },[]);
+  async function pairCashDrawer(){
+    try{
+      if(navigator.usb){
+        const device=await navigator.usb.requestDevice({filters:[]});
+        cashDrawerUsbRef.current=device;cashDrawerSerialRef.current=null;setCashDrawerPaired(true);setStatus("Cash drawer/printer paired via USB.");return;
+      }
+      if(navigator.serial){
+        const port=await navigator.serial.requestPort();
+        cashDrawerSerialRef.current=port;cashDrawerUsbRef.current=null;setCashDrawerPaired(true);setStatus("Cash drawer/printer paired via Serial (COM / Bluetooth SPP).");return;
+      }
+      setErr("This browser doesn't support USB or Serial pairing. Use Chrome or Edge on Android/Windows, or rely on your printer's own auto-kick-on-print setting instead.");
+    }catch(e){
+      if(e?.name!=="NotFoundError")setErr("Pairing cancelled or failed: "+(e?.message||e));
+    }
+  }
+  async function kickCashDrawer(){
+    const KICK=new Uint8Array([0x1B,0x70,0x00,0x19,0xFA]);
+    try{
+      if(cashDrawerUsbRef.current){
+        const device=cashDrawerUsbRef.current;
+        if(!device.opened)await device.open();
+        if(!device.configuration)await device.selectConfiguration(1);
+        const iface=device.configuration.interfaces[0];
+        await device.claimInterface(iface.interfaceNumber);
+        const alt=iface.alternate||iface.alternates[0];
+        const endpoint=alt.endpoints.find(e=>e.direction==="out");
+        if(endpoint)await device.transferOut(endpoint.endpointNumber,KICK);
+        return;
+      }
+      if(cashDrawerSerialRef.current){
+        const port=cashDrawerSerialRef.current;
+        if(!port.readable&&!port.writable)await port.open({baudRate:9600});
+        const writer=port.writable.getWriter();
+        await writer.write(KICK);
+        writer.releaseLock();
+        return;
+      }
+    }catch(e){
+      console.warn("[SmallBiz] Cash drawer kick failed.",e);
+    }
+  }
 
 
   async function load(uid){
@@ -358,6 +411,7 @@ function App(){
       await load(session.user.id);
       setReceiptNo(invoiceNumber);setPaymentOpen(false);setPaymentDone(true);setStatus("Payment saved successfully. Sale + stock completed atomically.");
       if(autoPrintReceipt)printReceipt({receiptNo:invoiceNumber,printWindow:w});
+      if(cashDrawerEnabled)kickCashDrawer();
     }catch(e){
       if(w&&!w.closed)w.close();
       console.error("Atomic sale failed:",e);
@@ -798,6 +852,11 @@ function App(){
         <div style={{padding:12,marginBottom:10,borderRadius:12,background:"rgba(255,255,255,.06)"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><b style={{display:"block"}}>🖨️ Auto Print</b><small style={{opacity:.7}}>Print receipt after payment</small></div>
           <button type="button" onClick={()=>{const n=!autoPrintReceipt;setAutoPrintReceipt(n);localStorage.setItem("smallbiz_auto_print_receipt",String(n));setStatus(n?"Auto Print Receipt: ON":"Auto Print Receipt: OFF")}}>{autoPrintReceipt?"ON":"OFF"}</button></div>
+        </div>
+        <div style={{padding:12,marginBottom:10,borderRadius:12,background:"rgba(255,255,255,.06)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><b style={{display:"block"}}>🗄️ Cash Drawer</b><small style={{opacity:.7}}>{cashDrawerSupported?(cashDrawerPaired?"Open drawer on payment":"Pair a device below first"):"Not supported on this browser — use your printer's own auto-kick setting instead"}</small></div>
+          <button type="button" disabled={!cashDrawerSupported} onClick={()=>{const n=!cashDrawerEnabled;setCashDrawerEnabled(n);localStorage.setItem("smallbiz_cash_drawer_enabled",String(n));setStatus(n?"Cash Drawer: ON":"Cash Drawer: OFF")}}>{cashDrawerEnabled?"ON":"OFF"}</button></div>
+          {cashDrawerSupported&&<button type="button" style={{marginTop:8,width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.15)",background:"transparent",color:"inherit",cursor:"pointer"}} onClick={pairCashDrawer}>{cashDrawerPaired?"🔌 Re-pair Drawer/Printer":"🔌 Pair USB / Serial Drawer"}</button>}
         </div>
         {isOwner&&<button className="logout-btn" onClick={()=>{setReceiptForm({...receiptSettings});setReceiptSettingsOpen(true)}}>🧾 Receipt Settings</button>}
         <button className="logout-btn" onClick={logout}>↪ Logout</button>
