@@ -32,6 +32,8 @@ async function getContext(){
 
 function closeTeam(){overlay?.remove();overlay=null;}
 function cardShell(){
+  const existing=document.getElementById("smallbiz-team-overlay");
+  if(existing)existing.remove();
   const o=document.createElement("div");
   o.id="smallbiz-team-overlay";
   o.style.cssText="position:fixed;inset:0;z-index:10020;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box";

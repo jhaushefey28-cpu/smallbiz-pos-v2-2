@@ -52,6 +52,8 @@ const norm=p=>({...p,
 
 function App(){
   const [session,setSession]=useState(null),[email,setEmail]=useState(""),[password,setPassword]=useState("");
+  const [showPassword,setShowPassword]=useState(false);
+  const [authMode,setAuthMode]=useState("login"),[resetSent,setResetSent]=useState(false),[newPassword,setNewPassword]=useState(""),[newPassword2,setNewPassword2]=useState("");
   const [products,setProducts]=useState([]),[search,setSearch]=useState(""),[posCategoryFilter,setPosCategoryFilter]=useState("all"),[cart,setCart]=useState([]);
   const [scan,setScan]=useState(false),[status,setStatus]=useState(""),[err,setErr]=useState("");
   const [profile,setProfile]=useState(null),[activePage,setActivePage]=useState("pos"),[mobileNavOpen,setMobileNavOpen]=useState(false);
@@ -101,7 +103,7 @@ function App(){
     if(!supabase)return;
     let mounted=true;
     supabase.auth.getSession().then(({data})=>mounted&&setSession(data.session));
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,s)=>setSession(s));
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((event,s)=>{setSession(s);if(event==="PASSWORD_RECOVERY")setAuthMode("reset")});
     return()=>{mounted=false;subscription.unsubscribe()};
   },[]);
 
@@ -265,6 +267,21 @@ function App(){
     e.preventDefault(); if(!supabase)return; setErr("");
     const {error}=await supabase.auth.signInWithPassword({email,password});
     if(error)setErr(error.message);
+  }
+  async function sendResetLink(e){
+    e.preventDefault();if(!supabase)return;setErr("");
+    if(!String(email||"").trim())return setErr("Enter your email first.");
+    const {error}=await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:window.location.origin});
+    if(error)return setErr(error.message);
+    setResetSent(true);
+  }
+  async function updatePassword(e){
+    e.preventDefault();if(!supabase)return;setErr("");
+    if(newPassword.length<8)return setErr("Password must be at least 8 characters.");
+    if(newPassword!==newPassword2)return setErr("Passwords do not match.");
+    const {error}=await supabase.auth.updateUser({password:newPassword});
+    if(error)return setErr(error.message);
+    setNewPassword("");setNewPassword2("");setAuthMode("login");setResetSent(false);setStatus("Password updated. You're now signed in.");
   }
   async function logout(){
     await supabase?.auth.signOut(); setSession(null); setProfile(null); setCart([]); setSalesHistory([]); setMovements([]); setSuppliers([]); setPurchaseHistory([]);
@@ -838,7 +855,11 @@ function App(){
   }
 
   if(configError)return <div className="auth"><div className="card"><h1>SmallBiz POS V2.5</h1><h2>Configuration missing</h2><p>Missing VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY</p></div></div>;
-  if(!session)return <div className="auth"><form className="login-card" onSubmit={login}><div className="login-logo">🛒</div><h1>SmallBiz POS</h1><p>Sign in to your business account</p><input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="primary">Login</button>{err&&<p className="error">{err}</p>}</form></div>;
+  if(!session)return <div className="auth">
+    {authMode==="login"&&<form className="login-card" onSubmit={login}><div className="login-logo">🛒</div><h1>SmallBiz POS</h1><p>Sign in to your business account</p><input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><div style={{position:"relative"}}><input type={showPassword?"text":"password"} placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required style={{width:"100%",boxSizing:"border-box",paddingRight:44}}/><button type="button" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?"Hide password":"Show password"} style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",border:0,background:"transparent",cursor:"pointer",fontSize:16,padding:6}}>{showPassword?"🙈":"👁️"}</button></div><button className="primary">Login</button><button type="button" onClick={()=>{setErr("");setResetSent(false);setAuthMode("forgot")}} style={{background:"none",border:0,color:"#1769e0",cursor:"pointer",fontSize:13,marginTop:4}}>Forgot password?</button>{err&&<p className="error">{err}</p>}</form>}
+    {authMode==="forgot"&&<form className="login-card" onSubmit={sendResetLink}><div className="login-logo">🛒</div><h1>Reset Password</h1>{resetSent?<p>Check <b>{email}</b> for a password reset link, then click it to continue.</p>:<><p>Enter your account email — we'll send you a reset link.</p><input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required/><button className="primary">Send Reset Link</button></>}<button type="button" onClick={()=>{setErr("");setResetSent(false);setAuthMode("login")}} style={{background:"none",border:0,color:"#1769e0",cursor:"pointer",fontSize:13,marginTop:4}}>← Back to Login</button>{err&&<p className="error">{err}</p>}</form>}
+    {authMode==="reset"&&<form className="login-card" onSubmit={updatePassword}><div className="login-logo">🛒</div><h1>Set New Password</h1><p>Enter a new password for your account.</p><input type={showPassword?"text":"password"} placeholder="New password (min 8 characters)" value={newPassword} onChange={e=>setNewPassword(e.target.value)} required/><input type={showPassword?"text":"password"} placeholder="Confirm new password" value={newPassword2} onChange={e=>setNewPassword2(e.target.value)} required/><label style={{display:"flex",alignItems:"center",gap:6,fontSize:13}}><input type="checkbox" checked={showPassword} onChange={e=>setShowPassword(e.target.checked)}/> Show password</label><button className="primary">Update Password</button>{err&&<p className="error">{err}</p>}</form>}
+  </div>;
 
   return <div className="app-shell">
     <aside className={mobileNavOpen?"sidebar mobile-open":"sidebar"}>
@@ -849,14 +870,16 @@ function App(){
           <button key={key} type="button" data-smallbiz-react-sidebar="true" data-sidebar-key={key} className={activePage===key?"nav-item active":"nav-item"} onClick={()=>selectSidebarPage(key)}><span>{icon}</span><b>{label}</b></button>)}
       </nav>
       <div className="sidebar-bottom">
-        <div style={{padding:12,marginBottom:10,borderRadius:12,background:"rgba(255,255,255,.06)"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><b style={{display:"block"}}>🖨️ Auto Print</b><small style={{opacity:.7}}>Print receipt after payment</small></div>
-          <button type="button" onClick={()=>{const n=!autoPrintReceipt;setAutoPrintReceipt(n);localStorage.setItem("smallbiz_auto_print_receipt",String(n));setStatus(n?"Auto Print Receipt: ON":"Auto Print Receipt: OFF")}}>{autoPrintReceipt?"ON":"OFF"}</button></div>
+        <div style={{padding:"7px 10px",marginBottom:6,borderRadius:8,background:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:12}}>
+          <span>🖨️ Auto Print</span>
+          <button type="button" style={{fontSize:11,padding:"3px 9px",borderRadius:6}} onClick={()=>{const n=!autoPrintReceipt;setAutoPrintReceipt(n);localStorage.setItem("smallbiz_auto_print_receipt",String(n));setStatus(n?"Auto Print Receipt: ON":"Auto Print Receipt: OFF")}}>{autoPrintReceipt?"ON":"OFF"}</button>
         </div>
-        <div style={{padding:12,marginBottom:10,borderRadius:12,background:"rgba(255,255,255,.06)"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><b style={{display:"block"}}>🗄️ Cash Drawer</b><small style={{opacity:.7}}>{cashDrawerSupported?(cashDrawerPaired?"Open drawer on payment":"Pair a device below first"):"Not supported on this browser — use your printer's own auto-kick setting instead"}</small></div>
-          <button type="button" disabled={!cashDrawerSupported} onClick={()=>{const n=!cashDrawerEnabled;setCashDrawerEnabled(n);localStorage.setItem("smallbiz_cash_drawer_enabled",String(n));setStatus(n?"Cash Drawer: ON":"Cash Drawer: OFF")}}>{cashDrawerEnabled?"ON":"OFF"}</button></div>
-          {cashDrawerSupported&&<button type="button" style={{marginTop:8,width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.15)",background:"transparent",color:"inherit",cursor:"pointer"}} onClick={pairCashDrawer}>{cashDrawerPaired?"🔌 Re-pair Drawer/Printer":"🔌 Pair USB / Serial Drawer"}</button>}
+        <div style={{padding:"7px 10px",marginBottom:6,borderRadius:8,background:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:12}} title={cashDrawerSupported?(cashDrawerPaired?"Open drawer on payment":"Pair a device first"):"Not supported on this browser — use your printer's own auto-kick setting instead"}>
+          <span>🗄️ Cash Drawer</span>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            {cashDrawerSupported&&<button type="button" title={cashDrawerPaired?"Re-pair device":"Pair USB/Serial device"} style={{fontSize:12,padding:"3px 6px",borderRadius:6,border:"1px solid rgba(255,255,255,.15)",background:"transparent",color:"inherit",cursor:"pointer"}} onClick={pairCashDrawer}>🔌</button>}
+            <button type="button" disabled={!cashDrawerSupported} style={{fontSize:11,padding:"3px 9px",borderRadius:6}} onClick={()=>{const n=!cashDrawerEnabled;setCashDrawerEnabled(n);localStorage.setItem("smallbiz_cash_drawer_enabled",String(n));setStatus(n?"Cash Drawer: ON":"Cash Drawer: OFF")}}>{cashDrawerEnabled?"ON":"OFF"}</button>
+          </div>
         </div>
         {isOwner&&<button className="logout-btn" onClick={()=>{setReceiptForm({...receiptSettings});setReceiptSettingsOpen(true)}}>🧾 Receipt Settings</button>}
         <button className="logout-btn" onClick={logout}>↪ Logout</button>
