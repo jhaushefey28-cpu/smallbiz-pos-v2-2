@@ -364,9 +364,11 @@ button:disabled {
   font-size: 14px;
 }
 
-.nav-item:hover {
-  background: #1b2533;
-  color: #ffffff;
+@media (hover: hover) {
+  .nav-item:hover {
+    background: #1b2533;
+    color: #ffffff;
+  }
 }
 
 .nav-item.active {
