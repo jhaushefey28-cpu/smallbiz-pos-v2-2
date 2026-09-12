@@ -94,7 +94,7 @@ function Panel({onClose, profile}){
 function App(){
   const [session,setSession]=useState(null);
   const [profile,setProfile]=useState(null);
-  const [open,setOpen]=useState(false);
+  const [open,setOpen]=useState(()=>{const p=window.__smallbizPendingModuleOpen;const v=Boolean(p?.["smallbiz:open-channels"]);if(v)delete p["smallbiz:open-channels"];return v});
 
   useEffect(()=>{
     if(!sb)return;
