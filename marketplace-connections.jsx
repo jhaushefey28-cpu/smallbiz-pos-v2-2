@@ -26,11 +26,19 @@ function Panel({profile,onClose}){
  async function prepare(channel){
   if(!admin||!channel.platform_enabled){return;}
   setBusy(channel.code);setMsg("");setErr("");
-  const existing=channel.connection;
-  const payload={business_id:profile.business_id,sales_channel_id:channel.id,provider:channel.code,connection_status:"pending_authorization",sync_enabled:true,metadata:existing?.metadata||{}};
-  const q=existing?sb.from("channel_connections").update(payload).eq("id",existing.id).eq("business_id",profile.business_id):sb.from("channel_connections").insert(payload).select("id,sales_channel_id,connection_status,sync_enabled").single();
-  const {error}=await q;
-  if(error)setErr(error.message);else setMsg(`${channel.name}: authorization is ready. The marketplace OAuth credentials/endpoints still need to be configured before a seller account can be connected.`);
+  try{
+   const {data,error}=await sb.functions.invoke("marketplace-oauth-start",{body:{business_id:profile.business_id,sales_channel_id:channel.id}});
+   if(error)throw new Error(error.message||"Unable to start marketplace authorization.");
+   if(data?.error)throw new Error(data.error);
+   if(data?.configured&&data?.authorization_url){
+    window.open(data.authorization_url,"_blank","noopener,noreferrer");
+    setMsg(`${channel.name}: opening the secure ${channel.name} login in a new tab. Finish signing in there to complete the connection.`);
+   }else{
+    setMsg(data?.message||`${channel.name}: authorization is ready. The marketplace OAuth credentials/endpoints still need to be configured before a seller account can be connected.`);
+   }
+  }catch(e){
+   setErr(e?.message||String(e));
+  }
   setBusy("");await load();
  }
  async function toggleSync(channel){
